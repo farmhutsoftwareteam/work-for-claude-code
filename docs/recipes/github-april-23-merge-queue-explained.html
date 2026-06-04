@@ -1,0 +1,539 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>GitHub merge queue bug, April 23 2026, explained in plain English | Work</title>
+    <meta name="description" content="GitHub silently undid 2,092 pull requests across 658 repos on April 23. Here is what actually broke, in plain English, with no jargon.">
+    <meta name="author" content="Munya Makosa">
+    <meta name="robots" content="index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1">
+    <meta name="keywords" content="github outage april 23 2026, merge queue bug, github merge queue regression, what happened to github, github incident explained">
+    <link rel="canonical" href="https://work.munyamakosa.com/recipes/github-april-23-merge-queue-explained.html">
+    <link rel="alternate" type="application/rss+xml" title="Work Recipes" href="https://work.munyamakosa.com/recipes/feed.xml">
+
+    <!-- Open Graph -->
+    <meta property="og:type" content="article">
+    <meta property="og:locale" content="en_US">
+    <meta property="og:title" content="GitHub merge queue bug, April 23 2026, explained in plain English">
+    <meta property="og:description" content="GitHub silently undid 2,092 pull requests across 658 repos on April 23. Here is what actually broke, in plain English, with no jargon.">
+    <meta property="og:url" content="https://work.munyamakosa.com/recipes/github-april-23-merge-queue-explained.html">
+    <meta property="og:image" content="https://work.munyamakosa.com/recipes/og/github-april-23-merge-queue-explained.png">
+    <meta property="og:image:alt" content="GitHub merge queue bug, April 23 2026, explained in plain English">
+    <meta property="og:image:width" content="1200">
+    <meta property="og:image:height" content="630">
+    <meta property="og:site_name" content="Work">
+    <meta property="article:published_time" content="2026-04-30T00:00:00.000Z">
+    <meta property="article:modified_time" content="2026-04-30T00:00:00.000Z">
+    <meta property="article:author" content="https://munyamakosa.com">
+    <meta property="article:tag" content="github">
+    <meta property="article:tag" content="incident">
+    <meta property="article:tag" content="explainer">
+    <meta property="article:tag" content="devops">
+
+    <!-- Twitter -->
+    <meta name="twitter:card" content="summary_large_image">
+    <meta name="twitter:site" content="@munyamakosa">
+    <meta name="twitter:creator" content="@munyamakosa">
+    <meta name="twitter:title" content="GitHub merge queue bug, April 23 2026, explained in plain English">
+    <meta name="twitter:description" content="GitHub silently undid 2,092 pull requests across 658 repos on April 23. Here is what actually broke, in plain English, with no jargon.">
+    <meta name="twitter:image" content="https://work.munyamakosa.com/recipes/og/github-april-23-merge-queue-explained.png">
+    <meta name="twitter:image:alt" content="GitHub merge queue bug, April 23 2026, explained in plain English">
+
+    <!-- Article JSON-LD -->
+    <script type="application/ld+json">
+    {
+        "@context": "https://schema.org",
+        "@type": "TechArticle",
+        "headline": "GitHub merge queue bug, April 23 2026, explained in plain English",
+        "name": "What broke at GitHub on April 23, explained without jargon",
+        "description": "GitHub silently undid 2,092 pull requests across 658 repos on April 23. Here is what actually broke, in plain English, with no jargon.",
+        "datePublished": "2026-04-30T00:00:00.000Z",
+        "dateModified": "2026-04-30T00:00:00.000Z",
+        "url": "https://work.munyamakosa.com/recipes/github-april-23-merge-queue-explained.html",
+        "mainEntityOfPage": { "@type": "WebPage", "@id": "https://work.munyamakosa.com/recipes/github-april-23-merge-queue-explained.html" },
+        "image": {
+            "@type": "ImageObject",
+            "url": "https://work.munyamakosa.com/recipes/og/github-april-23-merge-queue-explained.png",
+            "width": 1200,
+            "height": 630
+        },
+        "author": {
+            "@type": "Person",
+            "name": "Munya Makosa",
+            "url": "https://munyamakosa.com"
+        },
+        "publisher": {
+            "@type": "Organization",
+            "name": "Work",
+            "url": "https://work.munyamakosa.com",
+            "logo": {
+                "@type": "ImageObject",
+                "url": "https://work.munyamakosa.com/icon-256.png",
+                "width": 256,
+                "height": 256
+            }
+        },
+        "wordCount": 1970,
+        "keywords": "github outage april 23 2026, merge queue bug, github merge queue regression, what happened to github, github incident explained",
+        "timeRequired": "PT6M"
+    }
+    </script>
+
+    <!-- Breadcrumb JSON-LD -->
+    <script type="application/ld+json">
+    {
+        "@context": "https://schema.org",
+        "@type": "BreadcrumbList",
+        "itemListElement": [
+            { "@type": "ListItem", "position": 1, "name": "Work", "item": "https://work.munyamakosa.com/" },
+            { "@type": "ListItem", "position": 2, "name": "Recipes", "item": "https://work.munyamakosa.com/recipes/" },
+            { "@type": "ListItem", "position": 3, "name": "What broke at GitHub on April 23, explained without jargon", "item": "https://work.munyamakosa.com/recipes/github-april-23-merge-queue-explained.html" }
+        ]
+    }
+    </script>
+
+    <link rel="icon" type="image/png" href="../icon-256.png">
+    <style>
+    :root {
+        --graphite: #111113;
+        --graphite-surface: #18181b;
+        --graphite-elevated: #1f1f23;
+        --ivory: #f0ece4;
+        --ivory-muted: rgba(240, 236, 228, 0.55);
+        --ivory-faint: rgba(240, 236, 228, 0.12);
+        --ivory-ghost: rgba(240, 236, 228, 0.06);
+        --blue: #4a6fa5;
+        --blue-bright: #5a8fd4;
+        --border: rgba(240, 236, 228, 0.08);
+        --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+        --font-mono: 'SF Mono', 'Fira Code', 'JetBrains Mono', monospace;
+    }
+    *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+    html { font-size: 16px; -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; scroll-behavior: smooth; }
+    body { font-family: var(--font-sans); background: var(--graphite); color: var(--ivory); line-height: 1.6; overflow-x: hidden; }
+    a { color: var(--blue-bright); text-decoration: none; }
+    a:hover { text-decoration: underline; }
+    .container { max-width: 960px; margin: 0 auto; padding: 0 24px; }
+    .container-narrow { max-width: 720px; margin: 0 auto; padding: 0 24px; }
+
+    /* Nav */
+    nav.site-nav {
+        position: fixed; top: 0; left: 0; right: 0; z-index: 100;
+        padding: 16px 0;
+        background: rgba(17, 17, 19, 0.85);
+        backdrop-filter: blur(20px) saturate(1.4);
+        -webkit-backdrop-filter: blur(20px) saturate(1.4);
+        border-bottom: 1px solid var(--border);
+    }
+    nav.site-nav .container { display: flex; align-items: center; justify-content: space-between; }
+    .nav-brand { display: flex; align-items: center; gap: 10px; }
+    .nav-brand img { width: 28px; height: 28px; border-radius: 6px; }
+    .nav-brand span { font-family: var(--font-mono); font-size: 15px; font-weight: 600; letter-spacing: -0.3px; color: var(--ivory); }
+    .nav-links { display: flex; align-items: center; gap: 28px; }
+    .nav-links a { font-size: 14px; font-weight: 450; color: var(--ivory-muted); transition: color 0.15s; }
+    .nav-links a:hover { color: var(--ivory); text-decoration: none; }
+    .nav-links a.active { color: var(--ivory); }
+    .btn-download-nav {
+        font-size: 13px; font-weight: 500; color: var(--ivory) !important;
+        background: var(--blue); padding: 7px 16px; border-radius: 6px;
+        transition: background 0.15s; text-decoration: none;
+    }
+    .btn-download-nav:hover { background: var(--blue-bright); text-decoration: none; }
+
+    /* Footer */
+    footer { padding: 40px 0; border-top: 1px solid var(--border); text-align: center; margin-top: 80px; }
+    footer p { font-size: 13px; color: rgba(240, 236, 228, 0.25); }
+
+    /* Section labels */
+    .section-label {
+        font-family: var(--font-mono); font-size: 11px; font-weight: 500;
+        text-transform: uppercase; letter-spacing: 1.5px;
+        color: var(--blue-bright); margin-bottom: 16px;
+    }
+
+    @media (max-width: 768px) {
+        .nav-links a:not(.btn-download-nav) { display: none; }
+    }
+
+    .article-header {
+        padding: 140px 0 40px;
+    }
+    .back-link {
+        display: inline-flex; align-items: center; gap: 6px;
+        font-size: 13px; color: var(--ivory-muted);
+        margin-bottom: 32px; text-decoration: none;
+    }
+    .back-link:hover { color: var(--ivory); text-decoration: none; }
+    .article-meta {
+        display: flex; align-items: center; gap: 12px;
+        margin-bottom: 20px;
+        font-size: 12px;
+    }
+    .type-badge {
+        display: inline-block;
+        font-family: var(--font-mono); font-size: 10px; font-weight: 700;
+        text-transform: uppercase; letter-spacing: 1.0px;
+        padding: 4px 8px; border-radius: 4px;
+    }
+    .meta-dot { color: rgba(240, 236, 228, 0.25); }
+    .meta-item { color: var(--ivory-muted); }
+    h1.article-title {
+        font-size: clamp(32px, 5vw, 44px);
+        font-weight: 700; letter-spacing: -1.6px;
+        line-height: 1.15;
+        margin-bottom: 14px;
+    }
+    .article-description {
+        font-size: 18px; color: var(--ivory-muted);
+        line-height: 1.55;
+        max-width: 640px;
+    }
+
+    /* Article body */
+    .article-body {
+        padding: 40px 0;
+        font-size: 16px;
+        line-height: 1.75;
+        color: rgba(240, 236, 228, 0.85);
+    }
+    .article-body h2 {
+        font-size: 22px; font-weight: 600; letter-spacing: -0.6px;
+        margin: 48px 0 16px;
+        color: var(--ivory);
+    }
+    .article-body h3 {
+        font-size: 18px; font-weight: 600; letter-spacing: -0.4px;
+        margin: 32px 0 12px;
+        color: var(--ivory);
+    }
+    .article-body h2:first-child, .article-body h3:first-child { margin-top: 0; }
+    .article-body p { margin-bottom: 18px; }
+    .article-body ul, .article-body ol { margin: 0 0 18px 24px; }
+    .article-body li { margin-bottom: 6px; }
+    .article-body strong { color: var(--ivory); font-weight: 600; }
+    .article-body code {
+        font-family: var(--font-mono); font-size: 13.5px;
+        background: rgba(240, 236, 228, 0.07);
+        padding: 2px 6px; border-radius: 4px;
+        color: #f0b99c;
+    }
+    .article-body pre {
+        background: var(--graphite-surface);
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        padding: 16px;
+        overflow-x: auto;
+        margin-bottom: 18px;
+    }
+    .article-body pre code {
+        background: none; padding: 0; color: var(--ivory);
+        font-size: 13px; line-height: 1.6;
+    }
+    .article-body blockquote {
+        border-left: 3px solid var(--blue);
+        padding-left: 16px;
+        margin: 20px 0 20px 0;
+        color: var(--ivory-muted);
+        font-style: italic;
+    }
+    .article-body hr {
+        border: none;
+        border-top: 1px solid var(--border);
+        margin: 40px 0;
+    }
+    .article-body img {
+        display: block;
+        max-width: 100%;
+        height: auto;
+        margin: 32px auto;
+        border-radius: 12px;
+        border: 1px solid var(--border);
+        box-shadow: 0 12px 36px rgba(0, 0, 0, 0.4);
+    }
+    .article-body table {
+        width: 100%;
+        margin: 24px 0;
+        border-collapse: separate;
+        border-spacing: 0;
+        background: var(--graphite-surface);
+        border: 1px solid var(--border);
+        border-radius: 10px;
+        overflow: hidden;
+        font-size: 15px;
+    }
+    .article-body th {
+        text-align: left;
+        font-family: var(--font-mono);
+        font-size: 11px;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 1.2px;
+        color: var(--blue-bright);
+        padding: 14px 18px;
+        background: rgba(74, 111, 165, 0.06);
+        border-bottom: 1px solid var(--border);
+    }
+    .article-body td {
+        padding: 14px 18px;
+        color: var(--ivory-muted);
+        border-bottom: 1px solid var(--border);
+        vertical-align: top;
+    }
+    .article-body tr:last-child td { border-bottom: none; }
+    .article-body td:first-child { color: var(--ivory); }
+    .article-body td code, .article-body th code {
+        background: rgba(74, 111, 165, 0.12);
+        color: var(--ivory);
+    }
+
+    /* Install card */
+    .install-card {
+        background: var(--graphite-surface);
+        border: 1px solid rgba(74, 111, 165, 0.3);
+        border-radius: 12px;
+        margin: 36px 0;
+        overflow: hidden;
+        box-shadow: 0 0 0 1px rgba(74, 111, 165, 0.1), 0 8px 24px rgba(0, 0, 0, 0.2);
+    }
+    .install-header {
+        display: flex; align-items: center; justify-content: space-between;
+        padding: 14px 18px;
+        background: rgba(74, 111, 165, 0.08);
+        border-bottom: 1px solid var(--border);
+        gap: 12px;
+        flex-wrap: wrap;
+    }
+    .install-label {
+        font-size: 12px; font-weight: 500;
+        color: var(--ivory);
+        font-family: var(--font-mono);
+    }
+    .install-label-eyebrow {
+        display: block;
+        font-size: 10px;
+        font-weight: 600;
+        color: var(--blue-bright);
+        font-family: var(--font-mono);
+        text-transform: uppercase;
+        letter-spacing: 1px;
+        margin-bottom: 4px;
+    }
+    .copy-btn {
+        display: inline-flex; align-items: center; gap: 6px;
+        padding: 6px 12px;
+        background: var(--blue);
+        color: var(--ivory);
+        border: none; border-radius: 6px;
+        font-size: 12px; font-weight: 500; cursor: pointer;
+        font-family: var(--font-sans);
+        transition: background 0.15s;
+    }
+    .copy-btn:hover { background: var(--blue-bright); }
+    .copy-btn svg { width: 12px; height: 12px; }
+    .install-body {
+        padding: 16px 18px;
+        background: #0a0a0c;
+        overflow-x: auto;
+    }
+    .install-body pre {
+        margin: 0;
+        font-family: var(--font-mono);
+        font-size: 12.5px;
+        line-height: 1.65;
+        color: #d4d4d4;
+        white-space: pre;
+    }
+
+    /* Related */
+    .related {
+        margin-top: 64px;
+        padding-top: 32px;
+        border-top: 1px solid var(--border);
+    }
+    .related h3 {
+        font-size: 12px; font-family: var(--font-mono);
+        text-transform: uppercase; letter-spacing: 1.5px;
+        color: var(--ivory-muted); margin-bottom: 14px; font-weight: 500;
+    }
+    .related-list a {
+        display: block;
+        padding: 12px 0;
+        border-bottom: 1px solid var(--border);
+        color: var(--ivory);
+        font-size: 14px;
+        text-decoration: none;
+    }
+    .related-list a:last-child { border-bottom: none; }
+    .related-list a:hover { color: var(--blue-bright); text-decoration: none; }
+    .related-list a .related-type {
+        display: inline-block;
+        font-family: var(--font-mono); font-size: 9px;
+        text-transform: uppercase; letter-spacing: 1px;
+        color: var(--ivory-muted); margin-right: 8px;
+    }
+</style>
+</head>
+<body>
+<nav class="site-nav">
+        <div class="container">
+            <a href="../" class="nav-brand">
+                <img src="../icon-256.png" alt="Work icon">
+                <span>Work</span>
+            </a>
+            <div class="nav-links">
+                <a href="../">Home</a>
+                <a href="../recipes/" class="active">Recipes</a>
+                <a href="../releases.html">Releases</a>
+                <a href="../#faq">FAQ</a>
+                <a href="../Work.dmg" class="btn-download-nav">Download</a>
+            </div>
+        </div>
+    </nav>
+<main>
+    <header class="article-header">
+        <div class="container-narrow">
+            <a href="./" class="back-link">← All recipes</a>
+            <div class="article-meta">
+                <span class="type-badge" style="background: #06b6d422; color: #06b6d4;">WORKFLOW</span>
+                <span class="meta-item">April 30, 2026</span>
+                <span class="meta-dot">·</span><span class="meta-item">6 min read</span>
+            </div>
+            <h1 class="article-title">What broke at GitHub on April 23, explained without jargon</h1>
+            <p class="article-description">GitHub silently undid 2,092 pull requests of code last week. Most explanations assume you already know what a merge queue is. This one doesn&#39;t.</p>
+        </div>
+    </header>
+
+    <article class="article-body">
+        <div class="container-narrow">
+            <p>A week ago, GitHub silently undid 2,092 people&#39;s code.</p>
+<p>Not deleted. Not lost. Worse: it appeared to merge their work, marked the pull requests as &quot;merged&quot;, and then quietly reverted the changes a few minutes later. People walked away from their laptops thinking the job was done. The job was not done.</p>
+<p>Almost four hours passed before anyone at GitHub noticed.</p>
+<p>If you&#39;ve read other write-ups, they probably assumed you already know what a &quot;merge queue&quot; is, what &quot;squash merge&quot; means, and what a &quot;three-way merge&quot; is. This one starts from zero. By the end, you&#39;ll understand exactly what broke and why it matters.</p>
+<h2>What Git is, in a paragraph</h2>
+<p>Imagine a notebook. Every time you finish a thought, you start a new page and write down what changed since the last page. Page 1 is the first draft. Page 2 says &quot;I changed paragraph 3.&quot; Page 3 says &quot;I deleted the second sentence.&quot;</p>
+<p>Git is that notebook for code. Every &quot;save&quot; is called a <em>commit</em>. Each commit knows what came before it. The whole project is the chain of every commit, all the way back to the very first one.</p>
+<p>That&#39;s it. Git is just a chain of saves where each save knows what changed.</p>
+<h2>What GitHub is</h2>
+<p>Git lives on your computer. Your notebook is in your hands.</p>
+<p>GitHub is the cloud version. Push your local notebook up there, and now your team can see it, copy it, and propose changes to it. GitHub didn&#39;t invent Git. It made Git social.</p>
+<p>If Git is a notebook, <strong>GitHub is the shared cabinet where everyone&#39;s notebooks live</strong>.</p>
+<h2>What a branch is</h2>
+<p>Now imagine you want to try something risky. You don&#39;t want to scribble all over the main notebook in case it doesn&#39;t work out.</p>
+<p>So you grab a fresh notebook and copy page 1 through 47 into it. Now you have two notebooks: the original <em>main</em> one, and your <em>experiment</em> one. You can scribble in the experiment notebook all you want. The main notebook stays clean.</p>
+<p>That&#39;s a <strong>branch</strong>. A separate copy where you can try things without affecting the main version.</p>
+<h2>What a pull request is</h2>
+<p>Your experiment worked. The new feature is great. Now you want it to live in the main notebook.</p>
+<p>You don&#39;t just walk over and rip out pages. You raise your hand. You say: &quot;Hey team, can someone read pages 48 through 53 of my experiment notebook and tell me if they look good? If yes, please add them to the main notebook.&quot;</p>
+<p>That&#39;s a <strong>pull request</strong> (a &quot;PR&quot;). A proposed change, waiting for human review.</p>
+<h2>What a merge is</h2>
+<p>The team approves your PR. Now someone has to actually copy your changes into the main notebook.</p>
+<p>Combining two notebooks back together is called a <strong>merge</strong>. Sounds simple, but Git does something subtle: it doesn&#39;t just paste your pages on top of the main notebook. It reads what <em>both</em> notebooks did since they split, then writes a new page that combines the two streams.</p>
+<p>Most of the time this is automatic. Sometimes both notebooks edited the same paragraph and Git asks a human to decide which version wins. That&#39;s a <em>merge conflict</em>.</p>
+<h2>What a squash merge is</h2>
+<p>Real PRs aren&#39;t five clean pages. They&#39;re forty messy ones: &quot;first attempt&quot;, &quot;fix typo&quot;, &quot;actually use the right variable&quot;, &quot;ignore the last commit, I was wrong&quot;, &quot;ok now it works&quot;.</p>
+<p>Forty pages of confused thinking is fine while you&#39;re working alone. It&#39;s noise once it&#39;s in the main notebook. So GitHub offers an alternative.</p>
+<p>A <strong>squash merge</strong> rolls all forty pages into one clean page that says &quot;added the new feature.&quot; Same end result, much less mess.</p>
+<p>The original forty messy pages still exist in your branch. The main notebook just gets the one tidy summary page.</p>
+<h2>What a merge queue is</h2>
+<p>Now imagine a busy team. Twenty people all want to merge their PRs into the main notebook at the same time. If they all do it in parallel, chaos: each person&#39;s merge is based on a slightly different &quot;main notebook&quot;, and combining them gets messy.</p>
+<p>So GitHub built a <strong>merge queue</strong>. Like a queue at a coffee shop. PRs line up. They get merged one at a time, in order. Each PR is freshly tested against the main notebook <em>as it stands right now</em> before it gets in. By the time it reaches the front of the line, it&#39;s been re-validated against everything that went in ahead of it.</p>
+<p>Merge queues are the boring engineering plumbing that lets a thousand engineers ship code into the same repo without stepping on each other.</p>
+<p>This is the system that broke.</p>
+<h2>What actually went wrong</h2>
+<p>Here&#39;s the bug in one sentence.</p>
+<p><strong>The merge queue&#39;s &quot;where did this branch start from&quot; calculation got the wrong answer, so when it bundled multiple PRs in a row, each PR&#39;s tidy summary page accidentally erased pieces of the PR ahead of it.</strong></p>
+<p>The technical version, from <a href="https://www.githubstatus.com/incidents/zsg1lk7w13cf">GitHub&#39;s own incident report</a>:</p>
+<blockquote>
+<p>&quot;The regression was introduced by a new code path that adjusted merge base computation for merge queue ref updates… the gating was incomplete. As a result, the new behavior was inadvertently applied to squash merge groups, producing an incorrect three-way merge.&quot;</p>
+</blockquote>
+<p>Translation:</p>
+<p>GitHub had shipped a new way of computing what&#39;s called the <em>merge base</em> (the last point where two branches agreed before they split). The new method was supposed to apply only in a specific case. But the <em>if-statement</em> that was supposed to gate it was missing one of its conditions.</p>
+<p>So when the merge queue processed three PRs in a row using squash merge, here&#39;s what happened:</p>
+<ol>
+<li>PR #1 squash-merged successfully. Main notebook gets a tidy summary page from PR #1.</li>
+<li>PR #2 came up. Its squash merge was computed against the <em>wrong starting point</em>. The summary page Git wrote effectively said &quot;main notebook + PR #2&#39;s changes, but assuming PR #1 hadn&#39;t happened yet.&quot; Adding that page to the main notebook <em>un-did</em> parts of PR #1.</li>
+<li>PR #3 same problem, but now it un-does parts of PR #2.</li>
+</ol>
+<p>PR authors saw the green &quot;Merged&quot; badge on their pull requests. The pages were filed. The main notebook said &quot;merged successfully.&quot; But quietly, the work in those pages had been overwritten.</p>
+<h2>How big the damage was</h2>
+<ul>
+<li><strong>2,092 pull requests</strong> affected</li>
+<li><strong>658 repositories</strong> affected</li>
+<li><strong>4 hours and 38 minutes</strong> of impact (April 23, 2026, 16:05 → 20:43 UTC)</li>
+<li><strong>3 hours and 45 minutes</strong> between the bug going live and GitHub noticing</li>
+</ul>
+<p>The 3h45m gap is the part that should make engineers uncomfortable. GitHub&#39;s automated monitoring did not catch it. They learned about it from customer reports. Someone had to notice their own code had silently disappeared, file a bug, get it triaged, before GitHub&#39;s incident response even started.</p>
+<p>Once they noticed, it took eight minutes to identify the cause and start reverting. Eight minutes of investigation versus three hours and forty-five minutes of &quot;everything looks fine.&quot;</p>
+<p>That&#39;s the gap that kept growing. That&#39;s the part that&#39;s hard to fix.</p>
+<h2>Why this is harder than it sounds to prevent</h2>
+<p>Reading the post-mortem, it&#39;s tempting to say &quot;just write a test.&quot; It&#39;s never that simple.</p>
+<p>The bug only triggered when:</p>
+<ol>
+<li>The merge queue was used (most repos don&#39;t use it)</li>
+<li><em>And</em> squash merge was the chosen strategy (some repos pick straight merge or rebase instead)</li>
+<li><em>And</em> a merge group had more than one PR in it (single-PR groups merged fine)</li>
+<li><em>And</em> the PRs touched related files (otherwise the wrong merge base produced the same result)</li>
+</ol>
+<p>That&#39;s a deep stack of conditions. You&#39;d need a test that builds a merge queue, fills it with multiple squash-merged PRs that touch overlapping code, processes them, and asserts that the final state of the main branch contains all the changes from all the PRs.</p>
+<p>GitHub presumably has tests like that. The new code path slipped through because the <em>gate condition</em> was wrong, not the test logic. The test was running, just not on this code path.</p>
+<h2>The lesson is bigger than GitHub</h2>
+<p>Software at this scale fails in a particular shape. Code goes out, monitoring says everything&#39;s fine, the bug is real but invisible to the tools watching it, and a human eventually notices something feels off.</p>
+<p>The expensive lesson here is not &quot;write better tests.&quot; It&#39;s <strong>trust your customer reports more than your dashboards</strong>. The dashboards said GitHub was up. The customers said code was disappearing. The customers were right.</p>
+<p>GitHub said as much in their availability post-mortem. They&#39;re calling it &quot;Availability First.&quot; Less feature work, more boring reliability work. More honest status pages. Faster surfacing of &quot;something feels off&quot; signals.</p>
+<p>It&#39;s the same lesson every infrastructure company eventually learns. GitHub just had a particularly visible week of learning it.</p>
+<p>If you spend a lot of time reviewing PRs, you might also like our take on <a href="./review-prs-like-a-staff-engineer.html">reviewing pull requests like a staff engineer</a>. And if you&#39;re building with Claude Code through this same chaos, the <a href="./opus-4-7-upgrade-guide.html">Opus 4.7 upgrade guide</a> covers what&#39;s currently shippable.</p>
+<h2>Frequently asked questions</h2>
+<h3>What is a merge queue?</h3>
+<p>A merge queue is a system that lets a team merge many pull requests into the same branch one at a time, in order, instead of in parallel. Each pull request gets re-validated against the branch as it stands the moment its turn arrives. GitHub introduced merge queues to keep large repositories with hundreds of contributors from breaking each other&#39;s work. The April 23 incident affected only repositories using merge queue with squash merges.</p>
+<h3>How many repositories were affected by the GitHub merge queue bug?</h3>
+<p>GitHub&#39;s official incident report says 2,092 pull requests across 658 repositories were affected during the impact window of 16:05 to 20:43 UTC on April 23, 2026. The bug only triggered for repositories using merge queue with squash merges where a single merge group contained more than one pull request.</p>
+<h3>Was any code permanently lost?</h3>
+<p>No. Git is designed so commits are never truly deleted. Every messy original commit still exists in the branch each pull request was opened from. The default branches that received the bad squash merges contain reverted state, but the original work can be recovered from the source branches. Recovery takes care because each affected pull request needs to be reconstructed individually.</p>
+<h3>How long did it take GitHub to detect the bug?</h3>
+<p>About three hours and forty-five minutes. The bug went live at 16:05 UTC and GitHub posted the first &quot;investigating&quot; status update at 19:50 UTC. They identified the cause and started reverting eight minutes later. Automated monitoring did not catch it; engineers learned about it from customer reports.</p>
+<h3>Was this related to a botnet attack or the CVE-2026-3854 vulnerability?</h3>
+<p>No. The April 23 merge queue regression is a separate incident from the April 27 Elasticsearch search outage GitHub attributed to a likely botnet attack, and from the unrelated CVE-2026-3854 RCE that Wiz disclosed on April 28. GitHub had a difficult late-April week with three distinct failures, but they have no causal connection.</p>
+<hr>
+<p>If you write code with a team, and your repo uses a merge queue with squash merge: it&#39;s worth running <code>git log --merges</code> over the days of April 23 and looking for any merges that touched files where work suddenly went missing. The bug is patched, but the squash commits it produced are still in history. The good news is Git is built so nothing is ever truly gone. Every messy original commit still exists in the branch each PR came from. The bad news is reconstructing them takes care.</p>
+<p>The boring infrastructure that makes the modern web work is more fragile than it looks. Worth knowing.</p>
+<p>Source: <a href="https://www.githubstatus.com/incidents/zsg1lk7w13cf">GitHub Status, Incident zsg1lk7w13cf</a></p>
+<hr>
+<p><em>Written by Munya Makosa, building <a href="/">Work</a> in public. Plain-English breakdowns of the kind of infrastructure failures most write-ups assume you already understand.</em></p>
+
+
+            
+
+            <div class="related">
+            <h3>Related recipes</h3>
+            <div class="related-list">
+                <a href="opus-4-7-upgrade-guide.html"><span class="related-type">WORKFLOW</span>I used Opus 4.7 for 24 hours. Here&#39;s what I actually found.</a><a href="claude-continue-and-resume.html"><span class="related-type">WORKFLOW</span>Never lose your place: claude continue and claude resume</a>
+            </div>
+        </div>
+        </div>
+    </article>
+</main>
+<footer>
+        <div class="container">
+            <p>Built by <a href="https://munyamakosa.com" target="_blank" rel="noopener">Munya Makosa</a></p>
+        </div>
+    </footer>
+<script>
+(function() {
+    document.querySelectorAll('[data-copy]').forEach(function(btn) {
+        btn.addEventListener('click', function() {
+            var code = btn.closest('.install-card').querySelector('code').innerText;
+            (async function() {
+                try {
+                    await navigator.clipboard.writeText(code);
+                    var label = btn.querySelector('.copy-label');
+                    var original = label.textContent;
+                    label.textContent = 'Copied ✓';
+                    setTimeout(function() { label.textContent = original; }, 1600);
+                } catch (e) {}
+            })();
+        });
+    });
+})();
+</script>
+</body>
+</html>

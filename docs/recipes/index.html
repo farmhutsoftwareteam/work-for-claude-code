@@ -1,0 +1,230 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Recipes — Work</title>
+    <meta name="description" content="Drop-in configs, skills, MCPs, and workflows for Claude Code. Each one is a full tutorial with a copy-paste payload.">
+    <link rel="canonical" href="https://work.munyamakosa.com/recipes/">
+
+    <meta property="og:type" content="website">
+    <meta property="og:title" content="Recipes — Work">
+    <meta property="og:description" content="Drop-in configs, skills, and MCPs for Claude Code.">
+    <meta property="og:url" content="https://work.munyamakosa.com/recipes/">
+    <meta property="og:image" content="https://work.munyamakosa.com/og-image.png">
+    <meta property="og:site_name" content="Work">
+
+    <meta name="twitter:card" content="summary_large_image">
+    <meta name="twitter:title" content="Recipes — Work">
+    <meta name="twitter:description" content="Drop-in configs, skills, and MCPs for Claude Code.">
+    <meta name="twitter:image" content="https://work.munyamakosa.com/og-image.png">
+
+    <link rel="icon" type="image/png" href="../icon-256.png">
+    <style>
+    :root {
+        --graphite: #111113;
+        --graphite-surface: #18181b;
+        --graphite-elevated: #1f1f23;
+        --ivory: #f0ece4;
+        --ivory-muted: rgba(240, 236, 228, 0.55);
+        --ivory-faint: rgba(240, 236, 228, 0.12);
+        --ivory-ghost: rgba(240, 236, 228, 0.06);
+        --blue: #4a6fa5;
+        --blue-bright: #5a8fd4;
+        --border: rgba(240, 236, 228, 0.08);
+        --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+        --font-mono: 'SF Mono', 'Fira Code', 'JetBrains Mono', monospace;
+    }
+    *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+    html { font-size: 16px; -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; scroll-behavior: smooth; }
+    body { font-family: var(--font-sans); background: var(--graphite); color: var(--ivory); line-height: 1.6; overflow-x: hidden; }
+    a { color: var(--blue-bright); text-decoration: none; }
+    a:hover { text-decoration: underline; }
+    .container { max-width: 960px; margin: 0 auto; padding: 0 24px; }
+    .container-narrow { max-width: 720px; margin: 0 auto; padding: 0 24px; }
+
+    /* Nav */
+    nav.site-nav {
+        position: fixed; top: 0; left: 0; right: 0; z-index: 100;
+        padding: 16px 0;
+        background: rgba(17, 17, 19, 0.85);
+        backdrop-filter: blur(20px) saturate(1.4);
+        -webkit-backdrop-filter: blur(20px) saturate(1.4);
+        border-bottom: 1px solid var(--border);
+    }
+    nav.site-nav .container { display: flex; align-items: center; justify-content: space-between; }
+    .nav-brand { display: flex; align-items: center; gap: 10px; }
+    .nav-brand img { width: 28px; height: 28px; border-radius: 6px; }
+    .nav-brand span { font-family: var(--font-mono); font-size: 15px; font-weight: 600; letter-spacing: -0.3px; color: var(--ivory); }
+    .nav-links { display: flex; align-items: center; gap: 28px; }
+    .nav-links a { font-size: 14px; font-weight: 450; color: var(--ivory-muted); transition: color 0.15s; }
+    .nav-links a:hover { color: var(--ivory); text-decoration: none; }
+    .nav-links a.active { color: var(--ivory); }
+    .btn-download-nav {
+        font-size: 13px; font-weight: 500; color: var(--ivory) !important;
+        background: var(--blue); padding: 7px 16px; border-radius: 6px;
+        transition: background 0.15s; text-decoration: none;
+    }
+    .btn-download-nav:hover { background: var(--blue-bright); text-decoration: none; }
+
+    /* Footer */
+    footer { padding: 40px 0; border-top: 1px solid var(--border); text-align: center; margin-top: 80px; }
+    footer p { font-size: 13px; color: rgba(240, 236, 228, 0.25); }
+
+    /* Section labels */
+    .section-label {
+        font-family: var(--font-mono); font-size: 11px; font-weight: 500;
+        text-transform: uppercase; letter-spacing: 1.5px;
+        color: var(--blue-bright); margin-bottom: 16px;
+    }
+
+    @media (max-width: 768px) {
+        .nav-links a:not(.btn-download-nav) { display: none; }
+    }
+
+    .list-header {
+        padding: 140px 0 40px;
+    }
+    h1.list-title {
+        font-family: var(--font-mono);
+        font-size: clamp(48px, 8vw, 72px);
+        font-weight: 700; letter-spacing: -3px;
+        line-height: 1.0; margin-bottom: 16px;
+    }
+    .list-subtitle {
+        font-size: 18px; color: var(--ivory-muted);
+        max-width: 480px; line-height: 1.6;
+    }
+
+    .recipe-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+        gap: 16px;
+        padding-bottom: 80px;
+    }
+    .recipe-card {
+        display: block;
+        padding: 24px;
+        border-radius: 12px;
+        background: var(--graphite-surface);
+        border: 1px solid var(--border);
+        text-decoration: none;
+        color: inherit;
+        transition: border-color 0.2s, background 0.2s, transform 0.15s;
+    }
+    .recipe-card:hover {
+        border-color: rgba(240, 236, 228, 0.14);
+        background: var(--graphite-elevated);
+        transform: translateY(-2px);
+        text-decoration: none;
+    }
+    .card-meta {
+        display: flex; align-items: center; gap: 10px;
+        margin-bottom: 14px;
+    }
+    .card-type-badge {
+        display: inline-block;
+        font-family: var(--font-mono); font-size: 9px; font-weight: 700;
+        text-transform: uppercase; letter-spacing: 1.2px;
+        padding: 3px 7px; border-radius: 4px;
+    }
+    .card-date {
+        font-size: 11px; color: var(--ivory-muted);
+    }
+    .card-title {
+        font-size: 15px; font-weight: 600;
+        letter-spacing: -0.3px; margin-bottom: 6px;
+        line-height: 1.35;
+        color: var(--ivory);
+    }
+    .card-description {
+        font-size: 13px;
+        color: var(--ivory-muted);
+        line-height: 1.55;
+    }
+    .card-readtime {
+        margin-top: 14px;
+        font-size: 10px; color: rgba(240, 236, 228, 0.35);
+        font-family: var(--font-mono);
+    }
+    .empty-state {
+        grid-column: 1 / -1;
+        padding: 80px 40px;
+        text-align: center;
+        color: var(--ivory-muted);
+    }
+</style>
+</head>
+<body>
+<nav class="site-nav">
+        <div class="container">
+            <a href="../" class="nav-brand">
+                <img src="../icon-256.png" alt="Work icon">
+                <span>Work</span>
+            </a>
+            <div class="nav-links">
+                <a href="../">Home</a>
+                <a href="../recipes/" class="active">Recipes</a>
+                <a href="../releases.html">Releases</a>
+                <a href="../#faq">FAQ</a>
+                <a href="../Work.dmg" class="btn-download-nav">Download</a>
+            </div>
+        </div>
+    </nav>
+<main>
+    <header class="list-header">
+        <div class="container">
+            <div class="section-label">Recipes</div>
+            <h1 class="list-title">Read. Copy.<br>Paste. Keep coding.</h1>
+            <p class="list-subtitle">Tutorials for your Claude Code setup — each one ends with a drop-in skill, MCP, hook, or command you can paste straight into your config.</p>
+        </div>
+    </header>
+
+    <section>
+        <div class="container">
+            <div class="recipe-grid"><a href="github-april-23-merge-queue-explained.html" class="recipe-card">
+            <div class="card-meta">
+                <span class="card-type-badge" style="background: #06b6d422; color: #06b6d4;">WORKFLOW</span>
+                <span class="card-date">April 30, 2026</span>
+            </div>
+            <h3 class="card-title">What broke at GitHub on April 23, explained without jargon</h3>
+            <p class="card-description">GitHub silently undid 2,092 pull requests of code last week. Most explanations assume you already know what a merge queue is. This one doesn&#39;t.</p>
+            <div class="card-readtime">6 min read</div>
+        </a>
+<a href="opus-4-7-upgrade-guide.html" class="recipe-card">
+            <div class="card-meta">
+                <span class="card-type-badge" style="background: #06b6d422; color: #06b6d4;">WORKFLOW</span>
+                <span class="card-date">April 17, 2026</span>
+            </div>
+            <h3 class="card-title">I used Opus 4.7 for 24 hours. Here&#39;s what I actually found.</h3>
+            <p class="card-description">A day with Claude Opus 4.7. What felt different, what broke, and the four things my old code was silently depending on.</p>
+            <div class="card-readtime">6 min read</div>
+        </a>
+<a href="claude-continue-and-resume.html" class="recipe-card">
+            <div class="card-meta">
+                <span class="card-type-badge" style="background: #06b6d422; color: #06b6d4;">WORKFLOW</span>
+                <span class="card-date">April 13, 2026</span>
+            </div>
+            <h3 class="card-title">Never lose your place: claude continue and claude resume</h3>
+            <p class="card-description">Two built-in flags that turn Claude Code sessions into persistent workstreams. The version of this workflow I wish someone had shown me on day one.</p>
+            <div class="card-readtime">4 min read</div>
+        </a>
+<a href="review-prs-like-a-staff-engineer.html" class="recipe-card">
+            <div class="card-meta">
+                <span class="card-type-badge" style="background: #a78bfa22; color: #a78bfa;">SKILL</span>
+                <span class="card-date">April 13, 2026</span>
+            </div>
+            <h3 class="card-title">Review PRs like a staff engineer</h3>
+            <p class="card-description">A Claude Code skill that catches real bugs, not style nits — ranked by blast radius with confidence filtering so you only see what matters.</p>
+            <div class="card-readtime">4 min read</div>
+        </a></div>
+        </div>
+    </section>
+</main>
+<footer>
+        <div class="container">
+            <p>Built by <a href="https://munyamakosa.com" target="_blank" rel="noopener">Munya Makosa</a></p>
+        </div>
+    </footer>
+</body>
+</html>

@@ -1,0 +1,536 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Opus 4.7 after 24 hours: an honest Claude Code field report | Work</title>
+    <meta name="description" content="A day-one field report on Claude Opus 4.7. What felt different, what cost more, and the four API shapes that broke in my own code.">
+    <meta name="author" content="Munya Makosa">
+    <meta name="robots" content="index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1">
+    <meta name="keywords" content="claude opus 4.7, opus 4.7 claude code, xhigh effort claude, claude opus 4.7 vs 4.6, opus 4.7 upgrade">
+    <link rel="canonical" href="https://work.munyamakosa.com/recipes/opus-4-7-upgrade-guide.html">
+    <link rel="alternate" type="application/rss+xml" title="Work Recipes" href="https://work.munyamakosa.com/recipes/feed.xml">
+
+    <!-- Open Graph -->
+    <meta property="og:type" content="article">
+    <meta property="og:locale" content="en_US">
+    <meta property="og:title" content="Opus 4.7 after 24 hours: an honest Claude Code field report">
+    <meta property="og:description" content="A day-one field report on Claude Opus 4.7. What felt different, what cost more, and the four API shapes that broke in my own code.">
+    <meta property="og:url" content="https://work.munyamakosa.com/recipes/opus-4-7-upgrade-guide.html">
+    <meta property="og:image" content="https://work.munyamakosa.com/recipes/og/opus-4-7-upgrade-guide.png">
+    <meta property="og:image:alt" content="Opus 4.7 after 24 hours: an honest Claude Code field report">
+    <meta property="og:image:width" content="1200">
+    <meta property="og:image:height" content="630">
+    <meta property="og:site_name" content="Work">
+    <meta property="article:published_time" content="2026-04-17T00:00:00.000Z">
+    <meta property="article:modified_time" content="2026-04-17T00:00:00.000Z">
+    <meta property="article:author" content="https://munyamakosa.com">
+    <meta property="article:tag" content="opus">
+    <meta property="article:tag" content="claude-code">
+    <meta property="article:tag" content="models">
+    <meta property="article:tag" content="upgrade">
+
+    <!-- Twitter -->
+    <meta name="twitter:card" content="summary_large_image">
+    <meta name="twitter:site" content="@munyamakosa">
+    <meta name="twitter:creator" content="@munyamakosa">
+    <meta name="twitter:title" content="Opus 4.7 after 24 hours: an honest Claude Code field report">
+    <meta name="twitter:description" content="A day-one field report on Claude Opus 4.7. What felt different, what cost more, and the four API shapes that broke in my own code.">
+    <meta name="twitter:image" content="https://work.munyamakosa.com/recipes/og/opus-4-7-upgrade-guide.png">
+    <meta name="twitter:image:alt" content="Opus 4.7 after 24 hours: an honest Claude Code field report">
+
+    <!-- Article JSON-LD -->
+    <script type="application/ld+json">
+    {
+        "@context": "https://schema.org",
+        "@type": "TechArticle",
+        "headline": "Opus 4.7 after 24 hours: an honest Claude Code field report",
+        "name": "I used Opus 4.7 for 24 hours. Here's what I actually found.",
+        "description": "A day-one field report on Claude Opus 4.7. What felt different, what cost more, and the four API shapes that broke in my own code.",
+        "datePublished": "2026-04-17T00:00:00.000Z",
+        "dateModified": "2026-04-17T00:00:00.000Z",
+        "url": "https://work.munyamakosa.com/recipes/opus-4-7-upgrade-guide.html",
+        "mainEntityOfPage": { "@type": "WebPage", "@id": "https://work.munyamakosa.com/recipes/opus-4-7-upgrade-guide.html" },
+        "image": {
+            "@type": "ImageObject",
+            "url": "https://work.munyamakosa.com/recipes/og/opus-4-7-upgrade-guide.png",
+            "width": 1200,
+            "height": 630
+        },
+        "author": {
+            "@type": "Person",
+            "name": "Munya Makosa",
+            "url": "https://munyamakosa.com"
+        },
+        "publisher": {
+            "@type": "Organization",
+            "name": "Work",
+            "url": "https://work.munyamakosa.com",
+            "logo": {
+                "@type": "ImageObject",
+                "url": "https://work.munyamakosa.com/icon-256.png",
+                "width": 256,
+                "height": 256
+            }
+        },
+        "wordCount": 2117,
+        "keywords": "claude opus 4.7, opus 4.7 claude code, xhigh effort claude, claude opus 4.7 vs 4.6, opus 4.7 upgrade",
+        "timeRequired": "PT6M"
+    }
+    </script>
+
+    <!-- Breadcrumb JSON-LD -->
+    <script type="application/ld+json">
+    {
+        "@context": "https://schema.org",
+        "@type": "BreadcrumbList",
+        "itemListElement": [
+            { "@type": "ListItem", "position": 1, "name": "Work", "item": "https://work.munyamakosa.com/" },
+            { "@type": "ListItem", "position": 2, "name": "Recipes", "item": "https://work.munyamakosa.com/recipes/" },
+            { "@type": "ListItem", "position": 3, "name": "I used Opus 4.7 for 24 hours. Here's what I actually found.", "item": "https://work.munyamakosa.com/recipes/opus-4-7-upgrade-guide.html" }
+        ]
+    }
+    </script>
+
+    <link rel="icon" type="image/png" href="../icon-256.png">
+    <style>
+    :root {
+        --graphite: #111113;
+        --graphite-surface: #18181b;
+        --graphite-elevated: #1f1f23;
+        --ivory: #f0ece4;
+        --ivory-muted: rgba(240, 236, 228, 0.55);
+        --ivory-faint: rgba(240, 236, 228, 0.12);
+        --ivory-ghost: rgba(240, 236, 228, 0.06);
+        --blue: #4a6fa5;
+        --blue-bright: #5a8fd4;
+        --border: rgba(240, 236, 228, 0.08);
+        --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+        --font-mono: 'SF Mono', 'Fira Code', 'JetBrains Mono', monospace;
+    }
+    *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+    html { font-size: 16px; -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; scroll-behavior: smooth; }
+    body { font-family: var(--font-sans); background: var(--graphite); color: var(--ivory); line-height: 1.6; overflow-x: hidden; }
+    a { color: var(--blue-bright); text-decoration: none; }
+    a:hover { text-decoration: underline; }
+    .container { max-width: 960px; margin: 0 auto; padding: 0 24px; }
+    .container-narrow { max-width: 720px; margin: 0 auto; padding: 0 24px; }
+
+    /* Nav */
+    nav.site-nav {
+        position: fixed; top: 0; left: 0; right: 0; z-index: 100;
+        padding: 16px 0;
+        background: rgba(17, 17, 19, 0.85);
+        backdrop-filter: blur(20px) saturate(1.4);
+        -webkit-backdrop-filter: blur(20px) saturate(1.4);
+        border-bottom: 1px solid var(--border);
+    }
+    nav.site-nav .container { display: flex; align-items: center; justify-content: space-between; }
+    .nav-brand { display: flex; align-items: center; gap: 10px; }
+    .nav-brand img { width: 28px; height: 28px; border-radius: 6px; }
+    .nav-brand span { font-family: var(--font-mono); font-size: 15px; font-weight: 600; letter-spacing: -0.3px; color: var(--ivory); }
+    .nav-links { display: flex; align-items: center; gap: 28px; }
+    .nav-links a { font-size: 14px; font-weight: 450; color: var(--ivory-muted); transition: color 0.15s; }
+    .nav-links a:hover { color: var(--ivory); text-decoration: none; }
+    .nav-links a.active { color: var(--ivory); }
+    .btn-download-nav {
+        font-size: 13px; font-weight: 500; color: var(--ivory) !important;
+        background: var(--blue); padding: 7px 16px; border-radius: 6px;
+        transition: background 0.15s; text-decoration: none;
+    }
+    .btn-download-nav:hover { background: var(--blue-bright); text-decoration: none; }
+
+    /* Footer */
+    footer { padding: 40px 0; border-top: 1px solid var(--border); text-align: center; margin-top: 80px; }
+    footer p { font-size: 13px; color: rgba(240, 236, 228, 0.25); }
+
+    /* Section labels */
+    .section-label {
+        font-family: var(--font-mono); font-size: 11px; font-weight: 500;
+        text-transform: uppercase; letter-spacing: 1.5px;
+        color: var(--blue-bright); margin-bottom: 16px;
+    }
+
+    @media (max-width: 768px) {
+        .nav-links a:not(.btn-download-nav) { display: none; }
+    }
+
+    .article-header {
+        padding: 140px 0 40px;
+    }
+    .back-link {
+        display: inline-flex; align-items: center; gap: 6px;
+        font-size: 13px; color: var(--ivory-muted);
+        margin-bottom: 32px; text-decoration: none;
+    }
+    .back-link:hover { color: var(--ivory); text-decoration: none; }
+    .article-meta {
+        display: flex; align-items: center; gap: 12px;
+        margin-bottom: 20px;
+        font-size: 12px;
+    }
+    .type-badge {
+        display: inline-block;
+        font-family: var(--font-mono); font-size: 10px; font-weight: 700;
+        text-transform: uppercase; letter-spacing: 1.0px;
+        padding: 4px 8px; border-radius: 4px;
+    }
+    .meta-dot { color: rgba(240, 236, 228, 0.25); }
+    .meta-item { color: var(--ivory-muted); }
+    h1.article-title {
+        font-size: clamp(32px, 5vw, 44px);
+        font-weight: 700; letter-spacing: -1.6px;
+        line-height: 1.15;
+        margin-bottom: 14px;
+    }
+    .article-description {
+        font-size: 18px; color: var(--ivory-muted);
+        line-height: 1.55;
+        max-width: 640px;
+    }
+
+    /* Article body */
+    .article-body {
+        padding: 40px 0;
+        font-size: 16px;
+        line-height: 1.75;
+        color: rgba(240, 236, 228, 0.85);
+    }
+    .article-body h2 {
+        font-size: 22px; font-weight: 600; letter-spacing: -0.6px;
+        margin: 48px 0 16px;
+        color: var(--ivory);
+    }
+    .article-body h3 {
+        font-size: 18px; font-weight: 600; letter-spacing: -0.4px;
+        margin: 32px 0 12px;
+        color: var(--ivory);
+    }
+    .article-body h2:first-child, .article-body h3:first-child { margin-top: 0; }
+    .article-body p { margin-bottom: 18px; }
+    .article-body ul, .article-body ol { margin: 0 0 18px 24px; }
+    .article-body li { margin-bottom: 6px; }
+    .article-body strong { color: var(--ivory); font-weight: 600; }
+    .article-body code {
+        font-family: var(--font-mono); font-size: 13.5px;
+        background: rgba(240, 236, 228, 0.07);
+        padding: 2px 6px; border-radius: 4px;
+        color: #f0b99c;
+    }
+    .article-body pre {
+        background: var(--graphite-surface);
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        padding: 16px;
+        overflow-x: auto;
+        margin-bottom: 18px;
+    }
+    .article-body pre code {
+        background: none; padding: 0; color: var(--ivory);
+        font-size: 13px; line-height: 1.6;
+    }
+    .article-body blockquote {
+        border-left: 3px solid var(--blue);
+        padding-left: 16px;
+        margin: 20px 0 20px 0;
+        color: var(--ivory-muted);
+        font-style: italic;
+    }
+    .article-body hr {
+        border: none;
+        border-top: 1px solid var(--border);
+        margin: 40px 0;
+    }
+    .article-body img {
+        display: block;
+        max-width: 100%;
+        height: auto;
+        margin: 32px auto;
+        border-radius: 12px;
+        border: 1px solid var(--border);
+        box-shadow: 0 12px 36px rgba(0, 0, 0, 0.4);
+    }
+    .article-body table {
+        width: 100%;
+        margin: 24px 0;
+        border-collapse: separate;
+        border-spacing: 0;
+        background: var(--graphite-surface);
+        border: 1px solid var(--border);
+        border-radius: 10px;
+        overflow: hidden;
+        font-size: 15px;
+    }
+    .article-body th {
+        text-align: left;
+        font-family: var(--font-mono);
+        font-size: 11px;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 1.2px;
+        color: var(--blue-bright);
+        padding: 14px 18px;
+        background: rgba(74, 111, 165, 0.06);
+        border-bottom: 1px solid var(--border);
+    }
+    .article-body td {
+        padding: 14px 18px;
+        color: var(--ivory-muted);
+        border-bottom: 1px solid var(--border);
+        vertical-align: top;
+    }
+    .article-body tr:last-child td { border-bottom: none; }
+    .article-body td:first-child { color: var(--ivory); }
+    .article-body td code, .article-body th code {
+        background: rgba(74, 111, 165, 0.12);
+        color: var(--ivory);
+    }
+
+    /* Install card */
+    .install-card {
+        background: var(--graphite-surface);
+        border: 1px solid rgba(74, 111, 165, 0.3);
+        border-radius: 12px;
+        margin: 36px 0;
+        overflow: hidden;
+        box-shadow: 0 0 0 1px rgba(74, 111, 165, 0.1), 0 8px 24px rgba(0, 0, 0, 0.2);
+    }
+    .install-header {
+        display: flex; align-items: center; justify-content: space-between;
+        padding: 14px 18px;
+        background: rgba(74, 111, 165, 0.08);
+        border-bottom: 1px solid var(--border);
+        gap: 12px;
+        flex-wrap: wrap;
+    }
+    .install-label {
+        font-size: 12px; font-weight: 500;
+        color: var(--ivory);
+        font-family: var(--font-mono);
+    }
+    .install-label-eyebrow {
+        display: block;
+        font-size: 10px;
+        font-weight: 600;
+        color: var(--blue-bright);
+        font-family: var(--font-mono);
+        text-transform: uppercase;
+        letter-spacing: 1px;
+        margin-bottom: 4px;
+    }
+    .copy-btn {
+        display: inline-flex; align-items: center; gap: 6px;
+        padding: 6px 12px;
+        background: var(--blue);
+        color: var(--ivory);
+        border: none; border-radius: 6px;
+        font-size: 12px; font-weight: 500; cursor: pointer;
+        font-family: var(--font-sans);
+        transition: background 0.15s;
+    }
+    .copy-btn:hover { background: var(--blue-bright); }
+    .copy-btn svg { width: 12px; height: 12px; }
+    .install-body {
+        padding: 16px 18px;
+        background: #0a0a0c;
+        overflow-x: auto;
+    }
+    .install-body pre {
+        margin: 0;
+        font-family: var(--font-mono);
+        font-size: 12.5px;
+        line-height: 1.65;
+        color: #d4d4d4;
+        white-space: pre;
+    }
+
+    /* Related */
+    .related {
+        margin-top: 64px;
+        padding-top: 32px;
+        border-top: 1px solid var(--border);
+    }
+    .related h3 {
+        font-size: 12px; font-family: var(--font-mono);
+        text-transform: uppercase; letter-spacing: 1.5px;
+        color: var(--ivory-muted); margin-bottom: 14px; font-weight: 500;
+    }
+    .related-list a {
+        display: block;
+        padding: 12px 0;
+        border-bottom: 1px solid var(--border);
+        color: var(--ivory);
+        font-size: 14px;
+        text-decoration: none;
+    }
+    .related-list a:last-child { border-bottom: none; }
+    .related-list a:hover { color: var(--blue-bright); text-decoration: none; }
+    .related-list a .related-type {
+        display: inline-block;
+        font-family: var(--font-mono); font-size: 9px;
+        text-transform: uppercase; letter-spacing: 1px;
+        color: var(--ivory-muted); margin-right: 8px;
+    }
+</style>
+</head>
+<body>
+<nav class="site-nav">
+        <div class="container">
+            <a href="../" class="nav-brand">
+                <img src="../icon-256.png" alt="Work icon">
+                <span>Work</span>
+            </a>
+            <div class="nav-links">
+                <a href="../">Home</a>
+                <a href="../recipes/" class="active">Recipes</a>
+                <a href="../releases.html">Releases</a>
+                <a href="../#faq">FAQ</a>
+                <a href="../Work.dmg" class="btn-download-nav">Download</a>
+            </div>
+        </div>
+    </nav>
+<main>
+    <header class="article-header">
+        <div class="container-narrow">
+            <a href="./" class="back-link">← All recipes</a>
+            <div class="article-meta">
+                <span class="type-badge" style="background: #06b6d422; color: #06b6d4;">WORKFLOW</span>
+                <span class="meta-item">April 17, 2026</span>
+                <span class="meta-dot">·</span><span class="meta-item">6 min read</span>
+            </div>
+            <h1 class="article-title">I used Opus 4.7 for 24 hours. Here&#39;s what I actually found.</h1>
+            <p class="article-description">A day with Claude Opus 4.7. What felt different, what broke, and the four things my old code was silently depending on.</p>
+        </div>
+    </header>
+
+    <article class="article-body">
+        <div class="container-narrow">
+            <p>Opus 4.7 dropped yesterday.</p>
+<p>I&#39;ve been using it inside Claude Code for about a day now, through a real project, not a benchmark.</p>
+<p>The project is an app called Work. It&#39;s a native macOS companion for Claude Code, built in SwiftUI, with a menu-bar presence and the whole thing. The core idea is that I was sick of juggling eight Terminal.app windows to run parallel Claude sessions, granting Automation permission every time Sparkle auto-updated the bundle, and losing track of which tab was which project. Work embeds real PTY terminals as tabs inside one window, wraps a proper project + session model around them (with <a href="./claude-continue-and-resume.html">resume/continue</a> handled natively), and turns Claude Code from &quot;a thing in my terminal&quot; into a workspace.</p>
+<p>I&#39;m the only person building it. One week in, solo, no team. That matters for what follows, because when I say &quot;Opus 4.7 felt like hiring a second developer,&quot; it&#39;s not a figure of speech. A week ago I was a solo dev. Today I&#39;m a solo dev with a collaborator who doesn&#39;t sleep.</p>
+<p>This isn&#39;t a recap of Anthropic&#39;s post. It&#39;s what I noticed.</p>
+<h2>Opus 4.7 thinks longer before acting (and it shows)</h2>
+<p>4.6 used to fire off tool calls early. Read a file, read another, grep, grep, edit, edit. It felt busy.</p>
+<p>4.7 sits still for longer. I&#39;d ask it to refactor a feature, and for the first ten seconds nothing visible happens. Then it moves, and when it moves it&#39;s usually closer to right.</p>
+<p>That matched something in the release notes I only half-believed: on Anthropic&#39;s internal 93-task coding eval, 4.7 solved four problems that neither 4.6 nor Sonnet 4.6 could finish. I assumed that was benchmark theatre. After a day, I think it&#39;s real.</p>
+<p>SWE-bench Verified went from 80.8 to 87.6. CursorBench 58 to 70. On paper those are just numbers. In my editor, the difference shows up as &quot;the refactor compiled on the first try.&quot;</p>
+<p><strong>The bigger the task, the more obvious the gap.</strong></p>
+<p>On a one-line fix I couldn&#39;t tell 4.6 from 4.7. But Work&#39;s terminal system is the hardest thing in the codebase: a <code>TerminalsController</code> holding a dictionary of live <code>LocalProcessTerminalView</code> instances, each one a forked bash process, all of it wrapped in SwiftUI state that loves to redraw at the wrong moment. When I asked 4.6 to refactor the tab-close flow to route live tabs through a confirm dialog and dead tabs straight through, it got most of it right three times in a row. Always <em>almost</em>. Focus would land on the wrong chip, or the NSAlert would crop its destructive button on dark mode. I&#39;d nudge, it&#39;d fix one thing and regress another.</p>
+<p>4.7 got the whole thing in one shot and replaced the flaky NSAlert with a SwiftUI <code>.alert</code> without being asked, because it noticed the cropped-button bug in the surrounding code and fixed it on its way through. That&#39;s the difference. Not smarter at small tasks. <em>Aware</em> on big ones.</p>
+<h2>Turn on <code>xhigh</code>: Opus 4.7&#39;s new effort level</h2>
+<p>There&#39;s a new effort level between <code>high</code> and <code>max</code>. It&#39;s called <code>xhigh</code> and 4.7 was tuned around it.</p>
+<p>Inside Claude Code, <code>/effort</code> → <code>xhigh</code>. Do it once.</p>
+<p>I tried all four levels on the same task: Work has a per-project Integrations panel where you can two-click install an MCP like Linear into a project, and when you install it while a session is already running, the banner at the top of that session needs to tell you &quot;restart to pick this up&quot;, and ideally do the restart for you. <code>low</code> shipped a banner that compiled but only covered the happy path. <code>high</code> got the edge case (installed into a project with no active session) but wired the restart to the wrong controller. <code>xhigh</code> got both and wrote a reasonable test for the restart path. <code>max</code> did the same as <code>xhigh</code> but took noticeably longer for no extra quality.</p>
+<p><code>xhigh</code> is the setting. Not <code>high</code>. Not <code>max</code>. <code>xhigh</code>.</p>
+<p>A behavioural change I want to flag: 4.7 calls tools less than 4.6. It thinks more, acts less. If you liked watching Claude rapid-fire grep, you&#39;ll notice the quiet. I ended up liking it.</p>
+<p>If it feels sluggish on something you know is hard, raise the effort. The density comes back.</p>
+<h2>The Opus 4.7 tokenizer quietly raises your bill</h2>
+<p>Anthropic kept the sticker price flat. $5 per million input, $25 per million output. Same as 4.6.</p>
+<p>But 4.7 ships with a new tokenizer, and the same prose counts as up to 35% more tokens than it did on 4.6.</p>
+<p>I caught this when my <code>max_tokens=32000</code> budget started truncating the end of long refactors mid-function. Watching Claude draft a ninety-line SwiftUI view and then cut off at line 74 because the tokens-per-sentence math changed under me was, not going to lie, a bad twenty minutes. Anthropic&#39;s guidance now: 64,000 as the floor at <code>xhigh</code> or <code>max</code>. I bumped it.</p>
+<p>If you&#39;re on Claude Max, this doesn&#39;t touch you. You don&#39;t pay per token.</p>
+<p>If you&#39;re on API-key billing, your next invoice is going to be 0 to 35% higher for the same workload. Not a crisis. Worth knowing before it shows up.</p>
+<p>If you use prompt caching, your old cache entries don&#39;t match anymore. Mine cold-hit for half a day then settled.</p>
+<p><strong>A price that technically didn&#39;t change is still a price that changed.</strong></p>
+<h2>Claude Code switches to Opus 4.7 by default on April 23</h2>
+<p>On April 23, 2026, Claude Code&#39;s default Opus model becomes 4.7 for Enterprise PAYG and API users.</p>
+<p>If you&#39;re mid-project and don&#39;t want to find out on a Wednesday that your agent&#39;s output shape changed:</p>
+<pre><code class="language-bash">export ANTHROPIC_MODEL=&quot;claude-opus-4-6&quot;
+</code></pre>
+<p>Or <code>--model claude-opus-4-6</code> per session. <code>/model</code> inside a running session shows you where you are.</p>
+<p>Claude Max on Auto mode is already on whatever&#39;s active. Nothing to pin.</p>
+<p>I pinned one of my two machines to 4.6 just to have a clean baseline for the week. It&#39;s the machine I cut Work&#39;s release DMGs from. If something weird shows up in notarization or in Sparkle&#39;s update feed between now and the 23rd, I want to be sure it&#39;s not the model changing under me. Recommend doing the same if you&#39;re in the middle of anything load-bearing.</p>
+<h2>Four Anthropic API shapes that break on Opus 4.7</h2>
+<p>This is the bit I didn&#39;t expect.</p>
+<p>If you only use Claude Code in the terminal, the upgrade is invisible. The CLI ships an update, your day continues.</p>
+<p>If you&#39;ve wired Claude into your own app (API, proxy, agent framework), there are four request shapes from 4.6 that 4.7&#39;s server rejects. Your request never runs. You just see an error in your logs.</p>
+<p>The four that bit me:</p>
+<ol>
+<li><p><strong><code>temperature</code>, <code>top_p</code>, <code>top_k</code>.</strong> All gone. I had <code>temperature: 0.2</code> sitting in a config from 2024. First request under 4.7 returned an error. Strip them.</p>
+</li>
+<li><p><strong>The old extended thinking shape.</strong> <code>thinking: { type: &quot;enabled&quot;, budget_tokens: 8000 }</code> is gone. Replace with <code>thinking: { type: &quot;adaptive&quot; }</code> and move the budget into <code>output_config.effort</code>.</p>
+</li>
+<li><p><strong>Assistant-message prefilling.</strong> The old trick of starting the model&#39;s response in the messages array. Gone. Move the priming into your system prompt.</p>
+</li>
+<li><p><strong>Top-level <code>output_format</code>.</strong> Now nested under <code>output_config.format</code>.</p>
+</li>
+</ol>
+<p>One silent change that got me: on 4.6, if you didn&#39;t ask for thinking, you got a small thinking budget by default. On 4.7, if you don&#39;t ask, you get none. Work has a tiny status view in the tab chip that pulses while Claude is streaming. On 4.7 it sat dark for a visible beat on every response before text started flowing, because the model was thinking and not streaming its thoughts. I was three minutes into rewriting my stream handler when I realised nothing on <em>my</em> side was broken. The model had just gone quiet and I hadn&#39;t asked it not to.</p>
+<p><strong>The bugs you can&#39;t see are always the worst ones.</strong></p>
+<p>Actual fix that saved me a chunk of time: inside Claude Code, <code>/claude-api migrate this project to claude-opus-4-7</code>. It found and patched most of it. The rest I caught when the first error landed in my logs.</p>
+<h2>Opus 4.7 changes that didn&#39;t make the release notes</h2>
+<p><strong>Vision images got bigger.</strong> Max image size went from 1568px to 2576px. Bounding-box coordinates are now exact pixel coordinates, no more scale math. If you feed full-res screenshots, they tokenize to about 3× the tokens. Budget for it.</p>
+<p><strong>Auto mode on Claude Max got 4.7.</strong> <code>/auto</code> inside Claude Code, if you&#39;re on Max.</p>
+<p><strong>4.7 refuses red-team and pen-test prompts more aggressively.</strong> If you do legit security work, apply to the Cyber Verification Program before you migrate, not after you hit refusals.</p>
+<p><strong>Claude Code needs v2.1.111 or newer.</strong> v2.1.112 fixed an &quot;Opus 4.7 temporarily unavailable&quot; error on Auto mode. Update before you flip.</p>
+<h2>Should you upgrade</h2>
+<p>A day in, the honest answer:</p>
+<p>If you write code with Claude, yes. Turn on <code>xhigh</code>. Try one multi-file refactor, or let it <a href="./review-prs-like-a-staff-engineer.html">review a PR for you</a>. You&#39;ll feel it inside an hour.</p>
+<p>If you&#39;re on Claude Max, yes. You don&#39;t see the token math anyway.</p>
+<p>If you&#39;re on API-key billing, yes. Expect a small bill bump. Plan for it.</p>
+<p>If you call Anthropic&#39;s API from your own app, fix the four breaking shapes first. Then upgrade.</p>
+<p>If you use Claude mostly for facts or research, wait a week and test with prompts that matter to you. The coding numbers moved. The factual ones didn&#39;t.</p>
+<p>If you maintain an API product with strict output contracts, pin 4.6 past April 23 and migrate on your own clock.</p>
+<h2>Frequently asked questions about Opus 4.7</h2>
+<h3>What&#39;s new in Claude Opus 4.7?</h3>
+<p>Opus 4.7 ships a sharper coding model (SWE-bench Verified 80.8 to 87.6, CursorBench 58 to 70), a new <code>xhigh</code> effort level between <code>high</code> and <code>max</code>, a new tokenizer that counts the same prose as up to 35% more tokens, and four breaking API changes. It also refuses red-team prompts more aggressively, accepts 2576px images (up from 1568px), and adds Auto mode on Claude Max. The model ID is <code>claude-opus-4-7</code>, available on the Anthropic API, Bedrock, Vertex, and Microsoft Foundry as of April 16, 2026.</p>
+<h3>Should I upgrade to Opus 4.7?</h3>
+<p>If you write code with Claude, yes: the multi-file refactor quality jumped noticeably. If you&#39;re on Claude Max, yes: you don&#39;t pay per token so the tokenizer change doesn&#39;t matter. If you call Anthropic&#39;s API from your own app, fix the four breaking request shapes first (strip <code>temperature</code>, <code>top_p</code>, <code>top_k</code>; update the extended thinking shape; remove assistant prefills; nest <code>output_format</code> under <code>output_config.format</code>). If you use Claude mostly for facts or research, wait a week because the factual benchmarks didn&#39;t move.</p>
+<h3>How do I stay on Claude Opus 4.6?</h3>
+<p>Export <code>ANTHROPIC_MODEL=&quot;claude-opus-4-6&quot;</code> in your shell, or pass <code>--model claude-opus-4-6</code> per Claude Code session. Run <code>/model</code> inside a session to confirm. Claude Code&#39;s default flips from 4.6 to 4.7 on April 23, 2026 for Enterprise PAYG and API users, so pin before that date if you don&#39;t want the change mid-project. Claude Max subscribers on Auto mode stay on whatever Anthropic has active.</p>
+<h3>Why is my Claude Opus API bill higher after upgrading?</h3>
+<p>The sticker price didn&#39;t change ($5 per million input, $25 per million output), but Opus 4.7 ships with a new tokenizer that counts the same text as 0 to 35% more tokens than 4.6. Your cached prompts also cold-hit for a day until the cache re-warms. Bump <code>max_tokens</code> to at least 64,000 if you&#39;re running at <code>xhigh</code> or <code>max</code> effort, because responses will otherwise truncate mid-output at the old 32k budget.</p>
+<h2>My end-of-day checklist</h2>
+<ol>
+<li>Update Claude Code to v2.1.112 or newer.</li>
+<li><code>/effort</code> → <code>xhigh</code>.</li>
+<li>On API-key billing, expect 0 to 35% cost bump from the new tokenizer. Recalibrate.</li>
+<li>Custom API code: strip <code>temperature</code>, <code>top_p</code>, <code>top_k</code>. Update the thinking shape. Remove assistant prefills. Nest <code>output_format</code> under <code>output_config.format</code>.</li>
+<li>Not ready? Pin 4.6: <code>ANTHROPIC_MODEL=&quot;claude-opus-4-6&quot;</code>.</li>
+<li>Default flips April 23. Ride it or pin it. Decide before then.</li>
+</ol>
+<p>Model ID is <code>claude-opus-4-7</code>. Available on the Anthropic API, Bedrock, Vertex, and Microsoft Foundry as of April 16. 4.6 stays callable. No retirement date announced.</p>
+<p><strong>Most model upgrades are noise. A few genuinely change what the tool can do.</strong> After a day, this feels like one of the second kind.</p>
+<p>Work ships 1.0.9 this week with the embedded terminal tabs, the Integrations panel, and proper 4.7 defaults baked in. If you&#39;ve been Cmd+Tabbing between eight Terminal.app windows to keep your Claude sessions organized, give it a try.</p>
+<p><strong><a href="/">Try Work →</a></strong></p>
+<hr>
+<p><em>Written by Munya Makosa, building <a href="/">Work</a> in public. Shipping a macOS companion for Claude Code, one release at a time.</em></p>
+
+
+            
+
+            <div class="related">
+            <h3>Related recipes</h3>
+            <div class="related-list">
+                <a href="github-april-23-merge-queue-explained.html"><span class="related-type">WORKFLOW</span>What broke at GitHub on April 23, explained without jargon</a><a href="claude-continue-and-resume.html"><span class="related-type">WORKFLOW</span>Never lose your place: claude continue and claude resume</a>
+            </div>
+        </div>
+        </div>
+    </article>
+</main>
+<footer>
+        <div class="container">
+            <p>Built by <a href="https://munyamakosa.com" target="_blank" rel="noopener">Munya Makosa</a></p>
+        </div>
+    </footer>
+<script>
+(function() {
+    document.querySelectorAll('[data-copy]').forEach(function(btn) {
+        btn.addEventListener('click', function() {
+            var code = btn.closest('.install-card').querySelector('code').innerText;
+            (async function() {
+                try {
+                    await navigator.clipboard.writeText(code);
+                    var label = btn.querySelector('.copy-label');
+                    var original = label.textContent;
+                    label.textContent = 'Copied ✓';
+                    setTimeout(function() { label.textContent = original; }, 1600);
+                } catch (e) {}
+            })();
+        });
+    });
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,63 @@
+name: Work
+options:
+  bundleIdPrefix: com.munyamakosa
+  deploymentTarget:
+    macOS: "15.0"
+
+settings:
+  PRODUCT_NAME: Work
+  MARKETING_VERSION: "1.1.0"
+  CURRENT_PROJECT_VERSION: "18"
+  SWIFT_VERSION: "6.0"
+  SWIFT_STRICT_CONCURRENCY: minimal
+  MACOSX_DEPLOYMENT_TARGET: "15.0"
+  ENABLE_HARDENED_RUNTIME: YES
+  CODE_SIGN_STYLE: Manual
+  CODE_SIGN_IDENTITY: "Developer ID Application: Ryan Katayi (9TUBWSP9WT)"
+  DEVELOPMENT_TEAM: 9TUBWSP9WT
+
+packages:
+  swift-markdown-ui:
+    url: https://github.com/gonzalezreal/swift-markdown-ui
+    from: 2.4.0
+  Sparkle:
+    url: https://github.com/sparkle-project/Sparkle
+    from: 2.0.0
+  SwiftTerm:
+    url: https://github.com/migueldeicaza/SwiftTerm
+    from: 1.13.0
+
+targets:
+  Work:
+    type: application
+    platform: macOS
+    sources:
+      - Sources
+    dependencies:
+      - package: swift-markdown-ui
+        product: MarkdownUI
+      - package: Sparkle
+        product: Sparkle
+      - package: SwiftTerm
+        product: SwiftTerm
+    settings:
+      PRODUCT_BUNDLE_IDENTIFIER: com.munyamakosa.work
+      CODE_SIGN_ENTITLEMENTS: Work.entitlements
+      ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+    info:
+      path: Sources/Info.plist
+      properties:
+        CFBundleDisplayName: Work
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        NSHumanReadableCopyright: ""
+        NSAppleEventsUsageDescription: "Work needs to control Terminal to launch Claude sessions."
+        LSUIElement: false
+        SUFeedURL: https://work.munyamakosa.com/appcast.xml
+        SUPublicEDKey: OxlQLub17dx6WhaZ4eF79PE1vfQF+/x4Qo6gt/ThCH0=
+        SUScheduledCheckInterval: 3600
+        SUEnableAutomaticChecks: true
+        # Silently download updates in the background; user approves install via the badge.
+        SUAutomaticallyUpdate: true
+    scheme:
+      testTargets: []

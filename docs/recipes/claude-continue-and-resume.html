@@ -1,0 +1,525 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>claude --continue and --resume: Pick up past Claude Code sessions | Work</title>
+    <meta name="description" content="Use claude --continue and claude --resume to reload past Claude Code sessions with full context. Two CLI flags that turn conversations into git-style workstreams.">
+    <meta name="author" content="Munya Makosa">
+    <meta name="robots" content="index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1">
+    <meta name="keywords" content="claude --continue, claude --resume, claude code resume session, claude code continue conversation, claude code session history, claude rename session, claude code workflow">
+    <link rel="canonical" href="https://work.munyamakosa.com/recipes/claude-continue-and-resume.html">
+    <link rel="alternate" type="application/rss+xml" title="Work Recipes" href="https://work.munyamakosa.com/recipes/feed.xml">
+
+    <!-- Open Graph -->
+    <meta property="og:type" content="article">
+    <meta property="og:locale" content="en_US">
+    <meta property="og:title" content="claude --continue and --resume: Pick up past Claude Code sessions">
+    <meta property="og:description" content="Use claude --continue and claude --resume to reload past Claude Code sessions with full context. Two CLI flags that turn conversations into git-style workstreams.">
+    <meta property="og:url" content="https://work.munyamakosa.com/recipes/claude-continue-and-resume.html">
+    <meta property="og:image" content="https://work.munyamakosa.com/recipes/og/claude-continue-and-resume.png">
+    <meta property="og:image:alt" content="Work app home screen showing a Claude Code session resume card, jump-back-in grid, and project sidebar">
+    <meta property="og:image:width" content="1200">
+    <meta property="og:image:height" content="630">
+    <meta property="og:site_name" content="Work">
+    <meta property="article:published_time" content="2026-04-13T00:00:00.000Z">
+    <meta property="article:modified_time" content="2026-04-13T00:00:00.000Z">
+    <meta property="article:author" content="https://munyamakosa.com">
+    <meta property="article:tag" content="sessions">
+    <meta property="article:tag" content="workflow">
+    <meta property="article:tag" content="cli">
+    <meta property="article:tag" content="shell">
+
+    <!-- Twitter -->
+    <meta name="twitter:card" content="summary_large_image">
+    <meta name="twitter:site" content="@munyamakosa">
+    <meta name="twitter:creator" content="@munyamakosa">
+    <meta name="twitter:title" content="claude --continue and --resume: Pick up past Claude Code sessions">
+    <meta name="twitter:description" content="Use claude --continue and claude --resume to reload past Claude Code sessions with full context. Two CLI flags that turn conversations into git-style workstreams.">
+    <meta name="twitter:image" content="https://work.munyamakosa.com/recipes/og/claude-continue-and-resume.png">
+    <meta name="twitter:image:alt" content="Work app home screen showing a Claude Code session resume card, jump-back-in grid, and project sidebar">
+
+    <!-- Article JSON-LD -->
+    <script type="application/ld+json">
+    {
+        "@context": "https://schema.org",
+        "@type": "TechArticle",
+        "headline": "claude --continue and --resume: Pick up past Claude Code sessions",
+        "name": "Never lose your place: claude continue and claude resume",
+        "description": "Use claude --continue and claude --resume to reload past Claude Code sessions with full context. Two CLI flags that turn conversations into git-style workstreams.",
+        "datePublished": "2026-04-13T00:00:00.000Z",
+        "dateModified": "2026-04-13T00:00:00.000Z",
+        "url": "https://work.munyamakosa.com/recipes/claude-continue-and-resume.html",
+        "mainEntityOfPage": { "@type": "WebPage", "@id": "https://work.munyamakosa.com/recipes/claude-continue-and-resume.html" },
+        "image": {
+            "@type": "ImageObject",
+            "url": "https://work.munyamakosa.com/recipes/og/claude-continue-and-resume.png",
+            "width": 1200,
+            "height": 630
+        },
+        "author": {
+            "@type": "Person",
+            "name": "Munya Makosa",
+            "url": "https://munyamakosa.com"
+        },
+        "publisher": {
+            "@type": "Organization",
+            "name": "Work",
+            "url": "https://work.munyamakosa.com",
+            "logo": {
+                "@type": "ImageObject",
+                "url": "https://work.munyamakosa.com/icon-256.png",
+                "width": 256,
+                "height": 256
+            }
+        },
+        "wordCount": 645,
+        "keywords": "claude --continue, claude --resume, claude code resume session, claude code continue conversation, claude code session history, claude rename session, claude code workflow",
+        "timeRequired": "PT4M"
+    }
+    </script>
+
+    <!-- Breadcrumb JSON-LD -->
+    <script type="application/ld+json">
+    {
+        "@context": "https://schema.org",
+        "@type": "BreadcrumbList",
+        "itemListElement": [
+            { "@type": "ListItem", "position": 1, "name": "Work", "item": "https://work.munyamakosa.com/" },
+            { "@type": "ListItem", "position": 2, "name": "Recipes", "item": "https://work.munyamakosa.com/recipes/" },
+            { "@type": "ListItem", "position": 3, "name": "Never lose your place: claude continue and claude resume", "item": "https://work.munyamakosa.com/recipes/claude-continue-and-resume.html" }
+        ]
+    }
+    </script>
+
+    <link rel="icon" type="image/png" href="../icon-256.png">
+    <style>
+    :root {
+        --graphite: #111113;
+        --graphite-surface: #18181b;
+        --graphite-elevated: #1f1f23;
+        --ivory: #f0ece4;
+        --ivory-muted: rgba(240, 236, 228, 0.55);
+        --ivory-faint: rgba(240, 236, 228, 0.12);
+        --ivory-ghost: rgba(240, 236, 228, 0.06);
+        --blue: #4a6fa5;
+        --blue-bright: #5a8fd4;
+        --border: rgba(240, 236, 228, 0.08);
+        --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+        --font-mono: 'SF Mono', 'Fira Code', 'JetBrains Mono', monospace;
+    }
+    *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+    html { font-size: 16px; -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; scroll-behavior: smooth; }
+    body { font-family: var(--font-sans); background: var(--graphite); color: var(--ivory); line-height: 1.6; overflow-x: hidden; }
+    a { color: var(--blue-bright); text-decoration: none; }
+    a:hover { text-decoration: underline; }
+    .container { max-width: 960px; margin: 0 auto; padding: 0 24px; }
+    .container-narrow { max-width: 720px; margin: 0 auto; padding: 0 24px; }
+
+    /* Nav */
+    nav.site-nav {
+        position: fixed; top: 0; left: 0; right: 0; z-index: 100;
+        padding: 16px 0;
+        background: rgba(17, 17, 19, 0.85);
+        backdrop-filter: blur(20px) saturate(1.4);
+        -webkit-backdrop-filter: blur(20px) saturate(1.4);
+        border-bottom: 1px solid var(--border);
+    }
+    nav.site-nav .container { display: flex; align-items: center; justify-content: space-between; }
+    .nav-brand { display: flex; align-items: center; gap: 10px; }
+    .nav-brand img { width: 28px; height: 28px; border-radius: 6px; }
+    .nav-brand span { font-family: var(--font-mono); font-size: 15px; font-weight: 600; letter-spacing: -0.3px; color: var(--ivory); }
+    .nav-links { display: flex; align-items: center; gap: 28px; }
+    .nav-links a { font-size: 14px; font-weight: 450; color: var(--ivory-muted); transition: color 0.15s; }
+    .nav-links a:hover { color: var(--ivory); text-decoration: none; }
+    .nav-links a.active { color: var(--ivory); }
+    .btn-download-nav {
+        font-size: 13px; font-weight: 500; color: var(--ivory) !important;
+        background: var(--blue); padding: 7px 16px; border-radius: 6px;
+        transition: background 0.15s; text-decoration: none;
+    }
+    .btn-download-nav:hover { background: var(--blue-bright); text-decoration: none; }
+
+    /* Footer */
+    footer { padding: 40px 0; border-top: 1px solid var(--border); text-align: center; margin-top: 80px; }
+    footer p { font-size: 13px; color: rgba(240, 236, 228, 0.25); }
+
+    /* Section labels */
+    .section-label {
+        font-family: var(--font-mono); font-size: 11px; font-weight: 500;
+        text-transform: uppercase; letter-spacing: 1.5px;
+        color: var(--blue-bright); margin-bottom: 16px;
+    }
+
+    @media (max-width: 768px) {
+        .nav-links a:not(.btn-download-nav) { display: none; }
+    }
+
+    .article-header {
+        padding: 140px 0 40px;
+    }
+    .back-link {
+        display: inline-flex; align-items: center; gap: 6px;
+        font-size: 13px; color: var(--ivory-muted);
+        margin-bottom: 32px; text-decoration: none;
+    }
+    .back-link:hover { color: var(--ivory); text-decoration: none; }
+    .article-meta {
+        display: flex; align-items: center; gap: 12px;
+        margin-bottom: 20px;
+        font-size: 12px;
+    }
+    .type-badge {
+        display: inline-block;
+        font-family: var(--font-mono); font-size: 10px; font-weight: 700;
+        text-transform: uppercase; letter-spacing: 1.0px;
+        padding: 4px 8px; border-radius: 4px;
+    }
+    .meta-dot { color: rgba(240, 236, 228, 0.25); }
+    .meta-item { color: var(--ivory-muted); }
+    h1.article-title {
+        font-size: clamp(32px, 5vw, 44px);
+        font-weight: 700; letter-spacing: -1.6px;
+        line-height: 1.15;
+        margin-bottom: 14px;
+    }
+    .article-description {
+        font-size: 18px; color: var(--ivory-muted);
+        line-height: 1.55;
+        max-width: 640px;
+    }
+
+    /* Article body */
+    .article-body {
+        padding: 40px 0;
+        font-size: 16px;
+        line-height: 1.75;
+        color: rgba(240, 236, 228, 0.85);
+    }
+    .article-body h2 {
+        font-size: 22px; font-weight: 600; letter-spacing: -0.6px;
+        margin: 48px 0 16px;
+        color: var(--ivory);
+    }
+    .article-body h3 {
+        font-size: 18px; font-weight: 600; letter-spacing: -0.4px;
+        margin: 32px 0 12px;
+        color: var(--ivory);
+    }
+    .article-body h2:first-child, .article-body h3:first-child { margin-top: 0; }
+    .article-body p { margin-bottom: 18px; }
+    .article-body ul, .article-body ol { margin: 0 0 18px 24px; }
+    .article-body li { margin-bottom: 6px; }
+    .article-body strong { color: var(--ivory); font-weight: 600; }
+    .article-body code {
+        font-family: var(--font-mono); font-size: 13.5px;
+        background: rgba(240, 236, 228, 0.07);
+        padding: 2px 6px; border-radius: 4px;
+        color: #f0b99c;
+    }
+    .article-body pre {
+        background: var(--graphite-surface);
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        padding: 16px;
+        overflow-x: auto;
+        margin-bottom: 18px;
+    }
+    .article-body pre code {
+        background: none; padding: 0; color: var(--ivory);
+        font-size: 13px; line-height: 1.6;
+    }
+    .article-body blockquote {
+        border-left: 3px solid var(--blue);
+        padding-left: 16px;
+        margin: 20px 0 20px 0;
+        color: var(--ivory-muted);
+        font-style: italic;
+    }
+    .article-body hr {
+        border: none;
+        border-top: 1px solid var(--border);
+        margin: 40px 0;
+    }
+    .article-body img {
+        display: block;
+        max-width: 100%;
+        height: auto;
+        margin: 32px auto;
+        border-radius: 12px;
+        border: 1px solid var(--border);
+        box-shadow: 0 12px 36px rgba(0, 0, 0, 0.4);
+    }
+    .article-body table {
+        width: 100%;
+        margin: 24px 0;
+        border-collapse: separate;
+        border-spacing: 0;
+        background: var(--graphite-surface);
+        border: 1px solid var(--border);
+        border-radius: 10px;
+        overflow: hidden;
+        font-size: 15px;
+    }
+    .article-body th {
+        text-align: left;
+        font-family: var(--font-mono);
+        font-size: 11px;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 1.2px;
+        color: var(--blue-bright);
+        padding: 14px 18px;
+        background: rgba(74, 111, 165, 0.06);
+        border-bottom: 1px solid var(--border);
+    }
+    .article-body td {
+        padding: 14px 18px;
+        color: var(--ivory-muted);
+        border-bottom: 1px solid var(--border);
+        vertical-align: top;
+    }
+    .article-body tr:last-child td { border-bottom: none; }
+    .article-body td:first-child { color: var(--ivory); }
+    .article-body td code, .article-body th code {
+        background: rgba(74, 111, 165, 0.12);
+        color: var(--ivory);
+    }
+
+    /* Install card */
+    .install-card {
+        background: var(--graphite-surface);
+        border: 1px solid rgba(74, 111, 165, 0.3);
+        border-radius: 12px;
+        margin: 36px 0;
+        overflow: hidden;
+        box-shadow: 0 0 0 1px rgba(74, 111, 165, 0.1), 0 8px 24px rgba(0, 0, 0, 0.2);
+    }
+    .install-header {
+        display: flex; align-items: center; justify-content: space-between;
+        padding: 14px 18px;
+        background: rgba(74, 111, 165, 0.08);
+        border-bottom: 1px solid var(--border);
+        gap: 12px;
+        flex-wrap: wrap;
+    }
+    .install-label {
+        font-size: 12px; font-weight: 500;
+        color: var(--ivory);
+        font-family: var(--font-mono);
+    }
+    .install-label-eyebrow {
+        display: block;
+        font-size: 10px;
+        font-weight: 600;
+        color: var(--blue-bright);
+        font-family: var(--font-mono);
+        text-transform: uppercase;
+        letter-spacing: 1px;
+        margin-bottom: 4px;
+    }
+    .copy-btn {
+        display: inline-flex; align-items: center; gap: 6px;
+        padding: 6px 12px;
+        background: var(--blue);
+        color: var(--ivory);
+        border: none; border-radius: 6px;
+        font-size: 12px; font-weight: 500; cursor: pointer;
+        font-family: var(--font-sans);
+        transition: background 0.15s;
+    }
+    .copy-btn:hover { background: var(--blue-bright); }
+    .copy-btn svg { width: 12px; height: 12px; }
+    .install-body {
+        padding: 16px 18px;
+        background: #0a0a0c;
+        overflow-x: auto;
+    }
+    .install-body pre {
+        margin: 0;
+        font-family: var(--font-mono);
+        font-size: 12.5px;
+        line-height: 1.65;
+        color: #d4d4d4;
+        white-space: pre;
+    }
+
+    /* Related */
+    .related {
+        margin-top: 64px;
+        padding-top: 32px;
+        border-top: 1px solid var(--border);
+    }
+    .related h3 {
+        font-size: 12px; font-family: var(--font-mono);
+        text-transform: uppercase; letter-spacing: 1.5px;
+        color: var(--ivory-muted); margin-bottom: 14px; font-weight: 500;
+    }
+    .related-list a {
+        display: block;
+        padding: 12px 0;
+        border-bottom: 1px solid var(--border);
+        color: var(--ivory);
+        font-size: 14px;
+        text-decoration: none;
+    }
+    .related-list a:last-child { border-bottom: none; }
+    .related-list a:hover { color: var(--blue-bright); text-decoration: none; }
+    .related-list a .related-type {
+        display: inline-block;
+        font-family: var(--font-mono); font-size: 9px;
+        text-transform: uppercase; letter-spacing: 1px;
+        color: var(--ivory-muted); margin-right: 8px;
+    }
+</style>
+</head>
+<body>
+<nav class="site-nav">
+        <div class="container">
+            <a href="../" class="nav-brand">
+                <img src="../icon-256.png" alt="Work icon">
+                <span>Work</span>
+            </a>
+            <div class="nav-links">
+                <a href="../">Home</a>
+                <a href="../recipes/" class="active">Recipes</a>
+                <a href="../releases.html">Releases</a>
+                <a href="../#faq">FAQ</a>
+                <a href="../Work.dmg" class="btn-download-nav">Download</a>
+            </div>
+        </div>
+    </nav>
+<main>
+    <header class="article-header">
+        <div class="container-narrow">
+            <a href="./" class="back-link">← All recipes</a>
+            <div class="article-meta">
+                <span class="type-badge" style="background: #06b6d422; color: #06b6d4;">WORKFLOW</span>
+                <span class="meta-item">April 13, 2026</span>
+                <span class="meta-dot">·</span><span class="meta-item">4 min read</span>
+            </div>
+            <h1 class="article-title">Never lose your place: claude continue and claude resume</h1>
+            <p class="article-description">Two built-in flags that turn Claude Code sessions into persistent workstreams. The version of this workflow I wish someone had shown me on day one.</p>
+        </div>
+    </header>
+
+    <article class="article-body">
+        <div class="container-narrow">
+            <p>You closed the terminal at 6pm.</p>
+<p>You open it at 9am.</p>
+<p>You type <code>claude</code>. Fresh session.</p>
+<p>Gone. Yesterday&#39;s rabbit hole, the files it read, the approach you&#39;d half-decided on. You re-explain everything. Ten minutes burned before your first real prompt.</p>
+<p><strong>This gets fixed in two flags.</strong></p>
+<pre><code class="language-bash">claude --continue    # pick up the most recent conversation
+claude --resume      # pick from all recent conversations
+</code></pre>
+<p>That&#39;s it. Claude Code saves every conversation locally. These two flags let you re-enter any of them with full context.</p>
+<p>Used well, they turn your sessions into something closer to <strong>git branches for your thinking</strong>. Parallel workstreams you can hop between without losing state.</p>
+<p>Most devs never use them. Start here.</p>
+<h2><code>--continue</code>: resume the last conversation</h2>
+<p><strong>Use this when you&#39;re coming back to the same thing.</strong></p>
+<p>Same project, same task, same train of thought. Step away for lunch, a meeting, a night&#39;s sleep. Come back.</p>
+<pre><code class="language-bash">cd ~/Projects/my-app
+claude --continue
+</code></pre>
+<p>Claude reloads the last conversation for that directory. Messages, file reads, decisions. You pick up mid-sentence.</p>
+<p>This is the flag you&#39;ll reach for 80% of the time.</p>
+<h2><code>--resume</code>: pick from your history</h2>
+<p><strong>Use this when you have multiple things running.</strong></p>
+<p>Debugging A. Building B. Refactoring C. You need to jump into a specific one, not just the most recent.</p>
+<pre><code class="language-bash">claude --resume
+</code></pre>
+<p>A picker lists your recent sessions with slugs and last activity. Arrow keys. Enter. You&#39;re back in that exact conversation with full context intact.</p>
+<p>This is the flag that scales you past one task at a time.</p>
+<h2>Name your sessions like branches</h2>
+<p>Inside any session, run:</p>
+<pre><code>/rename oauth-migration
+</code></pre>
+<p>That session is now <em>oauth-migration</em> in the picker. Treat the name like a git branch. Short, purposeful, names the workstream.</p>
+<p>Anthropic&#39;s own docs put it directly:</p>
+<blockquote>
+<p>Treat sessions like branches: different workstreams can have separate, persistent contexts.</p>
+</blockquote>
+<p>You wouldn&#39;t develop everything on <code>main</code>. Don&#39;t run every Claude conversation in one thread either.</p>
+<h2>When to use which</h2>
+<table>
+<thead>
+<tr>
+<th>Situation</th>
+<th>Use</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>Continuing today what you started yesterday</td>
+<td><code>--continue</code></td>
+</tr>
+<tr>
+<td>&quot;Which session had the auth bug?&quot;</td>
+<td><code>--resume</code></td>
+</tr>
+<tr>
+<td>Multiple workstreams in parallel</td>
+<td><code>--resume</code> + <code>/rename</code></td>
+</tr>
+<tr>
+<td>Starting genuinely fresh work</td>
+<td>neither, just <code>claude</code></td>
+</tr>
+<tr>
+<td>The last session went off the rails</td>
+<td>neither, just <code>claude</code></td>
+</tr>
+</tbody></table>
+<p>That last row matters most. Resume carries <strong>everything</strong>. Dead ends, bad corrections, confused threads. If yesterday&#39;s conversation went sideways, a clean session with a better prompt beats resuming the mess.</p>
+<p>Know when to ditch a session. It&#39;s a skill.</p>
+<h2>Do all of this in Work</h2>
+<p>The flags are great. But <code>--resume</code> tops out after about twenty sessions. No search, no preview beyond a slug, no way to peek before committing.</p>
+<p>That&#39;s why I built <a href="/">Work</a>. It reads the same <code>~/.claude/</code> files Claude writes, and turns every flag above into a click.</p>
+<p><strong>Continue where you left off</strong> → the Home screen shows a big feature card with your most recent session across all projects: name, project, last activity, token count, last message preview. One click resumes it. If that session is already running in a Terminal tab, Work focuses the existing tab instead of opening a new one.</p>
+<p><strong>Find any session</strong> → type in the sidebar search. Results show up as a flat list of sessions from every project, with message previews. Click play to resume. No project-by-project hunting.</p>
+<p><strong>Name a session</strong> → type a name in the &quot;New Session&quot; popover when you launch, and Work applies it automatically the moment the session appears. Or right-click any existing session → Rename. Names persist across launches and can be cleared anytime.</p>
+<p><strong>Ditch dead sessions</strong> → right-click → Hide. They disappear from the main list. A &quot;Show hidden (N)&quot; toolbar toggle brings them back if you need them.</p>
+<p><img src="images/work-home-screen.png" alt="Work&#39;s home screen: feature card with most recent session, jump back in grid, sidebar with all projects"></p>
+<p>Same flags underneath. Real interface on top.</p>
+<p><strong><a href="/">Download Work →</a></strong></p>
+<p>But the app is optional.</p>
+<p>The flags aren&#39;t.</p>
+<p><code>--continue</code> and <code>--resume</code> are the two commands every Claude Code user should know. Most don&#39;t. You do now.</p>
+
+
+            
+
+            <div class="related">
+            <h3>Related recipes</h3>
+            <div class="related-list">
+                <a href="github-april-23-merge-queue-explained.html"><span class="related-type">WORKFLOW</span>What broke at GitHub on April 23, explained without jargon</a><a href="opus-4-7-upgrade-guide.html"><span class="related-type">WORKFLOW</span>I used Opus 4.7 for 24 hours. Here&#39;s what I actually found.</a>
+            </div>
+        </div>
+        </div>
+    </article>
+</main>
+<footer>
+        <div class="container">
+            <p>Built by <a href="https://munyamakosa.com" target="_blank" rel="noopener">Munya Makosa</a></p>
+        </div>
+    </footer>
+<script>
+(function() {
+    document.querySelectorAll('[data-copy]').forEach(function(btn) {
+        btn.addEventListener('click', function() {
+            var code = btn.closest('.install-card').querySelector('code').innerText;
+            (async function() {
+                try {
+                    await navigator.clipboard.writeText(code);
+                    var label = btn.querySelector('.copy-label');
+                    var original = label.textContent;
+                    label.textContent = 'Copied ✓';
+                    setTimeout(function() { label.textContent = original; }, 1600);
+                } catch (e) {}
+            })();
+        });
+    });
+})();
+</script>
+</body>
+</html>
