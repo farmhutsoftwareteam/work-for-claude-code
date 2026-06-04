@@ -33,8 +33,8 @@ Requirements:
 - [xcodegen](https://github.com/yonaskolb/XcodeGen) (`brew install xcodegen`)
 
 ```bash
-git clone https://github.com/<owner>/work
-cd work
+git clone https://github.com/farmhutsoftwareteam/work-for-claude-code
+cd work-for-claude-code
 xcodegen generate
 open Work.xcodeproj
 ```
