@@ -19,7 +19,12 @@ struct UsageCacheEntry: Codable {
 }
 
 struct UsageCacheData: Codable {
-    var version: Int = 1
+    /// Version 1: original schema, token totals only.
+    /// Version 2 (1.2.0): TokenUsage gains `byModel` for cost attribution.
+    ///   v1 caches are invalidated at load time and force a one-time re-parse
+    ///   of every session JSONL — the only way to populate byModel for
+    ///   previously-cached sessions.
+    var version: Int = 2
     var entries: [String: UsageCacheEntry] = [:]   // keyed by absolute jsonl path
 
     static let empty = UsageCacheData()
@@ -43,6 +48,14 @@ actor UsageCacheStore {
               !raw.isEmpty,
               let decoded = try? JSONDecoder().decode(UsageCacheData.self, from: raw)
         else {
+            data = .empty
+            return data
+        }
+        // Version 2 (1.2.0) added byModel for cost attribution. Pre-v2 rows
+        // would render as "$? (unknown model)" forever, so we invalidate and
+        // force one re-parse on first launch after upgrade.
+        if decoded.version != 2 {
+            NSLog("[Work] Usage cache version %d → invalidating (1.2.0 migration to v2).", decoded.version)
             data = .empty
             return data
         }

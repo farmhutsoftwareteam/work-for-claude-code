@@ -49,19 +49,76 @@ struct TokenUsage: Codable, Equatable {
     var outputTokens: Int
     var cacheCreationTokens: Int
     var cacheReadTokens: Int
+    /// Per-model breakdown of the four token counts above, keyed by the raw
+    /// `message.model` string from JSONL (e.g. "claude-opus-4-8"). Empty when
+    /// no model could be attributed to a row (older JSONL formats, partial
+    /// streaming lines, etc.). The aggregate fields above remain the
+    /// authoritative source of totals; `byModel` lets cost-aware UI surfaces
+    /// split a session/day across the models it actually used.
+    var byModel: [String: TokenUsage] = [:]
 
     var total: Int {
         inputTokens + outputTokens + cacheCreationTokens + cacheReadTokens
     }
 
-    static let zero = TokenUsage(inputTokens: 0, outputTokens: 0, cacheCreationTokens: 0, cacheReadTokens: 0)
+    static let zero = TokenUsage()
+
+    /// Explicit member-wise init so existing call sites that pass only the
+    /// four positional token counts keep compiling; `byModel` defaults to `[:]`.
+    init(
+        inputTokens: Int = 0,
+        outputTokens: Int = 0,
+        cacheCreationTokens: Int = 0,
+        cacheReadTokens: Int = 0,
+        byModel: [String: TokenUsage] = [:]
+    ) {
+        self.inputTokens = inputTokens
+        self.outputTokens = outputTokens
+        self.cacheCreationTokens = cacheCreationTokens
+        self.cacheReadTokens = cacheReadTokens
+        self.byModel = byModel
+    }
+
+    /// Custom decode that tolerates missing `byModel` (pre-v2 cache rows that
+    /// were written before this field existed — those caches are invalidated
+    /// at load time, but this keeps the decode itself robust).
+    private enum CodingKeys: String, CodingKey {
+        case inputTokens, outputTokens, cacheCreationTokens, cacheReadTokens, byModel
+    }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        inputTokens = try c.decode(Int.self, forKey: .inputTokens)
+        outputTokens = try c.decode(Int.self, forKey: .outputTokens)
+        cacheCreationTokens = try c.decode(Int.self, forKey: .cacheCreationTokens)
+        cacheReadTokens = try c.decode(Int.self, forKey: .cacheReadTokens)
+        byModel = try c.decodeIfPresent([String: TokenUsage].self, forKey: .byModel) ?? [:]
+    }
+
+    /// Omit `byModel` from the encoded form when empty so cached/serialised
+    /// rows stay compact for stdio/pre-v2 sessions that never populate it.
+    func encode(to encoder: Encoder) throws {
+        var c = encoder.container(keyedBy: CodingKeys.self)
+        try c.encode(inputTokens, forKey: .inputTokens)
+        try c.encode(outputTokens, forKey: .outputTokens)
+        try c.encode(cacheCreationTokens, forKey: .cacheCreationTokens)
+        try c.encode(cacheReadTokens, forKey: .cacheReadTokens)
+        if !byModel.isEmpty {
+            try c.encode(byModel, forKey: .byModel)
+        }
+    }
 
     static func + (lhs: TokenUsage, rhs: TokenUsage) -> TokenUsage {
-        TokenUsage(
+        var mergedByModel = lhs.byModel
+        for (model, usage) in rhs.byModel {
+            mergedByModel[model] = (mergedByModel[model] ?? .zero) + usage
+        }
+        return TokenUsage(
             inputTokens: lhs.inputTokens + rhs.inputTokens,
             outputTokens: lhs.outputTokens + rhs.outputTokens,
             cacheCreationTokens: lhs.cacheCreationTokens + rhs.cacheCreationTokens,
-            cacheReadTokens: lhs.cacheReadTokens + rhs.cacheReadTokens
+            cacheReadTokens: lhs.cacheReadTokens + rhs.cacheReadTokens,
+            byModel: mergedByModel
         )
     }
 

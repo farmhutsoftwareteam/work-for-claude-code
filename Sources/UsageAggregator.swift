@@ -261,12 +261,28 @@ enum UsageAggregator {
               let message = obj["message"] as? [String: Any],
               let usage = message["usage"] as? [String: Any] else { return }
 
-        let lineUsage = TokenUsage(
+        // Capture the raw model string verbatim (e.g. "claude-opus-4-8" or
+        // "claude-haiku-4-5-20251001"). Normalisation lives in Pricing.swift
+        // (#2); the aggregator stores raw IDs so any version-suffix variants
+        // round-trip through the cache untouched.
+        let model = (message["model"] as? String) ?? ""
+        let lineFlat = TokenUsage(
             inputTokens: intFromJSON(usage["input_tokens"]),
             outputTokens: intFromJSON(usage["output_tokens"]),
             cacheCreationTokens: intFromJSON(usage["cache_creation_input_tokens"]),
             cacheReadTokens: intFromJSON(usage["cache_read_input_tokens"])
         )
+        // Wrap with byModel only when the model is known; an empty key would
+        // create a spurious "" bucket that pollutes downstream cost views.
+        let lineUsage: TokenUsage = model.isEmpty
+            ? lineFlat
+            : TokenUsage(
+                inputTokens: lineFlat.inputTokens,
+                outputTokens: lineFlat.outputTokens,
+                cacheCreationTokens: lineFlat.cacheCreationTokens,
+                cacheReadTokens: lineFlat.cacheReadTokens,
+                byModel: [model: lineFlat]
+            )
         total += lineUsage
 
         // Bucket into a per-day total when timestamp is parseable
