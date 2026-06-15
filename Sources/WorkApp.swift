@@ -212,6 +212,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // locations, so catching it at first launch saves users the
         // dead-end "can't be updated" dialog later.
         ApplicationsFolderMigrator.offerIfNeeded()
+
+        // Refresh pricing in the background. Silent on failure; the Usage
+        // tab is always usable from the embedded pricing table.
+        Task.detached(priority: .utility) {
+            await PricingFetcher.shared.fetchIfStale()
+        }
     }
 
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {

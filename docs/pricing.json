@@ -1,0 +1,70 @@
+{
+  "version": "2026-06-15",
+  "currency": "USD",
+  "unit": "per_million_tokens",
+  "models": {
+    "claude-fable-5": {
+      "input": "10.00",
+      "output": "50.00",
+      "cacheWrite5m": "12.50",
+      "cacheWrite1h": "20.00",
+      "cacheRead": "1.00"
+    },
+    "claude-opus-4-8": {
+      "input": "5.00",
+      "output": "25.00",
+      "cacheWrite5m": "6.25",
+      "cacheWrite1h": "10.00",
+      "cacheRead": "0.50"
+    },
+    "claude-opus-4-7": {
+      "input": "5.00",
+      "output": "25.00",
+      "cacheWrite5m": "6.25",
+      "cacheWrite1h": "10.00",
+      "cacheRead": "0.50"
+    },
+    "claude-opus-4-6": {
+      "input": "5.00",
+      "output": "25.00",
+      "cacheWrite5m": "6.25",
+      "cacheWrite1h": "10.00",
+      "cacheRead": "0.50"
+    },
+    "claude-sonnet-4-6": {
+      "input": "3.00",
+      "output": "15.00",
+      "cacheWrite5m": "3.75",
+      "cacheWrite1h": "6.00",
+      "cacheRead": "0.30"
+    },
+    "claude-haiku-4-5": {
+      "input": "1.00",
+      "output": "5.00",
+      "cacheWrite5m": "1.25",
+      "cacheWrite1h": "2.00",
+      "cacheRead": "0.10"
+    },
+    "claude-opus-4-1": {
+      "input": "15.00",
+      "output": "75.00",
+      "cacheWrite5m": "18.75",
+      "cacheWrite1h": "30.00",
+      "cacheRead": "1.50"
+    },
+    "claude-opus-4": {
+      "input": "15.00",
+      "output": "75.00",
+      "cacheWrite5m": "18.75",
+      "cacheWrite1h": "30.00",
+      "cacheRead": "1.50"
+    },
+    "claude-sonnet-3-5": {
+      "input": "3.00",
+      "output": "15.00",
+      "cacheWrite5m": "3.75",
+      "cacheWrite1h": "6.00",
+      "cacheRead": "0.30"
+    }
+  }
+}
