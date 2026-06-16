@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Releases | Work</title>
-    <meta name="description" content="Every version of Work, what shipped when. Latest: v1.1.0 (May 27, 2026).">
+    <meta name="description" content="Every version of Work, what shipped when. Latest: v1.2.0 (June 16, 2026).">
     <link rel="canonical" href="https://work.munyamakosa.com/releases.html">
     <link rel="alternate" type="application/rss+xml" title="Work appcast" href="https://work.munyamakosa.com/appcast.xml">
     <meta property="og:type" content="website">
@@ -212,12 +212,42 @@
 
     <main class="container releases">
         
+    <article class="release" id="v1-2-0">
+        <header class="release-header">
+            <div class="release-title-row">
+                <h2 class="release-version">
+                    <a href="#v1-2-0" class="anchor-link" aria-label="Permalink to v1.2.0" title="Copy link to this release">#</a>
+                    v1.2.0 <span class="badge badge-latest">Latest</span>
+                </h2>
+                <span class="release-date">June 16, 2026</span>
+            </div>
+            <div class="release-meta">
+                <a href="https://work.munyamakosa.com/Work.dmg" class="download-link">
+                    Download DMG <span class="size">(8.7 MB)</span>
+                </a>
+                <span class="min-system">macOS 15.0+</span>
+            </div>
+        </header>
+        <div class="release-notes">
+            <h3>Usage tab now shows what your Claude Code use is actually worth</h3>
+                <ul>
+                    <li><b>API-equivalent value, per range.</b> A new hero in the Activity card shows the dollar value of the Claude API tokens you used this week, month, or year. If you're on Pro or Max, you are NOT billed this — the number is framed against your subscription so you can finally see whether your $20 or $200 is paying off. "≈ 2.4× a month of Claude Pro · 0.2× a month of Claude Max" tells the story at a glance.</li>
+                    <li><b>Per-model token attribution.</b> Work now reads <code>message.model</code> from every JSONL line and splits each session's tokens across the models it actually used — Opus 4.8 at $25/M output, Sonnet 4.6 at $15/M, Haiku 4.5 at $5/M. The dollar number is honest about the model mix rather than guessing.</li>
+                    <li><b>Heatmap cells now have tooltips.</b> Hover any day on the 52-week heatmap to see date, token count, and dollar value. Native macOS tooltip — pre-computed so hover never triggers a recompute.</li>
+                    <li><b>Tokens ↔ Value chart toggle.</b> The activity bar chart can switch between token counts and dollar amounts. Y-axis labels and colour change with the mode — one chart, your choice of unit.</li>
+                    <li><b>Top sessions, sortable by value.</b> The Top projects list gets a Value column, and there's a new Top 10 sessions list right below. Toggle between "Tokens" and "Value" sort to find the session that ate the most of your week.</li>
+                    <li><b>Pricing freshness without an app release.</b> Pricing data is fetched from work.munyamakosa.com/pricing.json on launch (24h cached, silent fallback to the embedded table on any failure). When Anthropic adjusts prices, your Work install picks up the change without waiting for the next release.</li>
+                    <li><b>Cache schema bump.</b> First launch after upgrade re-parses every session JSONL once to populate per-model breakdowns — a couple of seconds for most users, then back to instant.</li>
+                </ul>
+                <p><b>Heads up for Claude Pro and Max subscribers:</b> the dollar figures shown in the Usage tab are the API-equivalent cost of the tokens you actually used — they are NOT a bill. Your billing is the flat subscription you already pay. The number is for visibility only.</p>
+        </div>
+    </article>
     <article class="release" id="v1-1-0">
         <header class="release-header">
             <div class="release-title-row">
                 <h2 class="release-version">
                     <a href="#v1-1-0" class="anchor-link" aria-label="Permalink to v1.1.0" title="Copy link to this release">#</a>
-                    v1.1.0 <span class="badge badge-latest">Latest</span>
+                    v1.1.0 
                 </h2>
                 <span class="release-date">May 27, 2026</span>
             </div>
