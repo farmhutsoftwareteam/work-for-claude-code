@@ -71,7 +71,7 @@ struct SessionListView: View {
                             session: session,
                             onView: { store.selectedSessionForViewing = session },
                             onStart: {
-                                terminals.openResume(
+                                terminals.requestOpenResume(
                                     sessionId: session.id,
                                     projectCwd: project.cwd,
                                     title: store.displayName(for: session)
@@ -300,7 +300,7 @@ struct NewSessionPopover: View {
                     store.queuePendingRename(trimmed, for: currentProject.cwd)
                 }
                 let title = trimmed.isEmpty ? currentProject.displayName : trimmed
-                terminals.openNew(projectCwd: currentProject.cwd, title: title)
+                terminals.requestOpenNew(projectCwd: currentProject.cwd, title: title)
                 isPresented = false
             } label: {
                 HStack(spacing: 10) {
@@ -412,7 +412,7 @@ struct NewSessionPopover: View {
                                 }
                                 store.selectedProject = project
                                 let title = trimmed.isEmpty ? project.displayName : trimmed
-                                terminals.openNew(projectCwd: project.cwd, title: title)
+                                terminals.requestOpenNew(projectCwd: project.cwd, title: title)
                                 isPresented = false
                             }
                         }
@@ -493,7 +493,7 @@ struct NewSessionPopover: View {
         // Work restart even if Claude hasn't written JSONL yet. Best-effort.
         Self.registerProjectWithClaude(cwd: project.cwd)
         let title = trimmed.isEmpty ? project.displayName : trimmed
-        terminals.openNew(projectCwd: project.cwd, title: title)
+        terminals.requestOpenNew(projectCwd: project.cwd, title: title)
         // No manual reload — the sessions-directory file watcher picks up
         // the real JSONL the moment Claude writes it, and Store.load() now
         // preserves the ephemeral project until then. The old reload here

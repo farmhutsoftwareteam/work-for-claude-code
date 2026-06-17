@@ -14,6 +14,10 @@ struct TerminalTab: Identifiable, Equatable {
     var title: String
     var state: ProcessState
     let createdAt: Date
+    /// Whether this tab's Claude process was spawned with
+    /// `--dangerously-skip-permissions`. Preserved across `restart()` so a tab
+    /// the user explicitly opted into skip-mode for stays in skip-mode.
+    let skipPermissions: Bool
 
     enum ProcessState: Equatable {
         case running
@@ -27,7 +31,8 @@ struct TerminalTab: Identifiable, Equatable {
         projectCwd: String,
         title: String,
         state: ProcessState = .running,
-        createdAt: Date = Date()
+        createdAt: Date = Date(),
+        skipPermissions: Bool = false
     ) {
         self.id = id
         self.sessionId = sessionId
@@ -35,6 +40,7 @@ struct TerminalTab: Identifiable, Equatable {
         self.title = title
         self.state = state
         self.createdAt = createdAt
+        self.skipPermissions = skipPermissions
     }
 
     /// True while the PTY child is alive. Dimmed UI when false.

@@ -17,6 +17,38 @@ final class TerminalsController: ObservableObject {
     @Published private(set) var tabs: [TerminalTab] = []
     @Published var activeTabId: UUID?
 
+    /// Set when a `request*` entry point fires while the "ask before starting"
+    /// preference is on. The root view's confirmation dialog binds to this and
+    /// calls `confirmPendingStart(skipPermissions:)` or `cancelPendingStart()`.
+    @Published var pendingStart: PendingChatStart?
+
+    /// UserDefaults key for the "ask before starting" preference. True by
+    /// default — explicit opt-out via Preferences turns the dialog off.
+    static let askDangerousModeKey = "askDangerousModeOnStart"
+
+    struct PendingChatStart: Identifiable, Equatable {
+        let id: UUID = UUID()
+        let kind: Kind
+        let projectCwd: String
+        let title: String
+
+        enum Kind: Equatable {
+            case new
+            case continueLast
+            case resume(sessionId: String)
+        }
+
+        /// One-line label shown in the confirmation dialog above the buttons,
+        /// so the user knows which session they're about to spawn.
+        var displayLabel: String {
+            switch kind {
+            case .new:           return "New session in \(title)"
+            case .continueLast:  return "Continue last session in \(title)"
+            case .resume:        return "Resume \(title)"
+            }
+        }
+    }
+
     /// Bumped whenever a `LocalProcessTerminalView` is swapped in/out so the
     /// SwiftUI wrapper has something to observe and force-rebuild on.
     @Published private(set) var viewsEpoch: Int = 0
@@ -65,7 +97,7 @@ final class TerminalsController: ObservableObject {
     /// the session already has an open tab, focuses it instead of spawning a
     /// duplicate (matches the old `Launcher.resumeOrFocus` behavior).
     @discardableResult
-    func openResume(sessionId: String, projectCwd: String, title: String) -> UUID {
+    func openResume(sessionId: String, projectCwd: String, title: String, skipPermissions: Bool = false) -> UUID {
         if let existing = tabs.first(where: { $0.sessionId == sessionId && $0.isLive }) {
             focus(existing.id)
             return existing.id
@@ -83,21 +115,23 @@ final class TerminalsController: ObservableObject {
             tabs.removeAll { $0.id == id }
         }
         if !stale.isEmpty { viewsEpoch += 1 }
-        let command = "cd \(shellQuote(projectCwd)) && \(shellQuote(Self.claudeBinary)) --resume \(shellQuote(sessionId))"
+        let command = "cd \(shellQuote(projectCwd)) && \(shellQuote(Self.claudeBinary))\(Self.skipFlag(skipPermissions)) --resume \(shellQuote(sessionId))"
         return spawn(command: command, tab: TerminalTab(
             sessionId: sessionId,
             projectCwd: projectCwd,
-            title: title
+            title: title,
+            skipPermissions: skipPermissions
         ))
     }
 
     /// Open a fresh Claude session in the given directory.
     @discardableResult
-    func openNew(projectCwd: String, title: String) -> UUID {
-        let command = "cd \(shellQuote(projectCwd)) && \(shellQuote(Self.claudeBinary))"
+    func openNew(projectCwd: String, title: String, skipPermissions: Bool = false) -> UUID {
+        let command = "cd \(shellQuote(projectCwd)) && \(shellQuote(Self.claudeBinary))\(Self.skipFlag(skipPermissions))"
         return spawn(command: command, tab: TerminalTab(
             projectCwd: projectCwd,
-            title: title
+            title: title,
+            skipPermissions: skipPermissions
         ))
     }
 
@@ -109,12 +143,87 @@ final class TerminalsController: ObservableObject {
     /// `~/.claude/projects/<cwd-hash>/` and resumes whatever Claude
     /// flushed-on-SIGTERM, so the user doesn't silently lose their context.
     @discardableResult
-    func openContinue(projectCwd: String, title: String) -> UUID {
-        let command = "cd \(shellQuote(projectCwd)) && \(shellQuote(Self.claudeBinary)) --continue"
+    func openContinue(projectCwd: String, title: String, skipPermissions: Bool = false) -> UUID {
+        let command = "cd \(shellQuote(projectCwd)) && \(shellQuote(Self.claudeBinary))\(Self.skipFlag(skipPermissions)) --continue"
         return spawn(command: command, tab: TerminalTab(
             projectCwd: projectCwd,
-            title: title
+            title: title,
+            skipPermissions: skipPermissions
         ))
+    }
+
+    // MARK: - User-initiated entry points (route through skip-permissions prompt)
+    //
+    // The three `request*` methods below are the ones every UI surface should
+    // call — they check the "ask before starting" preference and, if it's on,
+    // stage a `PendingChatStart` for the root view's confirmation dialog.
+    // Direct callers (the integrations panel's programmatic OAuth flow, the
+    // tab-restart code path) keep using the lower-level open* methods so they
+    // don't pop a dialog the user didn't initiate.
+
+    func requestOpenNew(projectCwd: String, title: String) {
+        if Self.shouldAskBeforeStart() {
+            pendingStart = PendingChatStart(kind: .new, projectCwd: projectCwd, title: title)
+        } else {
+            openNew(projectCwd: projectCwd, title: title)
+        }
+    }
+
+    func requestOpenContinue(projectCwd: String, title: String) {
+        if Self.shouldAskBeforeStart() {
+            pendingStart = PendingChatStart(kind: .continueLast, projectCwd: projectCwd, title: title)
+        } else {
+            openContinue(projectCwd: projectCwd, title: title)
+        }
+    }
+
+    func requestOpenResume(sessionId: String, projectCwd: String, title: String) {
+        // Focus-existing wins over prompt — if the session is already open we
+        // never spawn a second process, so there's nothing to skip permissions
+        // for. Mirror the early return inside openResume so the dialog doesn't
+        // pop spuriously and then noop.
+        if let existing = tabs.first(where: { $0.sessionId == sessionId && $0.isLive }) {
+            focus(existing.id)
+            return
+        }
+        if Self.shouldAskBeforeStart() {
+            pendingStart = PendingChatStart(kind: .resume(sessionId: sessionId), projectCwd: projectCwd, title: title)
+        } else {
+            openResume(sessionId: sessionId, projectCwd: projectCwd, title: title)
+        }
+    }
+
+    /// Called by the root view's confirmation dialog when the user picks
+    /// either "Skip permissions" or "Use normal permissions."
+    func confirmPendingStart(skipPermissions: Bool) {
+        guard let pending = pendingStart else { return }
+        pendingStart = nil
+        switch pending.kind {
+        case .new:
+            openNew(projectCwd: pending.projectCwd, title: pending.title, skipPermissions: skipPermissions)
+        case .continueLast:
+            openContinue(projectCwd: pending.projectCwd, title: pending.title, skipPermissions: skipPermissions)
+        case .resume(let sid):
+            openResume(sessionId: sid, projectCwd: pending.projectCwd, title: pending.title, skipPermissions: skipPermissions)
+        }
+    }
+
+    /// Called when the user dismisses the confirmation dialog without picking
+    /// either option. Drops the pending start; no process is spawned.
+    func cancelPendingStart() {
+        pendingStart = nil
+    }
+
+    private static func shouldAskBeforeStart() -> Bool {
+        // .object(forKey:) returns nil for an unwritten key, so a fresh user
+        // gets the prompt by default. Only when the user has explicitly
+        // unchecked the toggle in Preferences (writing `false`) do we skip it.
+        guard let raw = UserDefaults.standard.object(forKey: askDangerousModeKey) as? Bool else { return true }
+        return raw
+    }
+
+    private static func skipFlag(_ skipPermissions: Bool) -> String {
+        skipPermissions ? " --dangerously-skip-permissions" : ""
     }
 
     /// Restart a single tab in place — SIGTERMs the PTY, then respawns the
@@ -132,6 +241,7 @@ final class TerminalsController: ObservableObject {
         let sessionId = tab.sessionId
         let projectCwd = tab.projectCwd
         let title = tab.title
+        let skipPermissions = tab.skipPermissions
         let originalIndex = tabs.firstIndex(where: { $0.id == tabId })
 
         close(tabId, force: true)
@@ -143,8 +253,8 @@ final class TerminalsController: ObservableObject {
             try? await Task.sleep(nanoseconds: 800_000_000)
             guard let self else { return }
             let newId: UUID = sessionId.map {
-                self.openResume(sessionId: $0, projectCwd: projectCwd, title: title)
-            } ?? self.openContinue(projectCwd: projectCwd, title: title)
+                self.openResume(sessionId: $0, projectCwd: projectCwd, title: title, skipPermissions: skipPermissions)
+            } ?? self.openContinue(projectCwd: projectCwd, title: title, skipPermissions: skipPermissions)
 
             // Preserve tab position. spawn() appends to the end; nudge back
             // to the slot the killed tab occupied. Clamp to the current

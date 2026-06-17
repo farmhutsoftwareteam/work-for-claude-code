@@ -194,7 +194,7 @@ struct WorkApp: App {
             NSSound.beep()
             return
         }
-        terminals.openNew(projectCwd: project.cwd, title: project.displayName)
+        terminals.requestOpenNew(projectCwd: project.cwd, title: project.displayName)
     }
 }
 

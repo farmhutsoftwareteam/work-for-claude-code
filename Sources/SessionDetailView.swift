@@ -153,7 +153,7 @@ struct SessionDetailView: View {
 
     private func resume() {
         guard let project else { return }
-        terminals.openResume(
+        terminals.requestOpenResume(
             sessionId: session.id,
             projectCwd: project.cwd,
             title: store.displayName(for: session)

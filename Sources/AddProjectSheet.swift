@@ -196,7 +196,7 @@ private struct OpenExistingFolderTab: View {
                 store.queuePendingRename(trimmed, for: url.path)
             }
             let title = trimmed.isEmpty ? url.lastPathComponent : trimmed
-            terminals.openNew(projectCwd: url.path, title: title)
+            terminals.requestOpenNew(projectCwd: url.path, title: title)
         }
         isPresented = false
     }
@@ -529,7 +529,7 @@ private struct CreateNewFolderTab: View {
                     store.queuePendingRename(trimmed, for: dest.path)
                 }
                 let title = trimmed.isEmpty ? dest.lastPathComponent : trimmed
-                terminals.openNew(projectCwd: dest.path, title: title)
+                terminals.requestOpenNew(projectCwd: dest.path, title: title)
             }
             isPresented = false
         } catch {

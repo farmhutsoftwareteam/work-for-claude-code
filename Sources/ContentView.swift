@@ -252,6 +252,27 @@ struct ContentView: View {
             await store.load()
             store.startWatching()
         }
+        .confirmationDialog(
+            "Start this Claude session with --dangerously-skip-permissions?",
+            isPresented: Binding(
+                get: { terminals.pendingStart != nil },
+                set: { newValue in if !newValue { terminals.cancelPendingStart() } }
+            ),
+            titleVisibility: .visible,
+            presenting: terminals.pendingStart
+        ) { pending in
+            Button("Skip permissions for this session", role: .destructive) {
+                terminals.confirmPendingStart(skipPermissions: true)
+            }
+            Button("Use normal permissions") {
+                terminals.confirmPendingStart(skipPermissions: false)
+            }
+            Button("Cancel", role: .cancel) {
+                terminals.cancelPendingStart()
+            }
+        } message: { pending in
+            Text("\(pending.displayLabel)\n\nSkip mode runs Claude without asking before tool use. Faster, but only safe in projects you fully trust. You can stop being asked from Preferences → Ask before starting.")
+        }
         .frame(minWidth: 700, minHeight: 440)
     }
 
@@ -906,7 +927,7 @@ private struct ContinueFeatureCard: View {
 
             // Right: primary action
             Button {
-                terminals.openResume(
+                terminals.requestOpenResume(
                     sessionId: session.id,
                     projectCwd: project.cwd,
                     title: store.displayName(for: session)
@@ -975,7 +996,7 @@ private struct ContinueMiniCard: View {
 
     var body: some View {
         Button {
-            terminals.openResume(
+            terminals.requestOpenResume(
                 sessionId: session.id,
                 projectCwd: project.cwd,
                 title: store.displayName(for: session)
@@ -1284,7 +1305,7 @@ struct SidebarSessionRow: View {
                 Spacer(minLength: 4)
 
                 Button {
-                    terminals.openResume(
+                    terminals.requestOpenResume(
                         sessionId: session.id,
                         projectCwd: project.cwd,
                         title: store.displayName(for: session)
@@ -1365,6 +1386,7 @@ private struct PreferencesButton: View {
 
 private struct PreferencesPopover: View {
     @State private var launchAtLogin = SMAppService.mainApp.status == .enabled
+    @AppStorage(TerminalsController.askDangerousModeKey) private var askDangerousMode = true
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             Text("PREFERENCES")
@@ -1385,8 +1407,18 @@ private struct PreferencesPopover: View {
                     } catch { print("[Work] LaunchAtLogin: \(error)") }
                     launchAtLogin = SMAppService.mainApp.status == .enabled
                 }
+            Divider()
+            VStack(alignment: .leading, spacing: 4) {
+                Toggle("Ask before starting", isOn: $askDangerousMode)
+                Text("Pick normal or --dangerously-skip-permissions for every new chat. Turn off to always use normal mode without asking.")
+                    .font(.system(size: 10))
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 12)
         }
-        .frame(width: 240)
+        .frame(width: 280)
         .onAppear { launchAtLogin = SMAppService.mainApp.status == .enabled }
     }
 }

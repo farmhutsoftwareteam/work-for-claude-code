@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Releases | Work</title>
-    <meta name="description" content="Every version of Work, what shipped when. Latest: v1.2.0 (June 16, 2026).">
+    <meta name="description" content="Every version of Work, what shipped when. Latest: v1.3.0 (June 17, 2026).">
     <link rel="canonical" href="https://work.munyamakosa.com/releases.html">
     <link rel="alternate" type="application/rss+xml" title="Work appcast" href="https://work.munyamakosa.com/appcast.xml">
     <meta property="og:type" content="website">
@@ -212,12 +212,39 @@
 
     <main class="container releases">
         
+    <article class="release" id="v1-3-0">
+        <header class="release-header">
+            <div class="release-title-row">
+                <h2 class="release-version">
+                    <a href="#v1-3-0" class="anchor-link" aria-label="Permalink to v1.3.0" title="Copy link to this release">#</a>
+                    v1.3.0 <span class="badge badge-latest">Latest</span>
+                </h2>
+                <span class="release-date">June 17, 2026</span>
+            </div>
+            <div class="release-meta">
+                <a href="https://work.munyamakosa.com/Work.dmg" class="download-link">
+                    Download DMG <span class="size">(8.7 MB)</span>
+                </a>
+                <span class="min-system">macOS 15.0+</span>
+            </div>
+        </header>
+        <div class="release-notes">
+            <h3>Skip-permissions prompt on every new chat</h3>
+                <ul>
+                    <li><b>Get asked, every time.</b> Whenever you start a new chat — Cmd+T, sidebar "+", resume from the session list, continue last, or start-on-project-add — Work now asks whether to launch Claude with <code>--dangerously-skip-permissions</code> for that session. No more digging into the terminal to skip prompts on the runs you know you trust.</li>
+                    <li><b>Per-session choice.</b> The decision is scoped to the tab you're starting — pick "Skip permissions" for the throwaway scratch session, pick "Use normal permissions" for the production-touching one, side by side in the same window.</li>
+                    <li><b>Restart preserves the mode.</b> Use the tab chip's "Restart session" action and Work re-spawns Claude in whichever mode the tab was originally launched. Skip stays skip; normal stays normal.</li>
+                    <li><b>Off switch in Preferences.</b> The gear icon's popover has a new "Ask before starting" toggle. Turn it off and Work always starts in normal mode without asking — no chance of accidentally leaving skip on as a default.</li>
+                </ul>
+                <p><b>Safety note:</b> Skip mode runs Claude without confirming tool use. Faster, but only safe in projects you trust completely. The dialog defaults to surfacing this choice every time precisely so you don't forget which mode you're in.</p>
+        </div>
+    </article>
     <article class="release" id="v1-2-0">
         <header class="release-header">
             <div class="release-title-row">
                 <h2 class="release-version">
                     <a href="#v1-2-0" class="anchor-link" aria-label="Permalink to v1.2.0" title="Copy link to this release">#</a>
-                    v1.2.0 <span class="badge badge-latest">Latest</span>
+                    v1.2.0 
                 </h2>
                 <span class="release-date">June 16, 2026</span>
             </div>
