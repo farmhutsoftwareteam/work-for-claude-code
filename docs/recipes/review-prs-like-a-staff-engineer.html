@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Review PRs like a staff engineer | Atelier</title>
-    <meta name="description" content="A Claude Code skill that catches real bugs, not style nits — ranked by blast radius with confidence filtering so you only see what matters.">
+    <meta name="description" content="A Claude Code skill that catches real bugs, not style nits - ranked by blast radius with confidence filtering so you only see what matters.">
     <meta name="author" content="Munya Makosa">
     <meta name="robots" content="index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1">
     <meta name="keywords" content="code-review, skills, pr, quality">
@@ -15,7 +15,7 @@
     <meta property="og:type" content="article">
     <meta property="og:locale" content="en_US">
     <meta property="og:title" content="Review PRs like a staff engineer">
-    <meta property="og:description" content="A Claude Code skill that catches real bugs, not style nits — ranked by blast radius with confidence filtering so you only see what matters.">
+    <meta property="og:description" content="A Claude Code skill that catches real bugs, not style nits - ranked by blast radius with confidence filtering so you only see what matters.">
     <meta property="og:url" content="https://work.munyamakosa.com/recipes/review-prs-like-a-staff-engineer.html">
     <meta property="og:image" content="https://work.munyamakosa.com/recipes/og/review-prs-like-a-staff-engineer.png">
     <meta property="og:image:alt" content="Review PRs like a staff engineer">
@@ -35,7 +35,7 @@
     <meta name="twitter:site" content="@munyamakosa">
     <meta name="twitter:creator" content="@munyamakosa">
     <meta name="twitter:title" content="Review PRs like a staff engineer">
-    <meta name="twitter:description" content="A Claude Code skill that catches real bugs, not style nits — ranked by blast radius with confidence filtering so you only see what matters.">
+    <meta name="twitter:description" content="A Claude Code skill that catches real bugs, not style nits - ranked by blast radius with confidence filtering so you only see what matters.">
     <meta name="twitter:image" content="https://work.munyamakosa.com/recipes/og/review-prs-like-a-staff-engineer.png">
     <meta name="twitter:image:alt" content="Review PRs like a staff engineer">
 
@@ -46,7 +46,7 @@
         "@type": "TechArticle",
         "headline": "Review PRs like a staff engineer",
         "name": "Review PRs like a staff engineer",
-        "description": "A Claude Code skill that catches real bugs, not style nits — ranked by blast radius with confidence filtering so you only see what matters.",
+        "description": "A Claude Code skill that catches real bugs, not style nits - ranked by blast radius with confidence filtering so you only see what matters.",
         "datePublished": "2026-04-13T00:00:00.000Z",
         "dateModified": "2026-04-13T00:00:00.000Z",
         "url": "https://work.munyamakosa.com/recipes/review-prs-like-a-staff-engineer.html",
@@ -399,7 +399,7 @@
                 <span class="meta-dot">·</span><span class="meta-item">4 min read</span>
             </div>
             <h1 class="article-title">Review PRs like a staff engineer</h1>
-            <p class="article-description">A Claude Code skill that catches real bugs, not style nits — ranked by blast radius with confidence filtering so you only see what matters.</p>
+            <p class="article-description">A Claude Code skill that catches real bugs, not style nits - ranked by blast radius with confidence filtering so you only see what matters.</p>
         </div>
     </header>
 
@@ -410,14 +410,14 @@
 <h2>The problem</h2>
 <p>The default review prompt produces findings that fall into three categories:</p>
 <ol>
-<li><strong>Real bugs you need to fix.</strong> Maybe 10–20% of the output.</li>
-<li><strong>Style preferences.</strong> Noise — your linter should handle this.</li>
+<li><strong>Real bugs you need to fix.</strong> Maybe 10-20% of the output.</li>
+<li><strong>Style preferences.</strong> Noise - your linter should handle this.</li>
 <li><strong>&quot;What if&quot; speculation.</strong> Imagined problems with no grounding in the actual code.</li>
 </ol>
 <p>With all three mixed in a flat list, the first category gets lost. You end up skimming, missing things. Or you read everything carefully and burn 20 minutes on a 50-line PR.</p>
 <h2>What this skill changes</h2>
 <p>Three things shift the output quality:</p>
-<p><strong>Confidence filtering.</strong> Claude&#39;s instructed to skip anything it can&#39;t tie to specific code — no &quot;consider adding validation&quot; without proof that validation is missing, no &quot;might be a race condition&quot; without a specific interleaving. If confidence is below 60%, the finding doesn&#39;t appear.</p>
+<p><strong>Confidence filtering.</strong> Claude&#39;s instructed to skip anything it can&#39;t tie to specific code - no &quot;consider adding validation&quot; without proof that validation is missing, no &quot;might be a race condition&quot; without a specific interleaving. If confidence is below 60%, the finding doesn&#39;t appear.</p>
 <p><strong>Blast-radius ranking.</strong> Findings are sorted by what breaks if unfixed, not by where they live in the file. A silent data-loss bug on line 400 beats a minor null-safety concern on line 3.</p>
 <p><strong>A verdict, not a list.</strong> Every review ends with a merge/request-changes/block recommendation and names the single top-priority issue. The reviewer always knows what to do next.</p>
 <h2>Install</h2>
@@ -436,18 +436,18 @@
 <h2>Customize it</h2>
 <p>A few knobs you might want to tweak:</p>
 <ul>
-<li><strong>Confidence threshold</strong> — change <code>60%</code> to <code>70%</code> or <code>50%</code> based on how noisy/quiet you want the output. I&#39;ve found 60% is the sweet spot; 50% lets in speculation, 70% misses real issues.</li>
-<li><strong>House style rules</strong> — add a <code>## Project conventions</code> section near the bottom and list your team&#39;s rules (e.g. &quot;never catch without logging&quot;, &quot;all migrations must be reversible&quot;). Claude will treat violations as Medium findings.</li>
-<li><strong>Language-specific checks</strong> — add a <code>## &lt;Language&gt;-specific gotchas</code> section for things like Swift concurrency, Rust lifetimes, JS promise chains.</li>
+<li><strong>Confidence threshold</strong> - change <code>60%</code> to <code>70%</code> or <code>50%</code> based on how noisy/quiet you want the output. I&#39;ve found 60% is the sweet spot; 50% lets in speculation, 70% misses real issues.</li>
+<li><strong>House style rules</strong> - add a <code>## Project conventions</code> section near the bottom and list your team&#39;s rules (e.g. &quot;never catch without logging&quot;, &quot;all migrations must be reversible&quot;). Claude will treat violations as Medium findings.</li>
+<li><strong>Language-specific checks</strong> - add a <code>## &lt;Language&gt;-specific gotchas</code> section for things like Swift concurrency, Rust lifetimes, JS promise chains.</li>
 </ul>
 <h2>When to use it</h2>
 <p>✓ Before merging any non-trivial PR
-✓ Self-review before pushing — catches things you missed
-✓ Onboarding — shows junior engineers what a real staff-level review looks for</p>
+✓ Self-review before pushing - catches things you missed
+✓ Onboarding - shows junior engineers what a real staff-level review looks for</p>
 <h2>When not to use it</h2>
-<p>✗ Pure style/formatting reviews — use Prettier/RuboCop/clang-format instead
-✗ Architecture reviews — this skill looks at lines, not structure
-✗ Security audits — this is correctness-focused; use a dedicated security tool for thoroughness</p>
+<p>✗ Pure style/formatting reviews - use Prettier/RuboCop/clang-format instead
+✗ Architecture reviews - this skill looks at lines, not structure
+✗ Security audits - this is correctness-focused; use a dedicated security tool for thoroughness</p>
 <hr>
 <p>Once you&#39;ve installed it, this is the review you&#39;ll wish you&#39;d had from day one. The difference between 40 items and 5 prioritized ones is the difference between code review as a chore and code review as the last-line defense it&#39;s supposed to be.</p>
 
@@ -470,7 +470,7 @@ name: pr-review
 description: Review code for bugs, logic errors, security vulnerabilities, and performance problems. Uses confidence filtering to surface only high-priority findings, ranked by blast radius.
 ---
 
-You are reviewing code changes for bugs that actually matter. Your goal is a short, prioritised list of real issues — not a style audit.
+You are reviewing code changes for bugs that actually matter. Your goal is a short, prioritised list of real issues - not a style audit.
 
 ## How to review
 
@@ -484,7 +484,7 @@ You are reviewing code changes for bugs that actually matter. Your goal is a sho
 - **Critical**: data loss, security vulnerability, production crash, silent corruption. Must fix before merge.
 - **High**: wrong behaviour for common inputs, race condition, memory leak, broken error handling. Should fix before merge.
 - **Medium**: edge case bug, missing validation at a trust boundary, unclear code that will bite a future reader.
-- **Low**: improvement that&#39;s worth noting but not blocking — only include if asked.
+- **Low**: improvement that&#39;s worth noting but not blocking - only include if asked.
 
 ## Report format
 
@@ -493,14 +493,14 @@ For each finding:
 - **File:** `&lt;path&gt;`
 - **Line(s):** `&lt;line or range&gt;`
 - **Severity:** Critical | High | Medium
-- **Confidence:** 0–100% — your honest calibration. Skip anything below 60%.
+- **Confidence:** 0-100% - your honest calibration. Skip anything below 60%.
 - **Issue:** one-sentence description.
 - **Evidence:** quote the specific code that demonstrates it.
 - **Fix:** one-sentence direction (not a full implementation).
 
 ## What to skip
 
-- Style, formatting, naming preferences — linters handle this.
+- Style, formatting, naming preferences - linters handle this.
 - &quot;Could be more idiomatic&quot; without a bug.
 - Suggestions for tests unless there&#39;s an actual untested branch of broken code.
 - Speculative &quot;what if&quot; scenarios you can&#39;t tie to existing code.

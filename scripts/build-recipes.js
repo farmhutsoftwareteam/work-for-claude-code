@@ -63,7 +63,7 @@ function typeColor(type) {
         command: '#10b981',     // emerald
         'claude-md': '#ec4899', // pink
         workflow: '#06b6d4',    // cyan
-        announcement: '#1b1c1e' // graphite — brand-aligned for launch posts
+        announcement: '#1b1c1e' // graphite - brand-aligned for launch posts
     };
     return m[type] || '#5a8fd4';
 }
@@ -77,7 +77,7 @@ function validate(data, filename) {
     if (!validTypes.includes(data.type)) {
         throw new Error(`${filename}: type "${data.type}" is not one of ${validTypes.join(', ')}`);
     }
-    // install block is optional — recipes can be pure tutorials (e.g. workflows)
+    // install block is optional - recipes can be pure tutorials (e.g. workflows)
     if (data.install) {
         for (const k of ['label', 'content']) {
             if (!data.install[k]) throw new Error(`${filename}: install.${k} is required when install is provided`);
@@ -608,7 +608,7 @@ function formatDateShort(d) {
 }
 
 // Render the featured card's right-side decoration card. Specific to each
-// recipe slug — designed so visitors see something unique to the recipe, not
+// recipe slug - designed so visitors see something unique to the recipe, not
 // a placeholder. Falls back to a generic metadata card if the slug doesn't
 // have a custom decoration.
 function renderFeaturedDecoration(r) {
@@ -627,7 +627,7 @@ function renderFeaturedDecoration(r) {
         <div style="color:var(--ink);margin-bottom:12px;">recipe.${escHtml(r.slug)}</div>
         type &nbsp;= ${escHtml(r.type)}<br>
         date &nbsp;= ${escHtml(formatDateShort(r.date))}<br>
-        tags &nbsp;= ${escHtml((r.tags || []).slice(0, 3).join(', ') || '—')}
+        tags &nbsp;= ${escHtml((r.tags || []).slice(0, 3).join(', ') || '-')}
         <div style="margin-top:12px;padding-top:12px;border-top:1px solid var(--line);color:var(--ink);">→ read · apply · ship</div>
     </div>`;
 }
@@ -636,7 +636,7 @@ function renderListingPage(recipes) {
     const featured = recipes[0];
     const rest = recipes.slice(1);
 
-    // Category chips — derived from real recipe types so we never advertise
+    // Category chips - derived from real recipe types so we never advertise
     // a filter that returns an empty list.
     const realTypes = Array.from(new Set(recipes.map(r => r.type)));
     const chips = ['all', ...realTypes];
@@ -681,7 +681,7 @@ function renderListingPage(recipes) {
     }).join('');
 
     const emptyMarkup = recipes.length === 0
-        ? `<p style="font-family:var(--mono);font-size:13px;color:var(--mute);padding:80px 0;text-align:center;">No recipes yet — first one coming soon.</p>`
+        ? `<p style="font-family:var(--mono);font-size:13px;color:var(--mute);padding:80px 0;text-align:center;">No recipes yet - first one coming soon.</p>`
         : '';
 
     return `<!DOCTYPE html>
@@ -689,20 +689,20 @@ function renderListingPage(recipes) {
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Recipes — Atelier</title>
-    <meta name="description" content="Field notes from the workshop — practical playbooks for Claude Code. Loops, agents, harnesses and the small moves that separate dabblers from power users.">
+    <title>Recipes - Atelier</title>
+    <meta name="description" content="Field notes from the workshop - practical playbooks for Claude Code. Loops, agents, harnesses and the small moves that separate dabblers from power users.">
     <link rel="canonical" href="${SITE_URL}/recipes/">
 
     <meta property="og:type" content="website">
-    <meta property="og:title" content="Recipes — Atelier">
-    <meta property="og:description" content="Field notes from the workshop — practical playbooks for Claude Code.">
+    <meta property="og:title" content="Recipes - Atelier">
+    <meta property="og:description" content="Field notes from the workshop - practical playbooks for Claude Code.">
     <meta property="og:url" content="${SITE_URL}/recipes/">
     <meta property="og:image" content="${SITE_URL}/og-image.png">
     <meta property="og:site_name" content="Atelier">
 
     <meta name="twitter:card" content="summary_large_image">
-    <meta name="twitter:title" content="Recipes — Atelier">
-    <meta name="twitter:description" content="Field notes from the workshop — practical playbooks for Claude Code.">
+    <meta name="twitter:title" content="Recipes - Atelier">
+    <meta name="twitter:description" content="Field notes from the workshop - practical playbooks for Claude Code.">
     <meta name="twitter:image" content="${SITE_URL}/og-image.png">
 
     <link rel="icon" type="image/svg+xml" href="/atelier-mark.svg">
@@ -792,7 +792,7 @@ function renderListingPage(recipes) {
         <div style="border-bottom:1px solid var(--line2);padding-bottom:34px;">
             <div style="font-family:var(--mono);font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:var(--mute);margin-bottom:16px;">field notes from the workshop</div>
             <h1 style="font-family:var(--helv);font-weight:500;font-size:54px;line-height:1.02;letter-spacing:-.035em;margin:0;">Recipes</h1>
-            <p style="font-family:var(--helv);font-size:18px;line-height:1.5;color:rgba(27,28,30,.78);margin:18px 0 0;max-width:54ch;">Practical playbooks for Claude&nbsp;Code — loops, agents, harnesses and the small moves that separate dabblers from power users.</p>
+            <p style="font-family:var(--helv);font-size:18px;line-height:1.5;color:rgba(27,28,30,.78);margin:18px 0 0;max-width:54ch;">Practical playbooks for Claude&nbsp;Code - loops, agents, harnesses and the small moves that separate dabblers from power users.</p>
         </div>
 
         <!-- category row -->
@@ -874,7 +874,7 @@ ${u.lastmod ? `        <lastmod>${u.lastmod}</lastmod>\n` : ''}        <changefr
 
 async function main() {
     if (!fs.existsSync(SRC)) {
-        console.error(`No recipes/ folder at ${SRC} — nothing to build.`);
+        console.error(`No recipes/ folder at ${SRC} - nothing to build.`);
         process.exit(1);
     }
     if (!fs.existsSync(OUT)) fs.mkdirSync(OUT, { recursive: true });
@@ -884,7 +884,7 @@ async function main() {
 
     const files = fs.readdirSync(SRC).filter(f => f.endsWith('.md'));
     if (files.length === 0) {
-        console.warn('No .md files in recipes/ — still generating empty listing page.');
+        console.warn('No .md files in recipes/ - still generating empty listing page.');
     }
 
     const recipes = [];

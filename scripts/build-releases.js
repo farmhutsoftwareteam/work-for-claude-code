@@ -6,7 +6,7 @@
  *
  *   node scripts/build-releases.js
  *
- * Produces docs/releases.html using the Atelier dovetail design — each
+ * Produces docs/releases.html using the Atelier dovetail design - each
  * <item> in the appcast renders as one <article> with a 200px-wide date
  * column on the left and the release body on the right.
  */
@@ -128,13 +128,13 @@ function renderPage(items) {
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Changelog — Atelier</title>
+    <title>Changelog - Atelier</title>
     <meta name="description" content="Every release of Atelier, dated and itemised. Latest: v${escHtml(latestVersion)} (${escHtml(latestDate)}).">
     <link rel="canonical" href="${SITE_URL}/releases.html">
     <link rel="alternate" type="application/rss+xml" title="Atelier appcast" href="${SITE_URL}/appcast.xml">
 
     <meta property="og:type" content="website">
-    <meta property="og:title" content="Changelog — Atelier">
+    <meta property="og:title" content="Changelog - Atelier">
     <meta property="og:description" content="Every release of Atelier, dated and itemised.">
     <meta property="og:image" content="${SITE_URL}/og-image.png">
     <meta property="og:url" content="${SITE_URL}/releases.html">
