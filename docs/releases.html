@@ -3,238 +3,138 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Releases | Atelier</title>
-    <meta name="description" content="Every version of Atelier, what shipped when. Latest: v1.4.1 (June 23, 2026).">
+    <title>Changelog — Atelier</title>
+    <meta name="description" content="Every release of Atelier, dated and itemised. Latest: v1.4.1 (june 23, 2026).">
     <link rel="canonical" href="https://work.munyamakosa.com/releases.html">
     <link rel="alternate" type="application/rss+xml" title="Atelier appcast" href="https://work.munyamakosa.com/appcast.xml">
+
     <meta property="og:type" content="website">
-    <meta property="og:title" content="Releases | Atelier">
-    <meta property="og:description" content="Every version of Atelier, what shipped when.">
+    <meta property="og:title" content="Changelog — Atelier">
+    <meta property="og:description" content="Every release of Atelier, dated and itemised.">
+    <meta property="og:image" content="https://work.munyamakosa.com/og-image.png">
     <meta property="og:url" content="https://work.munyamakosa.com/releases.html">
     <meta property="og:site_name" content="Atelier">
-    <meta name="twitter:card" content="summary">
+    <meta name="twitter:card" content="summary_large_image">
 
     <link rel="icon" type="image/svg+xml" href="/atelier-mark.svg">
     <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32.png">
     <link rel="icon" type="image/png" sizes="16x16" href="/favicon-16.png">
     <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png">
 
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+
     <style>
-    :root {
-        --graphite: #111113;
-        --graphite-surface: #18181b;
-        --graphite-elevated: #1f1f23;
-        --ivory: #f0ece4;
-        --ivory-muted: rgba(240, 236, 228, 0.55);
-        --ivory-faint: rgba(240, 236, 228, 0.12);
-        --ivory-ghost: rgba(240, 236, 228, 0.06);
-        --blue: #4a6fa5;
-        --blue-bright: #5a8fd4;
-        --border: rgba(240, 236, 228, 0.08);
-        --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
-        --font-mono: 'SF Mono', 'Fira Code', 'JetBrains Mono', monospace;
-    }
-    * { margin: 0; padding: 0; box-sizing: border-box; }
-    body { font-family: var(--font-sans); background: var(--graphite); color: var(--ivory); line-height: 1.6; overflow-x: hidden; }
-    a { color: var(--blue-bright); text-decoration: none; }
-    a:hover { text-decoration: underline; }
-    .container { max-width: 960px; margin: 0 auto; padding: 0 24px; }
-    .container-narrow { max-width: 720px; margin: 0 auto; padding: 0 24px; }
+        :root {
+            --ink: #1b1c1e;
+            --paper: #e9eae8;
+            --paper2: #f3f4f2;
+            --paper3: #dcdedb;
+            --line: rgba(27, 28, 30, .18);
+            --line2: rgba(27, 28, 30, .34);
+            --mute: rgba(27, 28, 30, .54);
+            --helv: 'Helvetica Neue', Helvetica, Arial, sans-serif;
+            --mono: 'IBM Plex Mono', ui-monospace, monospace;
+        }
+        * { box-sizing: border-box; }
+        html, body { margin: 0; }
+        body {
+            background: var(--paper);
+            color: var(--ink);
+            -webkit-font-smoothing: antialiased;
+            text-rendering: optimizeLegibility;
+        }
+        ::selection { background: var(--ink); color: var(--paper); }
+        .nav-link { transition: color .12s ease; }
+        .nav-link:hover { color: var(--ink) !important; }
+        .nav-cta { transition: background .12s ease; }
+        .nav-cta:hover { background: #000 !important; }
+        .footer-link { transition: color .12s ease; }
+        .footer-link:hover { color: var(--ink) !important; }
 
-    /* Nav */
-    nav.site-nav {
-        position: fixed; top: 0; left: 0; right: 0; z-index: 100;
-        padding: 16px 0;
-        background: rgba(17, 17, 19, 0.85);
-        backdrop-filter: blur(20px) saturate(1.4);
-        -webkit-backdrop-filter: blur(20px) saturate(1.4);
-        border-bottom: 1px solid var(--border);
-    }
-    nav.site-nav .container { display: flex; align-items: center; justify-content: space-between; }
-    .nav-brand { display: flex; align-items: center; gap: 10px; }
-    .nav-brand img { width: 28px; height: 28px; border-radius: 6px; }
-    .nav-brand span { font-family: var(--font-mono); font-size: 15px; font-weight: 600; letter-spacing: -0.3px; color: var(--ivory); }
-    .nav-links { display: flex; align-items: center; gap: 28px; }
-    .nav-links a { font-size: 14px; font-weight: 450; color: var(--ivory-muted); transition: color 0.15s; }
-    .nav-links a:hover { color: var(--ivory); text-decoration: none; }
-    .nav-links a.active { color: var(--ivory); }
-    .btn-download-nav {
-        font-size: 13px; font-weight: 500; color: var(--ivory) !important;
-        background: var(--blue); padding: 7px 16px; border-radius: 6px;
-        transition: background 0.15s; text-decoration: none;
-    }
-    .btn-download-nav:hover { background: var(--blue-bright); text-decoration: none; }
+        .release-body h3 {
+            font-family: var(--helv);
+            font-weight: 500;
+            font-size: 20px;
+            line-height: 1.25;
+            letter-spacing: -.015em;
+            margin: 0 0 14px;
+            color: var(--ink);
+        }
+        .release-body h4 {
+            font-family: var(--mono);
+            font-size: 11px;
+            letter-spacing: .12em;
+            text-transform: uppercase;
+            color: var(--mute);
+            margin: 22px 0 10px;
+        }
+        .release-body ul { margin: 0 0 16px; padding-left: 18px; }
+        .release-body li { margin-bottom: 8px; }
+        .release-body p { margin: 0 0 14px; }
+        .release-body code {
+            font-family: var(--mono);
+            font-size: 14px;
+            background: var(--paper3);
+            padding: 1px 5px;
+            border-radius: 2px;
+        }
+        .release-body b, .release-body strong { font-weight: 500; color: var(--ink); }
 
-    /* Page */
-    .page-header { padding: 140px 0 40px; }
-    h1.page-title {
-        font-family: var(--font-mono);
-        font-size: clamp(48px, 8vw, 72px);
-        font-weight: 700; letter-spacing: -3px; line-height: 1.0; margin-bottom: 16px;
-    }
-    .page-subtitle {
-        font-size: 18px; color: var(--ivory-muted);
-        max-width: 520px; line-height: 1.6;
-    }
-    .section-label {
-        font-family: var(--font-mono); font-size: 11px; font-weight: 500;
-        text-transform: uppercase; letter-spacing: 1.5px;
-        color: var(--blue-bright); margin-bottom: 16px;
-    }
-
-    /* Release cards */
-    .releases { padding-bottom: 80px; }
-    .release {
-        background: var(--graphite-surface);
-        border: 1px solid var(--border);
-        border-radius: 12px;
-        padding: 32px;
-        margin-bottom: 20px;
-    }
-    .release-header { margin-bottom: 20px; }
-    .release-title-row {
-        display: flex; align-items: baseline; justify-content: space-between;
-        gap: 16px; flex-wrap: wrap; margin-bottom: 10px;
-    }
-    .release-version {
-        font-family: var(--font-mono);
-        font-size: 24px; font-weight: 600; letter-spacing: -0.5px;
-        color: var(--ivory);
-        display: flex; align-items: baseline; gap: 10px;
-    }
-    .anchor-link {
-        font-family: var(--font-mono);
-        font-size: 18px; font-weight: 500;
-        color: var(--ivory-faint);
-        text-decoration: none;
-        opacity: 0;
-        transition: opacity 0.15s, color 0.15s;
-    }
-    .anchor-link:hover { color: var(--blue-bright); text-decoration: none; }
-    .release:hover .anchor-link { opacity: 1; }
-    /* Smooth-scroll target: offset so fixed nav doesn't obscure the heading */
-    .release { scroll-margin-top: 80px; }
-    /* Flash the targeted release briefly so users see where they landed */
-    .release:target {
-        animation: target-pulse 1.8s ease-out;
-    }
-    @keyframes target-pulse {
-        0%   { box-shadow: 0 0 0 0 rgba(90, 143, 212, 0.55); }
-        60%  { box-shadow: 0 0 0 8px rgba(90, 143, 212, 0.0); }
-        100% { box-shadow: 0 0 0 0 rgba(90, 143, 212, 0.0); }
-    }
-    .release-date {
-        font-size: 13px; color: var(--ivory-muted);
-        font-family: var(--font-mono);
-    }
-    .release-meta {
-        display: flex; align-items: center; gap: 16px; flex-wrap: wrap;
-        font-size: 13px;
-    }
-    .download-link {
-        color: var(--blue-bright);
-        font-weight: 500;
-    }
-    .download-link .size { color: var(--ivory-muted); font-family: var(--font-mono); font-size: 12px; }
-    .min-system {
-        color: var(--ivory-muted);
-        font-family: var(--font-mono); font-size: 12px;
-    }
-    .badge {
-        display: inline-block;
-        font-family: var(--font-mono); font-size: 10px; font-weight: 600;
-        text-transform: uppercase; letter-spacing: 1px;
-        padding: 3px 8px; border-radius: 4px;
-        vertical-align: middle;
-        margin-left: 8px;
-    }
-    .badge-latest {
-        background: rgba(74, 111, 165, 0.25);
-        color: var(--blue-bright);
-        border: 1px solid rgba(90, 143, 212, 0.4);
-    }
-
-    /* Release notes content (rendered from appcast CDATA) */
-    .release-notes { color: var(--ivory); }
-    .release-notes h3 {
-        font-size: 16px; font-weight: 600;
-        margin-bottom: 14px; letter-spacing: -0.2px;
-    }
-    .release-notes ul { list-style: none; padding: 0; }
-    .release-notes li {
-        position: relative;
-        padding: 10px 0 10px 22px;
-        border-bottom: 1px solid var(--ivory-ghost);
-        font-size: 14px; line-height: 1.6;
-        color: var(--ivory-muted);
-    }
-    .release-notes li:last-child { border-bottom: none; }
-    .release-notes li::before {
-        content: '›';
-        position: absolute; left: 4px; top: 10px;
-        color: var(--blue-bright);
-        font-family: var(--font-mono); font-weight: 700;
-    }
-    .release-notes li b, .release-notes li strong { color: var(--ivory); font-weight: 600; }
-    .release-notes p { margin-top: 12px; font-size: 14px; color: var(--ivory-muted); }
-    .release-notes code {
-        font-family: var(--font-mono); font-size: 12.5px;
-        background: var(--ivory-ghost); padding: 1px 6px; border-radius: 4px;
-        color: var(--ivory);
-    }
-
-    /* Footer */
-    footer { padding: 40px 0; border-top: 1px solid var(--border); text-align: center; }
-    footer p { font-size: 13px; color: rgba(240, 236, 228, 0.25); }
-
-    @media (max-width: 768px) {
-        .nav-links a:not(.btn-download-nav) { display: none; }
-        .release { padding: 24px; }
-    }
+        @media (max-width: 800px) {
+            .responsive-padding { padding-left: 24px !important; padding-right: 24px !important; }
+            .responsive-nav { gap: 18px !important; }
+            .release-article { grid-template-columns: 1fr !important; gap: 16px !important; padding: 28px 0 !important; }
+            h1 { font-size: 40px !important; }
+        }
     </style>
 </head>
 <body>
-    <nav class="site-nav">
-        <div class="container">
-            <a href="/" class="nav-brand">
-                <img src="/icon-256.png" alt="Atelier">
-                <span>Atelier</span>
-            </a>
-            <div class="nav-links">
-                <a href="/">Home</a>
-                <a href="/recipes/">Recipes</a>
-                <a href="/releases.html" class="active">Releases</a>
-                <a href="/Work.dmg" class="btn-download-nav">Download</a>
-            </div>
-        </div>
-    </nav>
 
-    <header class="page-header container">
-        <div class="section-label">Changelog</div>
-        <h1 class="page-title">Releases</h1>
-        <p class="page-subtitle">Every version of Atelier, what shipped when. Subscribe via RSS: <a href="/appcast.xml">appcast.xml</a>.</p>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+    <symbol id="dt" viewBox="0 0 64 64" fill="none" stroke="currentColor" stroke-width="6" stroke-linecap="square" stroke-linejoin="miter">
+        <rect x="7" y="7" width="50" height="50"/>
+        <path d="M32 7 L32 24 L46 28 L46 36 L32 40 L32 57"/>
+    </symbol>
+</svg>
+
+<div style="min-height:100vh;">
+
+    <header style="position:sticky;top:0;z-index:40;background:rgba(233,234,232,.86);backdrop-filter:blur(8px);border-bottom:1px solid var(--line);">
+        <div class="responsive-padding" style="max-width:1180px;margin:0 auto;padding:14px 40px;display:flex;align-items:center;justify-content:space-between;">
+            <a href="/" style="display:flex;align-items:center;gap:11px;text-decoration:none;color:var(--ink);">
+                <svg viewBox="0 0 64 64" style="width:26px;height:26px;color:var(--ink);overflow:visible;"><use href="#dt"/></svg>
+                <span style="font-family:var(--helv);font-weight:500;font-size:20px;letter-spacing:-.01em;">atelier</span>
+            </a>
+            <nav class="responsive-nav" style="display:flex;align-items:center;gap:30px;font-family:var(--mono);font-size:12.5px;letter-spacing:.02em;">
+                <a href="/releases.html" style="color:var(--ink);text-decoration:none;">changelog</a>
+                <a class="nav-link" href="/faq.html" style="color:var(--mute);text-decoration:none;">faq</a>
+                <a class="nav-link" href="/pricing.html" style="color:var(--mute);text-decoration:none;">pricing</a>
+                <a class="nav-cta" href="/#download" style="color:var(--paper);background:var(--ink);text-decoration:none;padding:8px 15px;letter-spacing:.04em;">download</a>
+            </nav>
+        </div>
     </header>
 
-    <main class="container releases">
+    <main class="responsive-padding" style="max-width:1180px;margin:0 auto;padding:72px 40px 96px;">
+        <div style="border-bottom:1px solid var(--line2);padding-bottom:34px;margin-bottom:8px;">
+            <div style="font-family:var(--mono);font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:var(--mute);margin-bottom:16px;">release notes</div>
+            <h1 style="font-family:var(--helv);font-weight:500;font-size:54px;line-height:1.02;letter-spacing:-.035em;margin:0;">Changelog</h1>
+            <p style="font-family:var(--mono);font-size:12.5px;color:var(--mute);margin-top:16px;max-width:52ch;line-height:1.7;">Every release of Atelier, dated and itemised. Subscribe via RSS: <a href="/appcast.xml" style="color:var(--ink);">appcast.xml</a>.</p>
+        </div>
+
         
-    <article class="release" id="v1-4-1">
-        <header class="release-header">
-            <div class="release-title-row">
-                <h2 class="release-version">
-                    <a href="#v1-4-1" class="anchor-link" aria-label="Permalink to v1.4.1" title="Copy link to this release">#</a>
-                    v1.4.1 <span class="badge badge-latest">Latest</span>
-                </h2>
-                <span class="release-date">June 23, 2026</span>
-            </div>
-            <div class="release-meta">
-                <a href="https://work.munyamakosa.com/Work.dmg" class="download-link">
-                    Download DMG <span class="size">(7.1 MB)</span>
-                </a>
-                <span class="min-system">macOS 15.0+</span>
-            </div>
-        </header>
-        <div class="release-notes">
-            <h3>The new mark — Atelier's dovetail</h3>
+    <article id="v1-4-1" class="release-article" style="display:grid;grid-template-columns:200px 1fr;gap:40px;padding:38px 0;border-bottom:1px solid var(--line);">
+      <div>
+        <div style="font-family:var(--helv);font-weight:500;font-size:22px;letter-spacing:-.01em;">
+          <a href="#v1-4-1" style="color:var(--ink);text-decoration:none;">v1.4.1</a>
+        </div>
+        <div style="font-family:var(--mono);font-size:11px;color:var(--mute);margin-top:6px;">2026 · jun 23</div>
+        <div style="display:inline-block;font-family:var(--mono);font-size:10px;letter-spacing:.08em;text-transform:uppercase;border:1px solid var(--line2);padding:3px 8px;margin-top:12px;">latest</div>
+        <div style="font-family:var(--mono);font-size:10px;color:var(--mute);margin-top:10px;">macOS 15.0+</div>
+      </div>
+      <div class="release-body" style="font-family:var(--helv);font-size:16px;line-height:1.6;color:rgba(27,28,30,.82);">
+        <h3>The new mark — Atelier's dovetail</h3>
                 <p>A few days after the rename, the brand finally has a mark to match.</p>
                 <p>Atelier's new logo is a <b>dovetail joint</b>: a square frame split by a single seam that interlocks two halves without a nail. It's a joinery technique woodworkers have used for thousands of years because it gets stronger the harder you pull on it. A workshop's mark should be a piece of joinery. This one is.</p>
                 <h4>What's new in this build</h4>
@@ -245,26 +145,19 @@
                 </ul>
                 <p>The mark was designed against an explicit brief: quiet, precise, owned. The kind of thing you'd recognize stamped on the bottom of something you didn't expect to find it on. Monochrome at heart, geometric, no flourishes. Works at 16×16 in the menu bar. Works at 1024×1024 on the dock. Inverts cleanly between ivory and graphite.</p>
                 <p>— Munya</p>
-        </div>
+      </div>
     </article>
-    <article class="release" id="v1-4-0">
-        <header class="release-header">
-            <div class="release-title-row">
-                <h2 class="release-version">
-                    <a href="#v1-4-0" class="anchor-link" aria-label="Permalink to v1.4.0" title="Copy link to this release">#</a>
-                    v1.4.0 
-                </h2>
-                <span class="release-date">June 23, 2026</span>
-            </div>
-            <div class="release-meta">
-                <a href="https://work.munyamakosa.com/Work.dmg" class="download-link">
-                    Download DMG <span class="size">(8.7 MB)</span>
-                </a>
-                <span class="min-system">macOS 15.0+</span>
-            </div>
-        </header>
-        <div class="release-notes">
-            <h3>Atelier — same app, better name</h3>
+    <article id="v1-4-0" class="release-article" style="display:grid;grid-template-columns:200px 1fr;gap:40px;padding:38px 0;border-bottom:1px solid var(--line);">
+      <div>
+        <div style="font-family:var(--helv);font-weight:500;font-size:22px;letter-spacing:-.01em;">
+          <a href="#v1-4-0" style="color:var(--ink);text-decoration:none;">v1.4.0</a>
+        </div>
+        <div style="font-family:var(--mono);font-size:11px;color:var(--mute);margin-top:6px;">2026 · jun 23</div>
+        
+        <div style="font-family:var(--mono);font-size:10px;color:var(--mute);margin-top:10px;">macOS 15.0+</div>
+      </div>
+      <div class="release-body" style="font-family:var(--helv);font-size:16px;line-height:1.6;color:rgba(27,28,30,.82);">
+        <h3>Atelier — same app, better name</h3>
                 <p>"Work" was a placeholder. It said nothing. It told you nothing about what was inside. <em>Work</em> is what you do when you'd rather be doing anything else — a verb pretending to be a noun, a name that admits defeat.</p>
                 <p>An atelier is the opposite. It's where a craftsman keeps their tools, their unfinished pieces, their drawings on the wall. The work happens there — but the room itself has a name, a feel, a smell, a door you close behind you when it's time to make something.</p>
                 <p>That's what this app actually is. Six live Claude sessions in one window. Real terminals, real PTYs, a polished surface over the messy filesystem Claude Code already writes to. It's a workshop. It deserved to be named like one.</p>
@@ -277,52 +170,38 @@
                 <p>"Work" was never going viral. Searching for it returned the dictionary. People couldn't recommend it to a friend without three sentences of explanation. A name should do work <em>for</em> you — sit in someone's head, make them curious, render well on a screenshot. "Atelier" does. "Work" never did.</p>
                 <p>If "Work" already lived in your head, mine too. It'll feel weird for about a week. Then "Atelier" will feel obvious and we'll wonder why it took this long.</p>
                 <p>— Munya</p>
-        </div>
+      </div>
     </article>
-    <article class="release" id="v1-3-1">
-        <header class="release-header">
-            <div class="release-title-row">
-                <h2 class="release-version">
-                    <a href="#v1-3-1" class="anchor-link" aria-label="Permalink to v1.3.1" title="Copy link to this release">#</a>
-                    v1.3.1 
-                </h2>
-                <span class="release-date">June 23, 2026</span>
-            </div>
-            <div class="release-meta">
-                <a href="https://work.munyamakosa.com/Work.dmg" class="download-link">
-                    Download DMG <span class="size">(8.7 MB)</span>
-                </a>
-                <span class="min-system">macOS 15.0+</span>
-            </div>
-        </header>
-        <div class="release-notes">
-            <h3>Memory diet — large sessions no longer balloon Work's RAM</h3>
+    <article id="v1-3-1" class="release-article" style="display:grid;grid-template-columns:200px 1fr;gap:40px;padding:38px 0;border-bottom:1px solid var(--line);">
+      <div>
+        <div style="font-family:var(--helv);font-weight:500;font-size:22px;letter-spacing:-.01em;">
+          <a href="#v1-3-1" style="color:var(--ink);text-decoration:none;">v1.3.1</a>
+        </div>
+        <div style="font-family:var(--mono);font-size:11px;color:var(--mute);margin-top:6px;">2026 · jun 23</div>
+        
+        <div style="font-family:var(--mono);font-size:10px;color:var(--mute);margin-top:10px;">macOS 15.0+</div>
+      </div>
+      <div class="release-body" style="font-family:var(--helv);font-size:16px;line-height:1.6;color:rgba(27,28,30,.82);">
+        <h3>Memory diet — large sessions no longer balloon Work's RAM</h3>
                 <ul>
                     <li><b>Byte-walk JSONL parsing.</b> Opening a conversation used to allocate the full session file as a Swift <code>String</code> just to start parsing — a 191MB session produced a ~400-500MB heap peak before a single message was rendered. Work now memory-maps the JSONL and walks line boundaries directly, emitting one <code>Data</code> slice per line. The mmap'd region is the only large allocation, and it's pageable — the kernel reclaims it under pressure.</li>
                     <li><b>One source of truth for tool output.</b> Every tool result was being stored twice — once in the message's <code>kind</code> enum and again in a sibling <code>text</code> field. The <code>text</code> field is now a computed property that returns a 500-char preview for tool results, so multi-megabyte file dumps and grep outputs only live in one place. Views and exports that wanted the full output read it from the enum directly.</li>
                     <li><b>Smarter semantic search index.</b> The embedding index used to chunk every message — including 5MB tool output dumps — into 512-char fragments, each paired with a 512-float vector. For a 191MB session that built a ~1GB in-memory index just to power semantic search. Work now skips <code>.toolResult</code> rows entirely (you rarely semantic-search a <code>find . -name</code> dump) and caps any single message at 32 chunks. User prompts and assistant text replies still index normally.</li>
                 </ul>
                 <p>Expected net result: a session view that used to hold 1.5-2GB resident drops to roughly 150-300MB. Multi-session navigation should feel snappier, and Work should no longer feature in Activity Monitor's top spenders after an afternoon of browsing.</p>
-        </div>
+      </div>
     </article>
-    <article class="release" id="v1-3-0">
-        <header class="release-header">
-            <div class="release-title-row">
-                <h2 class="release-version">
-                    <a href="#v1-3-0" class="anchor-link" aria-label="Permalink to v1.3.0" title="Copy link to this release">#</a>
-                    v1.3.0 
-                </h2>
-                <span class="release-date">June 17, 2026</span>
-            </div>
-            <div class="release-meta">
-                <a href="https://work.munyamakosa.com/Work.dmg" class="download-link">
-                    Download DMG <span class="size">(8.7 MB)</span>
-                </a>
-                <span class="min-system">macOS 15.0+</span>
-            </div>
-        </header>
-        <div class="release-notes">
-            <h3>Skip-permissions prompt on every new chat</h3>
+    <article id="v1-3-0" class="release-article" style="display:grid;grid-template-columns:200px 1fr;gap:40px;padding:38px 0;border-bottom:1px solid var(--line);">
+      <div>
+        <div style="font-family:var(--helv);font-weight:500;font-size:22px;letter-spacing:-.01em;">
+          <a href="#v1-3-0" style="color:var(--ink);text-decoration:none;">v1.3.0</a>
+        </div>
+        <div style="font-family:var(--mono);font-size:11px;color:var(--mute);margin-top:6px;">2026 · jun 17</div>
+        
+        <div style="font-family:var(--mono);font-size:10px;color:var(--mute);margin-top:10px;">macOS 15.0+</div>
+      </div>
+      <div class="release-body" style="font-family:var(--helv);font-size:16px;line-height:1.6;color:rgba(27,28,30,.82);">
+        <h3>Skip-permissions prompt on every new chat</h3>
                 <ul>
                     <li><b>Get asked, every time.</b> Whenever you start a new chat — Cmd+T, sidebar "+", resume from the session list, continue last, or start-on-project-add — Work now asks whether to launch Claude with <code>--dangerously-skip-permissions</code> for that session. No more digging into the terminal to skip prompts on the runs you know you trust.</li>
                     <li><b>Per-session choice.</b> The decision is scoped to the tab you're starting — pick "Skip permissions" for the throwaway scratch session, pick "Use normal permissions" for the production-touching one, side by side in the same window.</li>
@@ -330,26 +209,19 @@
                     <li><b>Off switch in Preferences.</b> The gear icon's popover has a new "Ask before starting" toggle. Turn it off and Work always starts in normal mode without asking — no chance of accidentally leaving skip on as a default.</li>
                 </ul>
                 <p><b>Safety note:</b> Skip mode runs Claude without confirming tool use. Faster, but only safe in projects you trust completely. The dialog defaults to surfacing this choice every time precisely so you don't forget which mode you're in.</p>
-        </div>
+      </div>
     </article>
-    <article class="release" id="v1-2-0">
-        <header class="release-header">
-            <div class="release-title-row">
-                <h2 class="release-version">
-                    <a href="#v1-2-0" class="anchor-link" aria-label="Permalink to v1.2.0" title="Copy link to this release">#</a>
-                    v1.2.0 
-                </h2>
-                <span class="release-date">June 16, 2026</span>
-            </div>
-            <div class="release-meta">
-                <a href="https://work.munyamakosa.com/Work.dmg" class="download-link">
-                    Download DMG <span class="size">(8.7 MB)</span>
-                </a>
-                <span class="min-system">macOS 15.0+</span>
-            </div>
-        </header>
-        <div class="release-notes">
-            <h3>Usage tab now shows what your Claude Code use is actually worth</h3>
+    <article id="v1-2-0" class="release-article" style="display:grid;grid-template-columns:200px 1fr;gap:40px;padding:38px 0;border-bottom:1px solid var(--line);">
+      <div>
+        <div style="font-family:var(--helv);font-weight:500;font-size:22px;letter-spacing:-.01em;">
+          <a href="#v1-2-0" style="color:var(--ink);text-decoration:none;">v1.2.0</a>
+        </div>
+        <div style="font-family:var(--mono);font-size:11px;color:var(--mute);margin-top:6px;">2026 · jun 16</div>
+        
+        <div style="font-family:var(--mono);font-size:10px;color:var(--mute);margin-top:10px;">macOS 15.0+</div>
+      </div>
+      <div class="release-body" style="font-family:var(--helv);font-size:16px;line-height:1.6;color:rgba(27,28,30,.82);">
+        <h3>Usage tab now shows what your Claude Code use is actually worth</h3>
                 <ul>
                     <li><b>API-equivalent value, per range.</b> A new hero in the Activity card shows the dollar value of the Claude API tokens you used this week, month, or year. If you're on Pro or Max, you are NOT billed this — the number is framed against your subscription so you can finally see whether your $20 or $200 is paying off. "≈ 2.4× a month of Claude Pro · 0.2× a month of Claude Max" tells the story at a glance.</li>
                     <li><b>Per-model token attribution.</b> Work now reads <code>message.model</code> from every JSONL line and splits each session's tokens across the models it actually used — Opus 4.8 at $25/M output, Sonnet 4.6 at $15/M, Haiku 4.5 at $5/M. The dollar number is honest about the model mix rather than guessing.</li>
@@ -360,26 +232,19 @@
                     <li><b>Cache schema bump.</b> First launch after upgrade re-parses every session JSONL once to populate per-model breakdowns — a couple of seconds for most users, then back to instant.</li>
                 </ul>
                 <p><b>Heads up for Claude Pro and Max subscribers:</b> the dollar figures shown in the Usage tab are the API-equivalent cost of the tokens you actually used — they are NOT a bill. Your billing is the flat subscription you already pay. The number is for visibility only.</p>
-        </div>
+      </div>
     </article>
-    <article class="release" id="v1-1-0">
-        <header class="release-header">
-            <div class="release-title-row">
-                <h2 class="release-version">
-                    <a href="#v1-1-0" class="anchor-link" aria-label="Permalink to v1.1.0" title="Copy link to this release">#</a>
-                    v1.1.0 
-                </h2>
-                <span class="release-date">May 27, 2026</span>
-            </div>
-            <div class="release-meta">
-                <a href="https://work.munyamakosa.com/Work.dmg" class="download-link">
-                    Download DMG <span class="size">(8.5 MB)</span>
-                </a>
-                <span class="min-system">macOS 15.0+</span>
-            </div>
-        </header>
-        <div class="release-notes">
-            <h3>MCPs tab, now matching Claude Code's full feature surface — plus in-place session restart</h3>
+    <article id="v1-1-0" class="release-article" style="display:grid;grid-template-columns:200px 1fr;gap:40px;padding:38px 0;border-bottom:1px solid var(--line);">
+      <div>
+        <div style="font-family:var(--helv);font-weight:500;font-size:22px;letter-spacing:-.01em;">
+          <a href="#v1-1-0" style="color:var(--ink);text-decoration:none;">v1.1.0</a>
+        </div>
+        <div style="font-family:var(--mono);font-size:11px;color:var(--mute);margin-top:6px;">2026 · may 27</div>
+        
+        <div style="font-family:var(--mono);font-size:10px;color:var(--mute);margin-top:10px;">macOS 15.0+</div>
+      </div>
+      <div class="release-body" style="font-family:var(--helv);font-size:16px;line-height:1.6;color:rgba(27,28,30,.82);">
+        <h3>MCPs tab, now matching Claude Code's full feature surface — plus in-place session restart</h3>
                 <ul>
                     <li><b>Three real scopes, not two.</b> The MCP editor now distinguishes <b>User</b> (every project, only you), <b>Local</b> (only this project, only you — what <code>claude mcp add</code> does by default), and <b>Project</b> (shared with the team via <code>.mcp.json</code>). Previously "Just me" silently dumped MCPs into every project — now it stays put.</li>
                     <li><b>HTTP Headers editor.</b> Bearer-token MCPs (GitHub, Sentry, internal APIs) no longer require hand-editing <code>~/.claude.json</code>. Add <code>Authorization</code>, <code>X-API-Key</code>, anything — values matching common secret patterns are masked by default with an eye toggle to reveal.</li>
@@ -389,26 +254,19 @@
                     <li><b><code>streamable-http</code> alias recognized.</b> Servers configured with the newer <code>streamable-http</code> transport type now parse correctly (canonicalised to <code>http</code> on save).</li>
                     <li><b>Restart-session in place.</b> New "Restart session" action on the tab chip context menu and in the live-session header's "Running" menu. SIGTERMs the Claude process and respawns it on the same session — so you can pick up newly added MCPs, hooks, or skills without leaving the terminal. If the session was brand new (no <code>sessionId</code> assigned yet), Work uses <code>claude --continue</code> so your just-typed prompts aren't orphaned. The new tab keeps its original position in the bar.</li>
                 </ul>
-        </div>
+      </div>
     </article>
-    <article class="release" id="v1-0-15">
-        <header class="release-header">
-            <div class="release-title-row">
-                <h2 class="release-version">
-                    <a href="#v1-0-15" class="anchor-link" aria-label="Permalink to v1.0.15" title="Copy link to this release">#</a>
-                    v1.0.15 
-                </h2>
-                <span class="release-date">May 30, 2026</span>
-            </div>
-            <div class="release-meta">
-                <a href="https://work.munyamakosa.com/Work.dmg" class="download-link">
-                    Download DMG <span class="size">(9.4 MB)</span>
-                </a>
-                <span class="min-system">macOS 15.0+</span>
-            </div>
-        </header>
-        <div class="release-notes">
-            <h3>Snappier tabs + a clean-up pass</h3>
+    <article id="v1-0-15" class="release-article" style="display:grid;grid-template-columns:200px 1fr;gap:40px;padding:38px 0;border-bottom:1px solid var(--line);">
+      <div>
+        <div style="font-family:var(--helv);font-weight:500;font-size:22px;letter-spacing:-.01em;">
+          <a href="#v1-0-15" style="color:var(--ink);text-decoration:none;">v1.0.15</a>
+        </div>
+        <div style="font-family:var(--mono);font-size:11px;color:var(--mute);margin-top:6px;">2026 · may 30</div>
+        
+        <div style="font-family:var(--mono);font-size:10px;color:var(--mute);margin-top:10px;">macOS 15.0+</div>
+      </div>
+      <div class="release-body" style="font-family:var(--helv);font-size:16px;line-height:1.6;color:rgba(27,28,30,.82);">
+        <h3>Snappier tabs + a clean-up pass</h3>
                 <ul>
                     <li><b>Tab switching is instant.</b> The previous 280ms cross-fade animation between tabs made every click feel laggy because the UI had to wait for the fade to finish before content was interactive. Removed.</li>
                     <li><b>No more double-fire on tab clicks.</b> Clicking a tab chip was running the navigation handler twice — once via the direct callback, once via the activeTabId onChange. Cascading state mutations all happened twice per click. Consolidated to a single firing path.</li>
@@ -417,76 +275,55 @@
                     <li><b>Cleaner file permission flags.</b> Two cache files were being chmod'd with the wrong integer type (Int16 vs mode_t). Aligned.</li>
                     <li><b>CRLF-encoded SKILL.md files parse correctly.</b> Skills authored on Windows or copy-pasted from CRLF sources no longer break YAML frontmatter detection.</li>
                 </ul>
-        </div>
+      </div>
     </article>
-    <article class="release" id="v1-0-14">
-        <header class="release-header">
-            <div class="release-title-row">
-                <h2 class="release-version">
-                    <a href="#v1-0-14" class="anchor-link" aria-label="Permalink to v1.0.14" title="Copy link to this release">#</a>
-                    v1.0.14 
-                </h2>
-                <span class="release-date">April 20, 2026</span>
-            </div>
-            <div class="release-meta">
-                <a href="https://work.munyamakosa.com/Work.dmg" class="download-link">
-                    Download DMG <span class="size">(9.4 MB)</span>
-                </a>
-                <span class="min-system">macOS 15.0+</span>
-            </div>
-        </header>
-        <div class="release-notes">
-            <h3>Add Project — one sheet, three paths</h3>
+    <article id="v1-0-14" class="release-article" style="display:grid;grid-template-columns:200px 1fr;gap:40px;padding:38px 0;border-bottom:1px solid var(--line);">
+      <div>
+        <div style="font-family:var(--helv);font-weight:500;font-size:22px;letter-spacing:-.01em;">
+          <a href="#v1-0-14" style="color:var(--ink);text-decoration:none;">v1.0.14</a>
+        </div>
+        <div style="font-family:var(--mono);font-size:11px;color:var(--mute);margin-top:6px;">2026 · apr 20</div>
+        
+        <div style="font-family:var(--mono);font-size:10px;color:var(--mute);margin-top:10px;">macOS 15.0+</div>
+      </div>
+      <div class="release-body" style="font-family:var(--helv);font-size:16px;line-height:1.6;color:rgba(27,28,30,.82);">
+        <h3>Add Project — one sheet, three paths</h3>
                 <ul>
                     <li><b>New "+" button in the sidebar toolbar.</b> Single sheet with three segmented tabs: Open folder, Clone, New folder. Cmd+Shift+N opens it. Same end state for all three — the project appears in the sidebar, is persisted to ~/.claude.json, and can optionally start a Claude session immediately.</li>
                     <li><b>Open folder.</b> Pick any directory, optionally name the first session, Work registers + opens it.</li>
                     <li><b>Clone.</b> Paste a GitHub URL, SSH URL, or owner/repo shorthand. Live streaming clone log. When it finishes, the freshly-cloned repo is already a known project ready for a session.</li>
                     <li><b>New folder.</b> Pick a parent, type a folder name, Work creates the directory, registers it, and can spawn a session in it. Great for kicking off something fresh from scratch without hopping to Finder first.</li>
                 </ul>
-        </div>
+      </div>
     </article>
-    <article class="release" id="v1-0-13">
-        <header class="release-header">
-            <div class="release-title-row">
-                <h2 class="release-version">
-                    <a href="#v1-0-13" class="anchor-link" aria-label="Permalink to v1.0.13" title="Copy link to this release">#</a>
-                    v1.0.13 
-                </h2>
-                <span class="release-date">April 17, 2026</span>
-            </div>
-            <div class="release-meta">
-                <a href="https://work.munyamakosa.com/Work.dmg" class="download-link">
-                    Download DMG <span class="size">(9.2 MB)</span>
-                </a>
-                <span class="min-system">macOS 15.0+</span>
-            </div>
-        </header>
-        <div class="release-notes">
-            <h3>Self-relocate to /Applications + drag-to-install DMG</h3>
+    <article id="v1-0-13" class="release-article" style="display:grid;grid-template-columns:200px 1fr;gap:40px;padding:38px 0;border-bottom:1px solid var(--line);">
+      <div>
+        <div style="font-family:var(--helv);font-weight:500;font-size:22px;letter-spacing:-.01em;">
+          <a href="#v1-0-13" style="color:var(--ink);text-decoration:none;">v1.0.13</a>
+        </div>
+        <div style="font-family:var(--mono);font-size:11px;color:var(--mute);margin-top:6px;">2026 · apr 17</div>
+        
+        <div style="font-family:var(--mono);font-size:10px;color:var(--mute);margin-top:10px;">macOS 15.0+</div>
+      </div>
+      <div class="release-body" style="font-family:var(--helv);font-size:16px;line-height:1.6;color:rgba(27,28,30,.82);">
+        <h3>Self-relocate to /Applications + drag-to-install DMG</h3>
                 <ul>
                     <li><b>Bug fix: "Work can't be updated if it's running from the location it was downloaded to."</b> Some users were launching Work straight from the DMG or Downloads, then hitting a dead-end Sparkle dialog. On first launch from any location outside /Applications, Work now offers to move itself there and relaunch. Declining is remembered — we won't nag.</li>
                     <li><b>Drag-to-install DMG.</b> The disk image now includes an Applications symlink alongside Work.app, so you can drag Work across to install — the standard macOS install experience.</li>
                 </ul>
-        </div>
+      </div>
     </article>
-    <article class="release" id="v1-0-12">
-        <header class="release-header">
-            <div class="release-title-row">
-                <h2 class="release-version">
-                    <a href="#v1-0-12" class="anchor-link" aria-label="Permalink to v1.0.12" title="Copy link to this release">#</a>
-                    v1.0.12 
-                </h2>
-                <span class="release-date">April 17, 2026</span>
-            </div>
-            <div class="release-meta">
-                <a href="https://work.munyamakosa.com/Work.dmg" class="download-link">
-                    Download DMG <span class="size">(9.2 MB)</span>
-                </a>
-                <span class="min-system">macOS 15.0+</span>
-            </div>
-        </header>
-        <div class="release-notes">
-            <h3>GitHub Dark terminal, plus 35 bugs squashed</h3>
+    <article id="v1-0-12" class="release-article" style="display:grid;grid-template-columns:200px 1fr;gap:40px;padding:38px 0;border-bottom:1px solid var(--line);">
+      <div>
+        <div style="font-family:var(--helv);font-weight:500;font-size:22px;letter-spacing:-.01em;">
+          <a href="#v1-0-12" style="color:var(--ink);text-decoration:none;">v1.0.12</a>
+        </div>
+        <div style="font-family:var(--mono);font-size:11px;color:var(--mute);margin-top:6px;">2026 · apr 17</div>
+        
+        <div style="font-family:var(--mono);font-size:10px;color:var(--mute);margin-top:10px;">macOS 15.0+</div>
+      </div>
+      <div class="release-body" style="font-family:var(--helv);font-size:16px;line-height:1.6;color:rgba(27,28,30,.82);">
+        <h3>GitHub Dark terminal, plus 35 bugs squashed</h3>
                 <ul>
                     <li><b>New default terminal theme.</b> Work's embedded terminals now open with a GitHub Dark palette (#24292e on #d1d5da), matching what most devs already live in via VS Code/Cursor. One-line revert path; a Terminal Settings pane with Basic / Homebrew / VS Code Dark+ presets is coming.</li>
                     <li><b>"Project Not Found" fixed.</b> Starting a session in a directory Work hadn't seen before sometimes rendered a "Project Not Found" empty state in the detail pane. Synthetic projects are now inserted into the store synchronously so navigation never misses.</li>
@@ -512,76 +349,55 @@
                     <li><b>PID-recycle guard before SIGKILL.</b> Tab close re-verifies the target pid still belongs to a Work descendant before the 3s-later kill, so we can't accidentally signal an unrelated process that reused the pid.</li>
                     <li><b>Misc.</b> Scope tooltip fixed (`~/.claude.json`, not `~/.claude/settings.json`). `force` parameter on close() honored. `sendInputWhenReady` sleep clamped to timeout. AppleScript escaping consolidated. Conflict filter no longer dead-coded. ContentUnavailableView empty-state flashes fixed.</li>
                 </ul>
-        </div>
+      </div>
     </article>
-    <article class="release" id="v1-0-11">
-        <header class="release-header">
-            <div class="release-title-row">
-                <h2 class="release-version">
-                    <a href="#v1-0-11" class="anchor-link" aria-label="Permalink to v1.0.11" title="Copy link to this release">#</a>
-                    v1.0.11 
-                </h2>
-                <span class="release-date">April 17, 2026</span>
-            </div>
-            <div class="release-meta">
-                <a href="https://work.munyamakosa.com/Work.dmg" class="download-link">
-                    Download DMG <span class="size">(9.1 MB)</span>
-                </a>
-                <span class="min-system">macOS 15.0+</span>
-            </div>
-        </header>
-        <div class="release-notes">
-            <h3>"Open directory" new sessions are reachable now</h3>
+    <article id="v1-0-11" class="release-article" style="display:grid;grid-template-columns:200px 1fr;gap:40px;padding:38px 0;border-bottom:1px solid var(--line);">
+      <div>
+        <div style="font-family:var(--helv);font-weight:500;font-size:22px;letter-spacing:-.01em;">
+          <a href="#v1-0-11" style="color:var(--ink);text-decoration:none;">v1.0.11</a>
+        </div>
+        <div style="font-family:var(--mono);font-size:11px;color:var(--mute);margin-top:6px;">2026 · apr 17</div>
+        
+        <div style="font-family:var(--mono);font-size:10px;color:var(--mute);margin-top:10px;">macOS 15.0+</div>
+      </div>
+      <div class="release-body" style="font-family:var(--helv);font-size:16px;line-height:1.6;color:rgba(27,28,30,.82);">
+        <h3>"Open directory" new sessions are reachable now</h3>
                 <ul>
                     <li><b>Fresh directories actually work.</b> Starting a session via "Open directory…" on a folder Work hadn't seen before left you with a tab you couldn't click into and a sidebar that didn't show the new project. Fixed: the picked folder now enters the store synchronously, `selectedProject` points at it, and the new terminal takes over the detail pane immediately.</li>
                     <li><b>No more "project not found" flash.</b> Store.load() (which runs on the file watcher tick or every 30s) was blowing away the ephemeral project and nil-ing selectedProject, causing a layout shift + error state. It now preserves any project the user is actively on until real on-disk data replaces it.</li>
                     <li><b>No eager reload after picking a directory.</b> Removed the extra async reload that was triggering an isLoading skeleton + layout shift seconds after the picker closed. The file watcher catches the real JSONL when Claude writes it.</li>
                 </ul>
-        </div>
+      </div>
     </article>
-    <article class="release" id="v1-0-10">
-        <header class="release-header">
-            <div class="release-title-row">
-                <h2 class="release-version">
-                    <a href="#v1-0-10" class="anchor-link" aria-label="Permalink to v1.0.10" title="Copy link to this release">#</a>
-                    v1.0.10 
-                </h2>
-                <span class="release-date">April 17, 2026</span>
-            </div>
-            <div class="release-meta">
-                <a href="https://work.munyamakosa.com/Work.dmg" class="download-link">
-                    Download DMG <span class="size">(9.1 MB)</span>
-                </a>
-                <span class="min-system">macOS 15.0+</span>
-            </div>
-        </header>
-        <div class="release-notes">
-            <h3>New-session navigation + live busy indicator</h3>
+    <article id="v1-0-10" class="release-article" style="display:grid;grid-template-columns:200px 1fr;gap:40px;padding:38px 0;border-bottom:1px solid var(--line);">
+      <div>
+        <div style="font-family:var(--helv);font-weight:500;font-size:22px;letter-spacing:-.01em;">
+          <a href="#v1-0-10" style="color:var(--ink);text-decoration:none;">v1.0.10</a>
+        </div>
+        <div style="font-family:var(--mono);font-size:11px;color:var(--mute);margin-top:6px;">2026 · apr 17</div>
+        
+        <div style="font-family:var(--mono);font-size:10px;color:var(--mute);margin-top:10px;">macOS 15.0+</div>
+      </div>
+      <div class="release-body" style="font-family:var(--helv);font-size:16px;line-height:1.6;color:rgba(27,28,30,.82);">
+        <h3>New-session navigation + live busy indicator</h3>
                 <ul>
                     <li><b>Bug fix: new sessions in a different project are now reachable.</b> Opening a new session for a project you weren't viewing left a tab chip in the bar that couldn't be clicked into — the detail pane kept showing the old view. Fixed: session-less tabs now navigate the sidebar to their project and render the live terminal in the detail pane.</li>
                     <li><b>Tabs turn orange while Claude is cooking, green when it's ready.</b> Per-tab activity indicator driven by a lightweight idle timer (zero parsing, zero polling). Orange during streaming, back to green 700ms after output stops.</li>
                     <li><b>Red dot on crash/kill.</b> Failed exits and killed sessions now render red instead of orange, so the color no longer collides with the busy state.</li>
                 </ul>
-        </div>
+      </div>
     </article>
-    <article class="release" id="v1-0-9">
-        <header class="release-header">
-            <div class="release-title-row">
-                <h2 class="release-version">
-                    <a href="#v1-0-9" class="anchor-link" aria-label="Permalink to v1.0.9" title="Copy link to this release">#</a>
-                    v1.0.9 
-                </h2>
-                <span class="release-date">April 17, 2026</span>
-            </div>
-            <div class="release-meta">
-                <a href="https://work.munyamakosa.com/Work.dmg" class="download-link">
-                    Download DMG <span class="size">(9.1 MB)</span>
-                </a>
-                <span class="min-system">macOS 15.0+</span>
-            </div>
-        </header>
-        <div class="release-notes">
-            <h3>Embedded terminals + integrations, built for Opus 4.7</h3>
+    <article id="v1-0-9" class="release-article" style="display:grid;grid-template-columns:200px 1fr;gap:40px;padding:38px 0;border-bottom:1px solid var(--line);">
+      <div>
+        <div style="font-family:var(--helv);font-weight:500;font-size:22px;letter-spacing:-.01em;">
+          <a href="#v1-0-9" style="color:var(--ink);text-decoration:none;">v1.0.9</a>
+        </div>
+        <div style="font-family:var(--mono);font-size:11px;color:var(--mute);margin-top:6px;">2026 · apr 17</div>
+        
+        <div style="font-family:var(--mono);font-size:10px;color:var(--mute);margin-top:10px;">macOS 15.0+</div>
+      </div>
+      <div class="release-body" style="font-family:var(--helv);font-size:16px;line-height:1.6;color:rgba(27,28,30,.82);">
+        <h3>Embedded terminals + integrations, built for Opus 4.7</h3>
                 <ul>
                     <li><b>Embedded Claude Code terminals.</b> Run six Claude sessions in one window instead of juggling Terminal.app. Real PTY processes, proper scrollback, drag to reorder, hover to close. New Session popover picks the project, optionally names the session, or opens a fresh directory.</li>
                     <li><b>Tab bar with Chrome-style chips.</b> Each open session is a tab at the top of the detail pane. Right-click for Close, Open in Terminal.app. Cmd+1–9 to switch instantly.</li>
@@ -593,26 +409,19 @@
                     <li><b>Faster Usage + sidebar.</b> Memoized filtered projects, session search results, and heatmap cells. Big projects with many sessions no longer re-compute on every keystroke.</li>
                     <li><b>Tuned for Opus 4.7.</b> New model defaults aligned with Claude Code v2.1.112+, xhigh effort as the recommended setting, and the new tokenizer's larger max_tokens floor respected when opening sessions.</li>
                 </ul>
-        </div>
+      </div>
     </article>
-    <article class="release" id="v1-0-8">
-        <header class="release-header">
-            <div class="release-title-row">
-                <h2 class="release-version">
-                    <a href="#v1-0-8" class="anchor-link" aria-label="Permalink to v1.0.8" title="Copy link to this release">#</a>
-                    v1.0.8 
-                </h2>
-                <span class="release-date">April 14, 2026</span>
-            </div>
-            <div class="release-meta">
-                <a href="https://work.munyamakosa.com/Work.dmg" class="download-link">
-                    Download DMG <span class="size">(7.2 MB)</span>
-                </a>
-                <span class="min-system">macOS 15.0+</span>
-            </div>
-        </header>
-        <div class="release-notes">
-            <h3>Skills, reimagined</h3>
+    <article id="v1-0-8" class="release-article" style="display:grid;grid-template-columns:200px 1fr;gap:40px;padding:38px 0;border-bottom:1px solid var(--line);">
+      <div>
+        <div style="font-family:var(--helv);font-weight:500;font-size:22px;letter-spacing:-.01em;">
+          <a href="#v1-0-8" style="color:var(--ink);text-decoration:none;">v1.0.8</a>
+        </div>
+        <div style="font-family:var(--mono);font-size:11px;color:var(--mute);margin-top:6px;">2026 · apr 14</div>
+        
+        <div style="font-family:var(--mono);font-size:10px;color:var(--mute);margin-top:10px;">macOS 15.0+</div>
+      </div>
+      <div class="release-body" style="font-family:var(--helv);font-size:16px;line-height:1.6;color:rgba(27,28,30,.82);">
+        <h3>Skills, reimagined</h3>
                 <ul>
                     <li><b>Full skill metadata.</b> Expanded SKILL.md parsing: when_to_use, allowed-tools, model, effort, paths, argument-hint, user-invocable, disable-model-invocation, license — all surfaced as typed metadata chips in the detail view.</li>
                     <li><b>Rendered SKILL.md preview.</b> Click "View SKILL.md" on any skill to read the full body rendered as Markdown (with proper code blocks, headings, lists). No more guessing what a skill does.</li>
@@ -627,50 +436,36 @@
                     <li><b>New Marketplace tab.</b> Browse plugins from every marketplace installed on your machine. Install / Update / Uninstall via Claude's CLI with one click.</li>
                     <li><b>Today token counter.</b> The Usage tab now leads with a hero card showing today's tokens, vs-yesterday delta, and a Input/Output/Cache split.</li>
                 </ul>
-        </div>
+      </div>
     </article>
-    <article class="release" id="v1-0-7">
-        <header class="release-header">
-            <div class="release-title-row">
-                <h2 class="release-version">
-                    <a href="#v1-0-7" class="anchor-link" aria-label="Permalink to v1.0.7" title="Copy link to this release">#</a>
-                    v1.0.7 
-                </h2>
-                <span class="release-date">April 14, 2026</span>
-            </div>
-            <div class="release-meta">
-                <a href="https://work.munyamakosa.com/Work.dmg" class="download-link">
-                    Download DMG <span class="size">(6.8 MB)</span>
-                </a>
-                <span class="min-system">macOS 15.0+</span>
-            </div>
-        </header>
-        <div class="release-notes">
-            <h3>Roomier on first launch</h3>
+    <article id="v1-0-7" class="release-article" style="display:grid;grid-template-columns:200px 1fr;gap:40px;padding:38px 0;border-bottom:1px solid var(--line);">
+      <div>
+        <div style="font-family:var(--helv);font-weight:500;font-size:22px;letter-spacing:-.01em;">
+          <a href="#v1-0-7" style="color:var(--ink);text-decoration:none;">v1.0.7</a>
+        </div>
+        <div style="font-family:var(--mono);font-size:11px;color:var(--mute);margin-top:6px;">2026 · apr 14</div>
+        
+        <div style="font-family:var(--mono);font-size:10px;color:var(--mute);margin-top:10px;">macOS 15.0+</div>
+      </div>
+      <div class="release-body" style="font-family:var(--helv);font-size:16px;line-height:1.6;color:rgba(27,28,30,.82);">
+        <h3>Roomier on first launch</h3>
                 <ul>
                     <li><b>Bigger initial window.</b> First-launch size bumped 15% (1010 × 670) so the new home screen, sidebar, and Usage charts breathe properly out of the box.</li>
                 </ul>
                 <p>Existing users keep their saved window size — only first-time installs see the new default.</p>
-        </div>
+      </div>
     </article>
-    <article class="release" id="v1-0-6">
-        <header class="release-header">
-            <div class="release-title-row">
-                <h2 class="release-version">
-                    <a href="#v1-0-6" class="anchor-link" aria-label="Permalink to v1.0.6" title="Copy link to this release">#</a>
-                    v1.0.6 
-                </h2>
-                <span class="release-date">April 14, 2026</span>
-            </div>
-            <div class="release-meta">
-                <a href="https://work.munyamakosa.com/Work.dmg" class="download-link">
-                    Download DMG <span class="size">(6.8 MB)</span>
-                </a>
-                <span class="min-system">macOS 15.0+</span>
-            </div>
-        </header>
-        <div class="release-notes">
-            <h3>Renames that actually persist + a usage page worth opening</h3>
+    <article id="v1-0-6" class="release-article" style="display:grid;grid-template-columns:200px 1fr;gap:40px;padding:38px 0;border-bottom:1px solid var(--line);">
+      <div>
+        <div style="font-family:var(--helv);font-weight:500;font-size:22px;letter-spacing:-.01em;">
+          <a href="#v1-0-6" style="color:var(--ink);text-decoration:none;">v1.0.6</a>
+        </div>
+        <div style="font-family:var(--mono);font-size:11px;color:var(--mute);margin-top:6px;">2026 · apr 14</div>
+        
+        <div style="font-family:var(--mono);font-size:10px;color:var(--mute);margin-top:10px;">macOS 15.0+</div>
+      </div>
+      <div class="release-body" style="font-family:var(--helv);font-size:16px;line-height:1.6;color:rgba(27,28,30,.82);">
+        <h3>Renames that actually persist + a usage page worth opening</h3>
                 <ul>
                     <li><b>Renames now propagate to Claude.</b> When you rename a session in Work, Work invokes <code>claude --resume &lt;id&gt; --name &lt;newname&gt;</code> headlessly to write the name into Claude's own session file. The new name shows up in <code>claude --resume</code>'s picker and in the terminal title — not just in Work.</li>
                     <li><b>Usage analytics with Week / Month / Year.</b> A new Activity card on the Usage tab shows tokens this period, daily average, peak day, and a clean bar chart. Switch ranges with the segmented control.</li>
@@ -679,26 +474,19 @@
                     <li><b>Token counts go to billions and trillions.</b> K, M, B, T suffixes so heavy usage still reads cleanly.</li>
                     <li><b>Polish.</b> Skeleton loading state for the Usage tab while scanning. Activity card chart redesigned with weekly bars for the Month view (no more dead-thin daily lines).</li>
                 </ul>
-        </div>
+      </div>
     </article>
-    <article class="release" id="v1-0-5">
-        <header class="release-header">
-            <div class="release-title-row">
-                <h2 class="release-version">
-                    <a href="#v1-0-5" class="anchor-link" aria-label="Permalink to v1.0.5" title="Copy link to this release">#</a>
-                    v1.0.5 
-                </h2>
-                <span class="release-date">April 14, 2026</span>
-            </div>
-            <div class="release-meta">
-                <a href="https://work.munyamakosa.com/Work.dmg" class="download-link">
-                    Download DMG <span class="size">(6.6 MB)</span>
-                </a>
-                <span class="min-system">macOS 15.0+</span>
-            </div>
-        </header>
-        <div class="release-notes">
-            <h3>Big numbers, bigger reach</h3>
+    <article id="v1-0-5" class="release-article" style="display:grid;grid-template-columns:200px 1fr;gap:40px;padding:38px 0;border-bottom:1px solid var(--line);">
+      <div>
+        <div style="font-family:var(--helv);font-weight:500;font-size:22px;letter-spacing:-.01em;">
+          <a href="#v1-0-5" style="color:var(--ink);text-decoration:none;">v1.0.5</a>
+        </div>
+        <div style="font-family:var(--mono);font-size:11px;color:var(--mute);margin-top:6px;">2026 · apr 14</div>
+        
+        <div style="font-family:var(--mono);font-size:10px;color:var(--mute);margin-top:10px;">macOS 15.0+</div>
+      </div>
+      <div class="release-body" style="font-family:var(--helv);font-size:16px;line-height:1.6;color:rgba(27,28,30,.82);">
+        <h3>Big numbers, bigger reach</h3>
                 <ul>
                     <li><b>Token counts now scale to billions and trillions</b> — K, M, B, T suffixes so huge usage totals stay readable.</li>
                     <li><b>Rename from the home screen</b> — right-click the feature card or any "Jump back in" card to rename. A subtle pencil icon appears on hover for discoverability.</li>
@@ -706,26 +494,19 @@
                 </ul>
 
                 <p>First release with working silent auto-update. From now on new versions download in the background and flip the badge to "Relaunch to update" when ready.</p>
-        </div>
+      </div>
     </article>
-    <article class="release" id="v1-0-4">
-        <header class="release-header">
-            <div class="release-title-row">
-                <h2 class="release-version">
-                    <a href="#v1-0-4" class="anchor-link" aria-label="Permalink to v1.0.4" title="Copy link to this release">#</a>
-                    v1.0.4 
-                </h2>
-                <span class="release-date">April 13, 2026</span>
-            </div>
-            <div class="release-meta">
-                <a href="https://work.munyamakosa.com/Work.dmg" class="download-link">
-                    Download DMG <span class="size">(6.5 MB)</span>
-                </a>
-                <span class="min-system">macOS 15.0+</span>
-            </div>
-        </header>
-        <div class="release-notes">
-            <h3>Session superpowers</h3>
+    <article id="v1-0-4" class="release-article" style="display:grid;grid-template-columns:200px 1fr;gap:40px;padding:38px 0;">
+      <div>
+        <div style="font-family:var(--helv);font-weight:500;font-size:22px;letter-spacing:-.01em;">
+          <a href="#v1-0-4" style="color:var(--ink);text-decoration:none;">v1.0.4</a>
+        </div>
+        <div style="font-family:var(--mono);font-size:11px;color:var(--mute);margin-top:6px;">2026 · apr 13</div>
+        <div style="display:inline-block;font-family:var(--mono);font-size:10px;letter-spacing:.08em;text-transform:uppercase;border:1px solid var(--line2);padding:3px 8px;margin-top:12px;">first build</div>
+        <div style="font-family:var(--mono);font-size:10px;color:var(--mute);margin-top:10px;">macOS 15.0+</div>
+      </div>
+      <div class="release-body" style="font-family:var(--helv);font-size:16px;line-height:1.6;color:rgba(27,28,30,.82);">
+        <h3>Session superpowers</h3>
                 <ul>
                     <li><b>Redesigned home screen</b> — App Store–style feature card shows your most recent session with one-click resume. "Jump back in" grid shows the next 4.</li>
                     <li><b>Cross-project session search</b> — type in the sidebar to search sessions across every project by name, project, or message content.</li>
@@ -737,43 +518,17 @@
                 </ul>
 
                 <p>All aliases and hide flags live in <code>~/Library/Application Support/com.munyamakosa.work/</code> — nothing Work writes touches Claude's files.</p>
-        </div>
+      </div>
     </article>
     </main>
 
-    <footer>
-        <div class="container">
-            <p>Atelier · built by <a href="https://munyamakosa.com">Munya Makosa</a> · <a href="/appcast.xml">appcast.xml</a></p>
+    <footer style="border-top:1px solid var(--line);">
+        <div class="responsive-padding" style="max-width:1180px;margin:0 auto;padding:36px 40px;font-family:var(--mono);font-size:11px;color:var(--mute);display:flex;justify-content:space-between;flex-wrap:wrap;gap:16px;">
+            <span>© mmxxvi atelier · a workshop for claude code</span>
+            <span><a class="footer-link" href="/" style="color:var(--mute);text-decoration:none;">← home</a></span>
         </div>
     </footer>
+</div>
 
-    <script>
-    // Click the "#" anchor to copy a shareable URL to the clipboard + flash
-    // the release card. Browser still handles the URL fragment navigation.
-    document.addEventListener('click', function (e) {
-        var link = e.target.closest('a.anchor-link');
-        if (!link) return;
-        var href = link.getAttribute('href');
-        if (!href || href[0] !== '#') return;
-        var fullURL = location.origin + location.pathname + href;
-        if (navigator.clipboard && window.isSecureContext) {
-            navigator.clipboard.writeText(fullURL).catch(function () {});
-        }
-        // Show a tiny "Copied!" toast
-        var toast = document.createElement('div');
-        toast.textContent = 'Link copied';
-        toast.setAttribute('style', [
-            'position:fixed','bottom:28px','left:50%','transform:translateX(-50%)',
-            'background:rgba(90,143,212,0.95)','color:#fff','font-size:13px',
-            'font-family:var(--font-mono, monospace)','padding:8px 14px',
-            'border-radius:6px','z-index:9999','opacity:0',
-            'transition:opacity 0.2s','pointer-events:none'
-        ].join(';'));
-        document.body.appendChild(toast);
-        requestAnimationFrame(function () { toast.style.opacity = '1'; });
-        setTimeout(function () { toast.style.opacity = '0'; }, 1400);
-        setTimeout(function () { toast.remove(); }, 1800);
-    });
-    </script>
 </body>
 </html>

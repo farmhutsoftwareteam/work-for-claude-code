@@ -2,12 +2,13 @@
 'use strict';
 
 /**
- * Build a human-readable releases page from docs/appcast.xml.
+ * Build a human-readable changelog from docs/appcast.xml.
  *
  *   node scripts/build-releases.js
  *
- * Produces docs/releases.html — each <item> in the appcast rendered as a
- * dated section with release notes.
+ * Produces docs/releases.html using the Atelier dovetail design — each
+ * <item> in the appcast renders as one <article> with a 200px-wide date
+ * column on the left and the release body on the right.
  */
 
 const fs = require('fs');
@@ -57,319 +58,207 @@ function extractAttr(s, re) {
 function formatDate(pubDate) {
     const d = new Date(pubDate);
     if (isNaN(d.getTime())) return pubDate || '';
-    return d.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
+    return d.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })
+        .toLowerCase();
 }
+
+function formatDateShort(pubDate) {
+    const d = new Date(pubDate);
+    if (isNaN(d.getTime())) return pubDate || '';
+    const y = d.getFullYear();
+    const mon = d.toLocaleDateString('en-US', { month: 'short' }).toLowerCase();
+    const day = String(d.getDate()).padStart(2, '0');
+    return `${y} · ${mon} ${day}`;
+}
+
 function formatSize(bytes) {
     const b = parseInt(bytes, 10);
     if (!b) return '';
     return (b / (1024 * 1024)).toFixed(1) + ' MB';
 }
 
-// ─── HTML ───────────────────────────────────────────────────────────────────
-
 function escHtml(s) {
-    return String(s)
+    return String(s || '')
         .replace(/&/g, '&amp;')
         .replace(/</g, '&lt;')
         .replace(/>/g, '&gt;')
-        .replace(/"/g, '&quot;')
-        .replace(/'/g, '&#39;');
+        .replace(/"/g, '&quot;');
 }
 
-function slugifyVersion(v) {
-    // 1.0.12 → v1-0-12 (valid HTML id, stable shareable anchor)
-    return 'v' + String(v).replace(/\./g, '-');
+function versionAnchor(version) {
+    return 'v' + String(version || '').replace(/\./g, '-').toLowerCase();
 }
 
-function renderRelease(item, isLatest) {
-    const badge = isLatest
-        ? `<span class="badge badge-latest">Latest</span>`
-        : '';
-    const sizeStr = formatSize(item.length);
-    const anchor = slugifyVersion(item.version);
+// ─── Render one article ─────────────────────────────────────────────────────
+
+function renderRelease(item, isLatest, isFirst) {
+    const anchor = versionAnchor(item.version);
+    const dateShort = formatDateShort(item.pubDate);
+    const tag = isLatest
+        ? '<div style="display:inline-block;font-family:var(--mono);font-size:10px;letter-spacing:.08em;text-transform:uppercase;border:1px solid var(--line2);padding:3px 8px;margin-top:12px;">latest</div>'
+        : isFirst
+            ? '<div style="display:inline-block;font-family:var(--mono);font-size:10px;letter-spacing:.08em;text-transform:uppercase;border:1px solid var(--line2);padding:3px 8px;margin-top:12px;">first build</div>'
+            : '';
+    const lastBorder = isFirst ? '' : 'border-bottom:1px solid var(--line);';
     return `
-    <article class="release" id="${anchor}">
-        <header class="release-header">
-            <div class="release-title-row">
-                <h2 class="release-version">
-                    <a href="#${anchor}" class="anchor-link" aria-label="Permalink to v${escHtml(item.version)}" title="Copy link to this release">#</a>
-                    v${escHtml(item.version)} ${badge}
-                </h2>
-                <span class="release-date">${escHtml(formatDate(item.pubDate))}</span>
-            </div>
-            <div class="release-meta">
-                <a href="${escHtml(item.downloadUrl)}" class="download-link">
-                    Download DMG${sizeStr ? ` <span class="size">(${sizeStr})</span>` : ''}
-                </a>
-                ${item.minSystem ? `<span class="min-system">macOS ${escHtml(item.minSystem)}+</span>` : ''}
-            </div>
-        </header>
-        <div class="release-notes">
-            ${item.notes}
+    <article id="${anchor}" class="release-article" style="display:grid;grid-template-columns:200px 1fr;gap:40px;padding:38px 0;${lastBorder}">
+      <div>
+        <div style="font-family:var(--helv);font-weight:500;font-size:22px;letter-spacing:-.01em;">
+          <a href="#${anchor}" style="color:var(--ink);text-decoration:none;">v${escHtml(item.version)}</a>
         </div>
+        <div style="font-family:var(--mono);font-size:11px;color:var(--mute);margin-top:6px;">${escHtml(dateShort)}</div>
+        ${tag}
+        ${item.minSystem ? `<div style="font-family:var(--mono);font-size:10px;color:var(--mute);margin-top:10px;">macOS ${escHtml(item.minSystem)}+</div>` : ''}
+      </div>
+      <div class="release-body" style="font-family:var(--helv);font-size:16px;line-height:1.6;color:rgba(27,28,30,.82);">
+        ${item.notes}
+      </div>
     </article>`;
 }
 
+// ─── Page ───────────────────────────────────────────────────────────────────
+
 function renderPage(items) {
-    const latestVersion = items[0]?.version || '';
+    const latestVersion = items[0] ? items[0].version : '';
     const latestDate = items[0] ? formatDate(items[0].pubDate) : '';
-    const releasesHtml = items.map((it, i) => renderRelease(it, i === 0)).join('');
+    const releasesHtml = items.map((it, i) => renderRelease(it, i === 0, i === items.length - 1)).join('');
 
     return `<!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Releases | Atelier</title>
-    <meta name="description" content="Every version of Atelier, what shipped when. Latest: v${escHtml(latestVersion)} (${escHtml(latestDate)}).">
+    <title>Changelog — Atelier</title>
+    <meta name="description" content="Every release of Atelier, dated and itemised. Latest: v${escHtml(latestVersion)} (${escHtml(latestDate)}).">
     <link rel="canonical" href="${SITE_URL}/releases.html">
     <link rel="alternate" type="application/rss+xml" title="Atelier appcast" href="${SITE_URL}/appcast.xml">
+
     <meta property="og:type" content="website">
-    <meta property="og:title" content="Releases | Atelier">
-    <meta property="og:description" content="Every version of Atelier, what shipped when.">
+    <meta property="og:title" content="Changelog — Atelier">
+    <meta property="og:description" content="Every release of Atelier, dated and itemised.">
+    <meta property="og:image" content="${SITE_URL}/og-image.png">
     <meta property="og:url" content="${SITE_URL}/releases.html">
     <meta property="og:site_name" content="Atelier">
-    <meta name="twitter:card" content="summary">
+    <meta name="twitter:card" content="summary_large_image">
 
     <link rel="icon" type="image/svg+xml" href="/atelier-mark.svg">
     <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32.png">
     <link rel="icon" type="image/png" sizes="16x16" href="/favicon-16.png">
     <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png">
 
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+
     <style>
-    :root {
-        --graphite: #111113;
-        --graphite-surface: #18181b;
-        --graphite-elevated: #1f1f23;
-        --ivory: #f0ece4;
-        --ivory-muted: rgba(240, 236, 228, 0.55);
-        --ivory-faint: rgba(240, 236, 228, 0.12);
-        --ivory-ghost: rgba(240, 236, 228, 0.06);
-        --blue: #4a6fa5;
-        --blue-bright: #5a8fd4;
-        --border: rgba(240, 236, 228, 0.08);
-        --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
-        --font-mono: 'SF Mono', 'Fira Code', 'JetBrains Mono', monospace;
-    }
-    * { margin: 0; padding: 0; box-sizing: border-box; }
-    body { font-family: var(--font-sans); background: var(--graphite); color: var(--ivory); line-height: 1.6; overflow-x: hidden; }
-    a { color: var(--blue-bright); text-decoration: none; }
-    a:hover { text-decoration: underline; }
-    .container { max-width: 960px; margin: 0 auto; padding: 0 24px; }
-    .container-narrow { max-width: 720px; margin: 0 auto; padding: 0 24px; }
+        :root {
+            --ink: #1b1c1e;
+            --paper: #e9eae8;
+            --paper2: #f3f4f2;
+            --paper3: #dcdedb;
+            --line: rgba(27, 28, 30, .18);
+            --line2: rgba(27, 28, 30, .34);
+            --mute: rgba(27, 28, 30, .54);
+            --helv: 'Helvetica Neue', Helvetica, Arial, sans-serif;
+            --mono: 'IBM Plex Mono', ui-monospace, monospace;
+        }
+        * { box-sizing: border-box; }
+        html, body { margin: 0; }
+        body {
+            background: var(--paper);
+            color: var(--ink);
+            -webkit-font-smoothing: antialiased;
+            text-rendering: optimizeLegibility;
+        }
+        ::selection { background: var(--ink); color: var(--paper); }
+        .nav-link { transition: color .12s ease; }
+        .nav-link:hover { color: var(--ink) !important; }
+        .nav-cta { transition: background .12s ease; }
+        .nav-cta:hover { background: #000 !important; }
+        .footer-link { transition: color .12s ease; }
+        .footer-link:hover { color: var(--ink) !important; }
 
-    /* Nav */
-    nav.site-nav {
-        position: fixed; top: 0; left: 0; right: 0; z-index: 100;
-        padding: 16px 0;
-        background: rgba(17, 17, 19, 0.85);
-        backdrop-filter: blur(20px) saturate(1.4);
-        -webkit-backdrop-filter: blur(20px) saturate(1.4);
-        border-bottom: 1px solid var(--border);
-    }
-    nav.site-nav .container { display: flex; align-items: center; justify-content: space-between; }
-    .nav-brand { display: flex; align-items: center; gap: 10px; }
-    .nav-brand img { width: 28px; height: 28px; border-radius: 6px; }
-    .nav-brand span { font-family: var(--font-mono); font-size: 15px; font-weight: 600; letter-spacing: -0.3px; color: var(--ivory); }
-    .nav-links { display: flex; align-items: center; gap: 28px; }
-    .nav-links a { font-size: 14px; font-weight: 450; color: var(--ivory-muted); transition: color 0.15s; }
-    .nav-links a:hover { color: var(--ivory); text-decoration: none; }
-    .nav-links a.active { color: var(--ivory); }
-    .btn-download-nav {
-        font-size: 13px; font-weight: 500; color: var(--ivory) !important;
-        background: var(--blue); padding: 7px 16px; border-radius: 6px;
-        transition: background 0.15s; text-decoration: none;
-    }
-    .btn-download-nav:hover { background: var(--blue-bright); text-decoration: none; }
+        .release-body h3 {
+            font-family: var(--helv);
+            font-weight: 500;
+            font-size: 20px;
+            line-height: 1.25;
+            letter-spacing: -.015em;
+            margin: 0 0 14px;
+            color: var(--ink);
+        }
+        .release-body h4 {
+            font-family: var(--mono);
+            font-size: 11px;
+            letter-spacing: .12em;
+            text-transform: uppercase;
+            color: var(--mute);
+            margin: 22px 0 10px;
+        }
+        .release-body ul { margin: 0 0 16px; padding-left: 18px; }
+        .release-body li { margin-bottom: 8px; }
+        .release-body p { margin: 0 0 14px; }
+        .release-body code {
+            font-family: var(--mono);
+            font-size: 14px;
+            background: var(--paper3);
+            padding: 1px 5px;
+            border-radius: 2px;
+        }
+        .release-body b, .release-body strong { font-weight: 500; color: var(--ink); }
 
-    /* Page */
-    .page-header { padding: 140px 0 40px; }
-    h1.page-title {
-        font-family: var(--font-mono);
-        font-size: clamp(48px, 8vw, 72px);
-        font-weight: 700; letter-spacing: -3px; line-height: 1.0; margin-bottom: 16px;
-    }
-    .page-subtitle {
-        font-size: 18px; color: var(--ivory-muted);
-        max-width: 520px; line-height: 1.6;
-    }
-    .section-label {
-        font-family: var(--font-mono); font-size: 11px; font-weight: 500;
-        text-transform: uppercase; letter-spacing: 1.5px;
-        color: var(--blue-bright); margin-bottom: 16px;
-    }
-
-    /* Release cards */
-    .releases { padding-bottom: 80px; }
-    .release {
-        background: var(--graphite-surface);
-        border: 1px solid var(--border);
-        border-radius: 12px;
-        padding: 32px;
-        margin-bottom: 20px;
-    }
-    .release-header { margin-bottom: 20px; }
-    .release-title-row {
-        display: flex; align-items: baseline; justify-content: space-between;
-        gap: 16px; flex-wrap: wrap; margin-bottom: 10px;
-    }
-    .release-version {
-        font-family: var(--font-mono);
-        font-size: 24px; font-weight: 600; letter-spacing: -0.5px;
-        color: var(--ivory);
-        display: flex; align-items: baseline; gap: 10px;
-    }
-    .anchor-link {
-        font-family: var(--font-mono);
-        font-size: 18px; font-weight: 500;
-        color: var(--ivory-faint);
-        text-decoration: none;
-        opacity: 0;
-        transition: opacity 0.15s, color 0.15s;
-    }
-    .anchor-link:hover { color: var(--blue-bright); text-decoration: none; }
-    .release:hover .anchor-link { opacity: 1; }
-    /* Smooth-scroll target: offset so fixed nav doesn't obscure the heading */
-    .release { scroll-margin-top: 80px; }
-    /* Flash the targeted release briefly so users see where they landed */
-    .release:target {
-        animation: target-pulse 1.8s ease-out;
-    }
-    @keyframes target-pulse {
-        0%   { box-shadow: 0 0 0 0 rgba(90, 143, 212, 0.55); }
-        60%  { box-shadow: 0 0 0 8px rgba(90, 143, 212, 0.0); }
-        100% { box-shadow: 0 0 0 0 rgba(90, 143, 212, 0.0); }
-    }
-    .release-date {
-        font-size: 13px; color: var(--ivory-muted);
-        font-family: var(--font-mono);
-    }
-    .release-meta {
-        display: flex; align-items: center; gap: 16px; flex-wrap: wrap;
-        font-size: 13px;
-    }
-    .download-link {
-        color: var(--blue-bright);
-        font-weight: 500;
-    }
-    .download-link .size { color: var(--ivory-muted); font-family: var(--font-mono); font-size: 12px; }
-    .min-system {
-        color: var(--ivory-muted);
-        font-family: var(--font-mono); font-size: 12px;
-    }
-    .badge {
-        display: inline-block;
-        font-family: var(--font-mono); font-size: 10px; font-weight: 600;
-        text-transform: uppercase; letter-spacing: 1px;
-        padding: 3px 8px; border-radius: 4px;
-        vertical-align: middle;
-        margin-left: 8px;
-    }
-    .badge-latest {
-        background: rgba(74, 111, 165, 0.25);
-        color: var(--blue-bright);
-        border: 1px solid rgba(90, 143, 212, 0.4);
-    }
-
-    /* Release notes content (rendered from appcast CDATA) */
-    .release-notes { color: var(--ivory); }
-    .release-notes h3 {
-        font-size: 16px; font-weight: 600;
-        margin-bottom: 14px; letter-spacing: -0.2px;
-    }
-    .release-notes ul { list-style: none; padding: 0; }
-    .release-notes li {
-        position: relative;
-        padding: 10px 0 10px 22px;
-        border-bottom: 1px solid var(--ivory-ghost);
-        font-size: 14px; line-height: 1.6;
-        color: var(--ivory-muted);
-    }
-    .release-notes li:last-child { border-bottom: none; }
-    .release-notes li::before {
-        content: '›';
-        position: absolute; left: 4px; top: 10px;
-        color: var(--blue-bright);
-        font-family: var(--font-mono); font-weight: 700;
-    }
-    .release-notes li b, .release-notes li strong { color: var(--ivory); font-weight: 600; }
-    .release-notes p { margin-top: 12px; font-size: 14px; color: var(--ivory-muted); }
-    .release-notes code {
-        font-family: var(--font-mono); font-size: 12.5px;
-        background: var(--ivory-ghost); padding: 1px 6px; border-radius: 4px;
-        color: var(--ivory);
-    }
-
-    /* Footer */
-    footer { padding: 40px 0; border-top: 1px solid var(--border); text-align: center; }
-    footer p { font-size: 13px; color: rgba(240, 236, 228, 0.25); }
-
-    @media (max-width: 768px) {
-        .nav-links a:not(.btn-download-nav) { display: none; }
-        .release { padding: 24px; }
-    }
+        @media (max-width: 800px) {
+            .responsive-padding { padding-left: 24px !important; padding-right: 24px !important; }
+            .responsive-nav { gap: 18px !important; }
+            .release-article { grid-template-columns: 1fr !important; gap: 16px !important; padding: 28px 0 !important; }
+            h1 { font-size: 40px !important; }
+        }
     </style>
 </head>
 <body>
-    <nav class="site-nav">
-        <div class="container">
-            <a href="/" class="nav-brand">
-                <img src="/icon-256.png" alt="Atelier">
-                <span>Atelier</span>
-            </a>
-            <div class="nav-links">
-                <a href="/">Home</a>
-                <a href="/recipes/">Recipes</a>
-                <a href="/releases.html" class="active">Releases</a>
-                <a href="/Work.dmg" class="btn-download-nav">Download</a>
-            </div>
-        </div>
-    </nav>
 
-    <header class="page-header container">
-        <div class="section-label">Changelog</div>
-        <h1 class="page-title">Releases</h1>
-        <p class="page-subtitle">Every version of Atelier, what shipped when. Subscribe via RSS: <a href="/appcast.xml">appcast.xml</a>.</p>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+    <symbol id="dt" viewBox="0 0 64 64" fill="none" stroke="currentColor" stroke-width="6" stroke-linecap="square" stroke-linejoin="miter">
+        <rect x="7" y="7" width="50" height="50"/>
+        <path d="M32 7 L32 24 L46 28 L46 36 L32 40 L32 57"/>
+    </symbol>
+</svg>
+
+<div style="min-height:100vh;">
+
+    <header style="position:sticky;top:0;z-index:40;background:rgba(233,234,232,.86);backdrop-filter:blur(8px);border-bottom:1px solid var(--line);">
+        <div class="responsive-padding" style="max-width:1180px;margin:0 auto;padding:14px 40px;display:flex;align-items:center;justify-content:space-between;">
+            <a href="/" style="display:flex;align-items:center;gap:11px;text-decoration:none;color:var(--ink);">
+                <svg viewBox="0 0 64 64" style="width:26px;height:26px;color:var(--ink);overflow:visible;"><use href="#dt"/></svg>
+                <span style="font-family:var(--helv);font-weight:500;font-size:20px;letter-spacing:-.01em;">atelier</span>
+            </a>
+            <nav class="responsive-nav" style="display:flex;align-items:center;gap:30px;font-family:var(--mono);font-size:12.5px;letter-spacing:.02em;">
+                <a href="/releases.html" style="color:var(--ink);text-decoration:none;">changelog</a>
+                <a class="nav-link" href="/faq.html" style="color:var(--mute);text-decoration:none;">faq</a>
+                <a class="nav-link" href="/pricing.html" style="color:var(--mute);text-decoration:none;">pricing</a>
+                <a class="nav-cta" href="/#download" style="color:var(--paper);background:var(--ink);text-decoration:none;padding:8px 15px;letter-spacing:.04em;">download</a>
+            </nav>
+        </div>
     </header>
 
-    <main class="container releases">
+    <main class="responsive-padding" style="max-width:1180px;margin:0 auto;padding:72px 40px 96px;">
+        <div style="border-bottom:1px solid var(--line2);padding-bottom:34px;margin-bottom:8px;">
+            <div style="font-family:var(--mono);font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:var(--mute);margin-bottom:16px;">release notes</div>
+            <h1 style="font-family:var(--helv);font-weight:500;font-size:54px;line-height:1.02;letter-spacing:-.035em;margin:0;">Changelog</h1>
+            <p style="font-family:var(--mono);font-size:12.5px;color:var(--mute);margin-top:16px;max-width:52ch;line-height:1.7;">Every release of Atelier, dated and itemised. Subscribe via RSS: <a href="/appcast.xml" style="color:var(--ink);">appcast.xml</a>.</p>
+        </div>
+
         ${releasesHtml}
     </main>
 
-    <footer>
-        <div class="container">
-            <p>Atelier · built by <a href="https://munyamakosa.com">Munya Makosa</a> · <a href="/appcast.xml">appcast.xml</a></p>
+    <footer style="border-top:1px solid var(--line);">
+        <div class="responsive-padding" style="max-width:1180px;margin:0 auto;padding:36px 40px;font-family:var(--mono);font-size:11px;color:var(--mute);display:flex;justify-content:space-between;flex-wrap:wrap;gap:16px;">
+            <span>© mmxxvi atelier · a workshop for claude code</span>
+            <span><a class="footer-link" href="/" style="color:var(--mute);text-decoration:none;">← home</a></span>
         </div>
     </footer>
+</div>
 
-    <script>
-    // Click the "#" anchor to copy a shareable URL to the clipboard + flash
-    // the release card. Browser still handles the URL fragment navigation.
-    document.addEventListener('click', function (e) {
-        var link = e.target.closest('a.anchor-link');
-        if (!link) return;
-        var href = link.getAttribute('href');
-        if (!href || href[0] !== '#') return;
-        var fullURL = location.origin + location.pathname + href;
-        if (navigator.clipboard && window.isSecureContext) {
-            navigator.clipboard.writeText(fullURL).catch(function () {});
-        }
-        // Show a tiny "Copied!" toast
-        var toast = document.createElement('div');
-        toast.textContent = 'Link copied';
-        toast.setAttribute('style', [
-            'position:fixed','bottom:28px','left:50%','transform:translateX(-50%)',
-            'background:rgba(90,143,212,0.95)','color:#fff','font-size:13px',
-            'font-family:var(--font-mono, monospace)','padding:8px 14px',
-            'border-radius:6px','z-index:9999','opacity:0',
-            'transition:opacity 0.2s','pointer-events:none'
-        ].join(';'));
-        document.body.appendChild(toast);
-        requestAnimationFrame(function () { toast.style.opacity = '1'; });
-        setTimeout(function () { toast.style.opacity = '0'; }, 1400);
-        setTimeout(function () { toast.remove(); }, 1800);
-    });
-    </script>
 </body>
 </html>
 `;
@@ -378,19 +267,12 @@ function renderPage(items) {
 // ─── Main ───────────────────────────────────────────────────────────────────
 
 function main() {
-    if (!fs.existsSync(APPCAST)) {
-        console.error(`✗ appcast not found at ${APPCAST}`);
-        process.exit(1);
-    }
     const xml = fs.readFileSync(APPCAST, 'utf8');
     const items = parseItems(xml);
-    if (!items.length) {
-        console.error('✗ no <item> entries in appcast');
-        process.exit(1);
-    }
     const html = renderPage(items);
     fs.writeFileSync(OUT, html);
-    console.log(`✓ releases.html (${items.length} releases, latest v${items[0].version})`);
+    const latest = items[0] ? items[0].version : 'unknown';
+    console.log(`✓ releases.html (${items.length} releases, latest v${latest})`);
 }
 
 main();

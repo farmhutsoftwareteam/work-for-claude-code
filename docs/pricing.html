@@ -1,0 +1,139 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Pricing — Atelier</title>
+    <meta name="description" content="Atelier is free while in active development. Every feature, no account, no license keys.">
+    <link rel="canonical" href="https://work.munyamakosa.com/pricing.html">
+
+    <meta property="og:type" content="website">
+    <meta property="og:title" content="Pricing — Atelier">
+    <meta property="og:description" content="Atelier is free while in active development. Every feature, no account, no license keys.">
+    <meta property="og:image" content="https://work.munyamakosa.com/og-image.png">
+    <meta property="og:url" content="https://work.munyamakosa.com/pricing.html">
+    <meta property="og:site_name" content="Atelier">
+    <meta name="twitter:card" content="summary_large_image">
+
+    <link rel="icon" type="image/svg+xml" href="/atelier-mark.svg">
+    <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32.png">
+    <link rel="icon" type="image/png" sizes="16x16" href="/favicon-16.png">
+    <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png">
+
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+
+    <style>
+        :root {
+            --ink: #1b1c1e;
+            --paper: #e9eae8;
+            --paper2: #f3f4f2;
+            --paper3: #dcdedb;
+            --line: rgba(27, 28, 30, .18);
+            --line2: rgba(27, 28, 30, .34);
+            --mute: rgba(27, 28, 30, .54);
+            --helv: 'Helvetica Neue', Helvetica, Arial, sans-serif;
+            --mono: 'IBM Plex Mono', ui-monospace, monospace;
+        }
+        * { box-sizing: border-box; }
+        html, body { margin: 0; }
+        body {
+            background: var(--paper);
+            color: var(--ink);
+            -webkit-font-smoothing: antialiased;
+            text-rendering: optimizeLegibility;
+        }
+        ::selection { background: var(--ink); color: var(--paper); }
+        .nav-link { transition: color .12s ease; }
+        .nav-link:hover { color: var(--ink) !important; }
+        .nav-cta { transition: background .12s ease; }
+        .nav-cta:hover { background: #000 !important; }
+        .btn-primary { transition: background .12s ease; }
+        .btn-primary:hover { background: #000 !important; }
+        .footer-link { transition: color .12s ease; }
+        .footer-link:hover { color: var(--ink) !important; }
+
+        @media (max-width: 800px) {
+            .responsive-padding { padding-left: 24px !important; padding-right: 24px !important; }
+            .responsive-nav { gap: 18px !important; }
+            .responsive-grid-2 { grid-template-columns: 1fr !important; gap: 32px !important; }
+            h1 { font-size: 88px !important; line-height: .94 !important; }
+        }
+    </style>
+</head>
+<body>
+
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+    <symbol id="dt" viewBox="0 0 64 64" fill="none" stroke="currentColor" stroke-width="6" stroke-linecap="square" stroke-linejoin="miter">
+        <rect x="7" y="7" width="50" height="50"/>
+        <path d="M32 7 L32 24 L46 28 L46 36 L32 40 L32 57"/>
+    </symbol>
+</svg>
+
+<div style="min-height:100vh;">
+
+    <header style="position:sticky;top:0;z-index:40;background:rgba(233,234,232,.86);backdrop-filter:blur(8px);border-bottom:1px solid var(--line);">
+        <div class="responsive-padding" style="max-width:1180px;margin:0 auto;padding:14px 40px;display:flex;align-items:center;justify-content:space-between;">
+            <a href="/" style="display:flex;align-items:center;gap:11px;text-decoration:none;color:var(--ink);">
+                <svg viewBox="0 0 64 64" style="width:26px;height:26px;color:var(--ink);overflow:visible;"><use href="#dt"/></svg>
+                <span style="font-family:var(--helv);font-weight:500;font-size:20px;letter-spacing:-.01em;">atelier</span>
+            </a>
+            <nav class="responsive-nav" style="display:flex;align-items:center;gap:30px;font-family:var(--mono);font-size:12.5px;letter-spacing:.02em;">
+                <a class="nav-link" href="/releases.html" style="color:var(--mute);text-decoration:none;">changelog</a>
+                <a class="nav-link" href="/faq.html" style="color:var(--mute);text-decoration:none;">faq</a>
+                <a href="/pricing.html" style="color:var(--ink);text-decoration:none;">pricing</a>
+                <a class="nav-cta" href="/#download" style="color:var(--paper);background:var(--ink);text-decoration:none;padding:8px 15px;letter-spacing:.04em;">download</a>
+            </nav>
+        </div>
+    </header>
+
+    <main class="responsive-padding" style="max-width:1180px;margin:0 auto;padding:72px 40px 96px;">
+        <div style="font-family:var(--mono);font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:var(--mute);margin-bottom:18px;">the value story</div>
+
+        <section data-screen-label="Pricing" class="responsive-grid-2" style="display:grid;grid-template-columns:1.1fr 1fr;gap:64px;align-items:start;border-bottom:1px solid var(--line2);padding-bottom:56px;">
+            <div>
+                <h1 style="font-family:var(--helv);font-weight:500;font-size:120px;line-height:.92;letter-spacing:-.05em;margin:0;">Free.</h1>
+                <p style="font-family:var(--helv);font-size:20px;line-height:1.5;color:rgba(27,28,30,.82);margin:24px 0 0;max-width:34ch;">Every feature, no account, no license keys — free while Atelier is in active development.</p>
+                <a class="btn-primary" href="/Work.dmg" style="display:inline-flex;align-items:center;gap:12px;background:var(--ink);color:var(--paper);text-decoration:none;padding:16px 26px;font-family:var(--helv);font-weight:500;font-size:17px;margin-top:32px;">
+                    <svg viewBox="0 0 64 64" style="width:20px;height:20px;color:var(--paper);overflow:visible;"><use href="#dt"/></svg>
+                    Download for Mac · .dmg
+                </a>
+                <div style="font-family:var(--mono);font-size:12px;color:var(--mute);margin-top:14px;">macOS 15+ · windows &amp; linux soon</div>
+            </div>
+
+            <div style="border:1px solid var(--line2);">
+                <div style="font-family:var(--mono);font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--mute);padding:16px 20px;border-bottom:1px solid var(--line);">what's included</div>
+                <div style="font-family:var(--helv);font-size:16px;">
+                    <div style="display:flex;justify-content:space-between;align-items:center;padding:15px 20px;border-bottom:1px solid var(--line);">Six parallel sessions<span style="font-family:var(--mono);color:var(--mute);font-size:13px;">✓</span></div>
+                    <div style="display:flex;justify-content:space-between;align-items:center;padding:15px 20px;border-bottom:1px solid var(--line);">Searchable history<span style="font-family:var(--mono);color:var(--mute);font-size:13px;">✓</span></div>
+                    <div style="display:flex;justify-content:space-between;align-items:center;padding:15px 20px;border-bottom:1px solid var(--line);">MCP manager<span style="font-family:var(--mono);color:var(--mute);font-size:13px;">✓</span></div>
+                    <div style="display:flex;justify-content:space-between;align-items:center;padding:15px 20px;border-bottom:1px solid var(--line);">Skills &amp; plugins<span style="font-family:var(--mono);color:var(--mute);font-size:13px;">✓</span></div>
+                    <div style="display:flex;justify-content:space-between;align-items:center;padding:15px 20px;border-bottom:1px solid var(--line);">Per-session control<span style="font-family:var(--mono);color:var(--mute);font-size:13px;">✓</span></div>
+                    <div style="display:flex;justify-content:space-between;align-items:center;padding:15px 20px;">In-place updates<span style="font-family:var(--mono);color:var(--mute);font-size:13px;">✓</span></div>
+                </div>
+            </div>
+        </section>
+
+        <section class="responsive-grid-2" style="display:grid;grid-template-columns:280px 1fr;gap:48px;padding-top:48px;">
+            <div>
+                <div style="font-family:var(--mono);font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:var(--mute);margin-bottom:14px;">why free</div>
+                <h2 style="font-family:var(--helv);font-weight:500;font-size:30px;line-height:1.08;letter-spacing:-.025em;margin:0;">The doorway<br>stays open.</h2>
+            </div>
+            <div style="font-family:var(--helv);font-size:17px;line-height:1.6;color:rgba(27,28,30,.82);max-width:58ch;">
+                <p style="margin:0 0 16px;">Atelier is built in the open, for people who already live in Claude&nbsp;Code. While it's growing, the goal is reach and feedback — not revenue. You get the whole workshop, and the project gets sharper for it.</p>
+                <p style="margin:0;">If a paid tier ever arrives, it will be for teams and extras — the core workshop will stay free. No surprise paywalls between you and the file system you care most about.</p>
+            </div>
+        </section>
+    </main>
+
+    <footer style="border-top:1px solid var(--line);">
+        <div class="responsive-padding" style="max-width:1180px;margin:0 auto;padding:36px 40px;font-family:var(--mono);font-size:11px;color:var(--mute);display:flex;justify-content:space-between;flex-wrap:wrap;gap:16px;">
+            <span>© mmxxvi atelier · a workshop for claude code</span>
+            <span><a class="footer-link" href="/" style="color:var(--mute);text-decoration:none;">← home</a></span>
+        </div>
+    </footer>
+</div>
+
+</body>
+</html>
