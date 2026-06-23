@@ -68,8 +68,6 @@ You can drive every Claude Code pattern from here today. The "workshop" framing 
 
 The new logo is a **dovetail joint** - a square frame split by a single seam that interlocks two halves without a nail. Woodworkers have been using dovetails for thousands of years because the joint gets stronger the harder you pull on it. A workshop's mark should be a piece of joinery. This one is.
 
-It works at 16×16 in the menu bar and at 1024×1024 in your dock. Inverts cleanly between ivory and graphite. The kind of mark you'd recognize stamped on the bottom of something you weren't expecting to find it on. That was the brief; the designer delivered on it.
-
 ## What stays unchanged
 
 If you're already running v1.3 or below: your install updates in place. The bundle identifier (`com.munyamakosa.work`) stays - Sparkle keys on it, not on the brand name. The auto-update URL stays live forever; binaries already in the wild point at it, and we don't break things that work. You'll see "Atelier" in your dock the next time you launch. That's the only visible change. Everything else is just better.
