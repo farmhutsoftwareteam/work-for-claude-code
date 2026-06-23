@@ -3,14 +3,14 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Atelier — Browse and Resume Claude Code Sessions on macOS</title>
-    <meta name="description" content="Never lose a Claude Code session. Browse projects, read full conversations, and resume in Terminal — all from a native macOS app. Semantic search, session handoff. Offline and free.">
+    <title>Atelier — A native Mac workshop for Claude Code</title>
+    <meta name="description" content="Six live Claude Code sessions in one window. Every past chat searchable. Every MCP and skill in a real interface instead of hand-edited JSON. Free for macOS.">
     <link rel="canonical" href="https://work.munyamakosa.com/">
 
     <!-- Open Graph -->
     <meta property="og:type" content="website">
-    <meta property="og:title" content="Atelier — Browse and Resume Claude Code Sessions">
-    <meta property="og:description" content="A native macOS app to browse, read, and resume your Claude Code sessions. Fully offline.">
+    <meta property="og:title" content="Atelier — A native Mac workshop for Claude Code">
+    <meta property="og:description" content="Six live Claude Code sessions in one window. Every MCP and skill in a real UI, not hand-edited JSON.">
     <meta property="og:image" content="https://work.munyamakosa.com/og-image.png">
     <meta property="og:image:width" content="1200">
     <meta property="og:image:height" content="630">
@@ -19,8 +19,8 @@
 
     <!-- Twitter -->
     <meta name="twitter:card" content="summary_large_image">
-    <meta name="twitter:title" content="Atelier — Browse and Resume Claude Code Sessions">
-    <meta name="twitter:description" content="A native macOS app to browse, read, and resume your Claude Code sessions. Fully offline.">
+    <meta name="twitter:title" content="Atelier — A native Mac workshop for Claude Code">
+    <meta name="twitter:description" content="Six live Claude Code sessions in one window. Every MCP and skill in a real UI, not hand-edited JSON.">
     <meta name="twitter:image" content="https://work.munyamakosa.com/og-image.png">
 
     <!-- Structured Data -->
@@ -29,7 +29,7 @@
         "@context": "https://schema.org",
         "@type": "SoftwareApplication",
         "name": "Atelier",
-        "description": "A native macOS app to browse, read, and resume your Claude Code sessions.",
+        "description": "A native Mac workshop for Claude Code. Six live sessions in one window, every past chat searchable, every MCP and skill in a real UI.",
         "applicationCategory": "DeveloperApplication",
         "operatingSystem": "macOS 15+",
         "offers": {
@@ -99,518 +99,455 @@
     <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32.png">
     <link rel="icon" type="image/png" sizes="16x16" href="/favicon-16.png">
     <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png">
+
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+
     <style>
-        /* ─── Night Foundry Tokens ─── */
         :root {
-            --graphite: #111113;
-            --graphite-surface: #18181b;
-            --graphite-elevated: #1f1f23;
-            --ivory: #f0ece4;
-            --ivory-muted: rgba(240, 236, 228, 0.55);
-            --ivory-faint: rgba(240, 236, 228, 0.12);
-            --ivory-ghost: rgba(240, 236, 228, 0.06);
-            --blue: #4a6fa5;
-            --blue-bright: #5a8fd4;
-            --blue-glow: rgba(74, 111, 165, 0.25);
-            --border: rgba(240, 236, 228, 0.08);
-            --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
-            --font-mono: 'SF Mono', 'Fira Code', 'JetBrains Mono', monospace;
+            --ink: #1b1c1e;
+            --paper: #e9eae8;
+            --paper2: #f3f4f2;
+            --paper3: #dcdedb;
+            --line: rgba(27, 28, 30, .18);
+            --line2: rgba(27, 28, 30, .34);
+            --mute: rgba(27, 28, 30, .54);
+            --helv: 'Helvetica Neue', Helvetica, Arial, sans-serif;
+            --mono: 'IBM Plex Mono', ui-monospace, monospace;
         }
-
-        /* ─── Reset ─── */
-        *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
-
-        html {
-            font-size: 16px;
-            -webkit-font-smoothing: antialiased;
-            -moz-osx-font-smoothing: grayscale;
-            scroll-behavior: smooth;
-        }
-
+        * { box-sizing: border-box; }
+        html, body { margin: 0; }
         body {
-            font-family: var(--font-sans);
-            background: var(--graphite);
-            color: var(--ivory);
-            line-height: 1.6;
-            overflow-x: hidden;
+            background: var(--paper);
+            color: var(--ink);
+            -webkit-font-smoothing: antialiased;
+            text-rendering: optimizeLegibility;
+        }
+        ::selection { background: var(--ink); color: var(--paper); }
+        a { color: inherit; }
+
+        /* Hover rules (replacing the design's style-hover attributes) */
+        .btn-primary { transition: background .12s ease; }
+        .btn-primary:hover { background: #000 !important; }
+        .btn-light { transition: background .12s ease; }
+        .btn-light:hover { background: #ffffff !important; }
+        .nav-link { transition: color .12s ease; }
+        .nav-link:hover { color: var(--ink) !important; }
+        .nav-cta { transition: background .12s ease; }
+        .nav-cta:hover { background: #000 !important; }
+        .switcher-btn { transition: background .12s ease; }
+        .switcher-btn:hover { background: rgba(233, 234, 232, .16); }
+        .switcher-btn.active { background: rgba(233, 234, 232, .16); }
+
+        /* Hero A/B/C visibility — driven by [data-hero] on <body> */
+        [data-hero-variant] { display: none; }
+        body[data-hero="A"] [data-hero-variant="A"],
+        body[data-hero="B"] [data-hero-variant="B"],
+        body[data-hero="C"] [data-hero-variant="C"] { display: grid; }
+
+        @keyframes blink {
+            0%, 49% { opacity: 1; }
+            50%, 100% { opacity: 0; }
+        }
+        @keyframes loopstep {
+            0% { opacity: 1; transform: scale(1); }
+            18% { opacity: 1; transform: scale(1); }
+            30% { opacity: .16; transform: scale(.8); }
+            100% { opacity: .16; transform: scale(.8); }
+        }
+        @keyframes loopedge {
+            0% { opacity: 1; }
+            18% { opacity: 1; }
+            30% { opacity: .22; }
+            100% { opacity: .22; }
         }
 
-        a { color: var(--blue-bright); text-decoration: none; }
-        a:hover { text-decoration: underline; }
-
-        /* ─── Layout ─── */
-        .container {
-            max-width: 960px;
-            margin: 0 auto;
-            padding: 0 24px;
+        /* Mobile: collapse the heroes to a single column, soften the type scale */
+        @media (max-width: 800px) {
+            body[data-hero] [data-hero-variant] {
+                grid-template-columns: 1fr !important;
+                padding-left: 24px !important;
+                padding-right: 24px !important;
+                gap: 36px !important;
+            }
+            h1 { font-size: 44px !important; line-height: 1.04 !important; }
+            h2 { font-size: 32px !important; line-height: 1.06 !important; }
+            .responsive-grid-2 { grid-template-columns: 1fr !important; gap: 36px !important; }
+            .responsive-padding { padding-left: 24px !important; padding-right: 24px !important; }
+            .responsive-nav { gap: 18px !important; }
         }
-
-        /* ─── Nav ─── */
-        nav {
-            position: fixed;
-            top: 0;
-            left: 0;
-            right: 0;
-            z-index: 100;
-            padding: 16px 0;
-            background: rgba(17, 17, 19, 0.85);
-            backdrop-filter: blur(20px) saturate(1.4);
-            -webkit-backdrop-filter: blur(20px) saturate(1.4);
-            border-bottom: 1px solid var(--border);
-        }
-        nav .container {
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-        }
-        .nav-brand {
-            display: flex;
-            align-items: center;
-            gap: 10px;
-        }
-        .nav-brand img {
-            width: 28px;
-            height: 28px;
-            border-radius: 6px;
-        }
-        .nav-brand span {
-            font-family: var(--font-mono);
-            font-size: 15px;
-            font-weight: 600;
-            letter-spacing: -0.3px;
-        }
-        .nav-links {
-            display: flex;
-            align-items: center;
-            gap: 28px;
-        }
-        .nav-links a {
-            font-size: 14px;
-            font-weight: 450;
-            color: var(--ivory-muted);
-            transition: color 0.15s;
-        }
-        .nav-links a:hover { color: var(--ivory); text-decoration: none; }
-        .btn-download-nav {
-            font-size: 13px;
-            font-weight: 500;
-            color: var(--ivory);
-            background: var(--blue);
-            padding: 7px 16px;
-            border-radius: 6px;
-            transition: background 0.15s;
-            text-decoration: none;
-        }
-        .btn-download-nav:hover { background: var(--blue-bright); text-decoration: none; }
-
-        /* ─── Hero ─── */
-        .hero {
-            padding: 180px 0 120px;
-            text-align: center;
-            position: relative;
-        }
-        .hero-icon {
-            width: 96px;
-            height: 96px;
-            border-radius: 22px;
-            margin-bottom: 32px;
-            box-shadow: 0 8px 40px rgba(0, 0, 0, 0.5), 0 0 0 1px var(--border);
-            position: relative;
-        }
-        .hero h1 {
-            font-family: var(--font-mono);
-            font-size: clamp(48px, 8vw, 72px);
-            font-weight: 700;
-            letter-spacing: -3px;
-            line-height: 1.0;
-            margin-bottom: 20px;
-            position: relative;
-        }
-        .hero p {
-            font-size: 18px;
-            font-weight: 400;
-            color: var(--ivory-muted);
-            max-width: 480px;
-            margin: 0 auto 40px;
-            line-height: 1.7;
-            position: relative;
-        }
-        .hero-cta {
-            display: inline-flex;
-            align-items: center;
-            gap: 8px;
-            font-size: 15px;
-            font-weight: 500;
-            color: var(--ivory);
-            background: var(--blue);
-            padding: 12px 28px;
-            border-radius: 8px;
-            transition: all 0.2s;
-            box-shadow: 0 0 0 1px rgba(74, 111, 165, 0.3), 0 4px 16px rgba(74, 111, 165, 0.2);
-            position: relative;
-            text-decoration: none;
-        }
-        .hero-cta:hover {
-            background: var(--blue-bright);
-            box-shadow: 0 0 0 1px rgba(90, 143, 212, 0.4), 0 8px 24px rgba(74, 111, 165, 0.3);
-            transform: translateY(-1px);
-            text-decoration: none;
-        }
-        .hero-cta svg { width: 16px; height: 16px; }
-        .hero-meta {
-            margin-top: 16px;
-            font-size: 13px;
-            color: rgba(240, 236, 228, 0.3);
-            position: relative;
-        }
-
-        /* ─── Features ─── */
-        .features {
-            padding: 100px 0;
-            border-top: 1px solid var(--border);
-        }
-        .features-label {
-            font-family: var(--font-mono);
-            font-size: 11px;
-            font-weight: 500;
-            text-transform: uppercase;
-            letter-spacing: 1.5px;
-            color: var(--blue-bright);
-            margin-bottom: 16px;
-            text-align: center;
-        }
-        .features h2 {
-            font-size: clamp(28px, 4vw, 36px);
-            font-weight: 600;
-            letter-spacing: -1.2px;
-            text-align: center;
-            margin-bottom: 64px;
-            line-height: 1.2;
-        }
-        .features-grid {
-            display: grid;
-            grid-template-columns: repeat(3, 1fr);
-            gap: 20px;
-        }
-        .feature-card {
-            padding: 28px 24px;
-            border-radius: 12px;
-            background: var(--graphite-surface);
-            border: 1px solid var(--border);
-            transition: border-color 0.2s, background 0.2s;
-        }
-        .feature-card:hover {
-            border-color: rgba(240, 236, 228, 0.14);
-            background: var(--graphite-elevated);
-        }
-        .feature-icon {
-            width: 36px;
-            height: 36px;
-            border-radius: 8px;
-            background: var(--ivory-ghost);
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            margin-bottom: 16px;
-            font-size: 17px;
-        }
-        .feature-card h3 {
-            font-size: 16px;
-            font-weight: 600;
-            letter-spacing: -0.3px;
-            margin-bottom: 8px;
-        }
-        .feature-card p {
-            font-size: 14px;
-            color: var(--ivory-muted);
-            line-height: 1.6;
-        }
-
-        /* ─── How it Works ─── */
-        .how-it-works {
-            padding: 100px 0;
-            border-top: 1px solid var(--border);
-        }
-        .how-label {
-            font-family: var(--font-mono);
-            font-size: 11px;
-            font-weight: 500;
-            text-transform: uppercase;
-            letter-spacing: 1.5px;
-            color: var(--blue-bright);
-            margin-bottom: 16px;
-            text-align: center;
-        }
-        .how-it-works h2 {
-            font-size: clamp(28px, 4vw, 36px);
-            font-weight: 600;
-            letter-spacing: -1.2px;
-            text-align: center;
-            margin-bottom: 64px;
-            line-height: 1.2;
-        }
-        .steps {
-            display: flex;
-            gap: 40px;
-            justify-content: center;
-        }
-        .step {
-            flex: 1;
-            max-width: 260px;
-            text-align: center;
-        }
-        .step-number {
-            font-family: var(--font-mono);
-            font-size: 11px;
-            font-weight: 600;
-            color: var(--blue-bright);
-            letter-spacing: 0.5px;
-            margin-bottom: 12px;
-        }
-        .step h3 {
-            font-size: 16px;
-            font-weight: 600;
-            letter-spacing: -0.2px;
-            margin-bottom: 8px;
-        }
-        .step p {
-            font-size: 14px;
-            color: var(--ivory-muted);
-            line-height: 1.6;
-        }
-
-        /* ─── CTA Section ─── */
-        .cta-section {
-            padding: 100px 0;
-            text-align: center;
-            border-top: 1px solid var(--border);
-            position: relative;
-        }
-        .cta-section h2 {
-            font-size: clamp(28px, 4vw, 40px);
-            font-weight: 600;
-            letter-spacing: -1.5px;
-            margin-bottom: 16px;
-            position: relative;
-        }
-        .cta-section p {
-            font-size: 16px;
-            color: var(--ivory-muted);
-            margin-bottom: 32px;
-            position: relative;
-        }
-
-        /* ─── Footer ─── */
-        footer {
-            padding: 40px 0;
-            border-top: 1px solid var(--border);
-            text-align: center;
-        }
-        footer p {
-            font-size: 13px;
-            color: rgba(240, 236, 228, 0.25);
-        }
-
-        /* ─── Responsive ─── */
-        @media (max-width: 768px) {
-            .features-grid { grid-template-columns: 1fr; gap: 12px; }
-            .steps { flex-direction: column; align-items: center; }
-            .hero { padding: 140px 0 80px; }
-            .nav-links a:not(.btn-download-nav) { display: none; }
-        }
-        @media (max-width: 480px) {
-            .hero h1 { letter-spacing: -1.5px; }
-        }
-
-        /* ─── Animations ─── */
-        @keyframes fadeUp {
-            from { opacity: 0; transform: translateY(20px); }
-            to { opacity: 1; transform: translateY(0); }
-        }
-        .hero-icon { animation: fadeUp 0.6s ease-out 0.1s both; }
-        .hero h1 { animation: fadeUp 0.6s ease-out 0.2s both; }
-        .hero p { animation: fadeUp 0.6s ease-out 0.3s both; }
-        .hero-cta { animation: fadeUp 0.6s ease-out 0.4s both; }
-        .hero-meta { animation: fadeUp 0.6s ease-out 0.45s both; }
-
-        .feature-card {
-            opacity: 0;
-            transform: translateY(16px);
-            animation: fadeUp 0.5s ease-out both;
-        }
-        .feature-card:nth-child(1) { animation-delay: 0.1s; }
-        .feature-card:nth-child(2) { animation-delay: 0.18s; }
-        .feature-card:nth-child(3) { animation-delay: 0.26s; }
-        .feature-card:nth-child(4) { animation-delay: 0.34s; }
-        .feature-card:nth-child(5) { animation-delay: 0.42s; }
-        .feature-card:nth-child(6) { animation-delay: 0.50s; }
     </style>
 </head>
-<body>
+<body data-hero="A">
 
-    <!-- Nav -->
-    <nav>
-        <div class="container">
-            <div class="nav-brand">
-                <img src="icon-256.png" alt="Atelier icon">
-                <span>Atelier</span>
-            </div>
-            <div class="nav-links">
-                <a href="#features">Features</a>
-                <a href="/recipes/">Recipes</a>
-                <a href="/releases.html">Releases</a>
-                <a href="#faq">FAQ</a>
-                <a href="Work.dmg" class="btn-download-nav">Download</a>
-            </div>
-        </div>
-    </nav>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+    <symbol id="dt" viewBox="0 0 64 64" fill="none" stroke="currentColor" stroke-width="6" stroke-linecap="square" stroke-linejoin="miter">
+        <rect x="7" y="7" width="50" height="50"/>
+        <path d="M32 7 L32 24 L46 28 L46 36 L32 40 L32 57"/>
+    </symbol>
+</svg>
 
-    <main>
-    <!-- Hero -->
-    <section class="hero">
-        <div class="container">
-            <img src="icon-256.png" alt="Atelier app icon" class="hero-icon">
-            <h1>Atelier <span style="display:block;font-family:var(--font-sans);font-size:clamp(18px,3vw,24px);font-weight:400;letter-spacing:-0.5px;color:var(--ivory-muted);margin-top:12px;">Never lose a Claude Code session again</span></h1>
-            <p>Every project, every conversation, every tool call — searchable and resumable from your Mac. No API keys, no network.</p>
-            <a href="Work.dmg" class="hero-cta">
-                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3" /></svg>
-                Download for macOS
+<div style="min-height:100vh;">
+
+    <!-- TOP BAR -->
+    <header style="position:sticky;top:0;z-index:40;background:rgba(233,234,232,.86);backdrop-filter:blur(8px);border-bottom:1px solid var(--line);">
+        <div class="responsive-padding" style="max-width:1180px;margin:0 auto;padding:14px 40px;display:flex;align-items:center;justify-content:space-between;">
+            <a href="#top" style="display:flex;align-items:center;gap:11px;text-decoration:none;color:var(--ink);">
+                <svg viewBox="0 0 64 64" style="width:26px;height:26px;color:var(--ink);overflow:visible;"><use href="#dt"/></svg>
+                <span style="font-family:var(--helv);font-weight:500;font-size:20px;letter-spacing:-.01em;">atelier</span>
             </a>
-            <p class="hero-meta">macOS 15+ &middot; Apple Silicon &amp; Intel &middot; Free</p>
+            <nav class="responsive-nav" style="display:flex;align-items:center;gap:30px;font-family:var(--mono);font-size:12.5px;letter-spacing:.02em;">
+                <a class="nav-link" href="/releases.html" style="color:var(--mute);text-decoration:none;">changelog</a>
+                <a class="nav-link" href="#faq" style="color:var(--mute);text-decoration:none;">faq</a>
+                <a class="nav-link" href="#pricing" style="color:var(--mute);text-decoration:none;">pricing</a>
+                <a class="nav-cta" href="#download" style="color:var(--paper);background:var(--ink);text-decoration:none;padding:8px 15px;letter-spacing:.04em;">download</a>
+            </nav>
+        </div>
+    </header>
+
+    <a id="top"></a>
+
+    <!-- ============ HERO A — six sessions ============ -->
+    <section data-hero-variant="A" data-screen-label="Hero A" class="responsive-padding" style="max-width:1180px;margin:0 auto;padding:84px 40px 72px;display:grid;grid-template-columns:1fr 1fr;gap:64px;align-items:center;">
+        <div>
+            <div style="font-family:var(--mono);font-size:12.5px;letter-spacing:.12em;text-transform:uppercase;color:var(--mute);margin-bottom:26px;">for claude code · macOS</div>
+            <h1 style="font-family:var(--helv);font-weight:500;font-size:64px;line-height:1.02;letter-spacing:-.035em;margin:0 0 26px;">Six live sessions.<br>One window.</h1>
+            <p style="font-family:var(--helv);font-size:19px;line-height:1.55;max-width:30em;margin:0 0 36px;color:rgba(27,28,30,.82);">A native Mac workshop for Claude&nbsp;Code — every session, chat, MCP and skill in a real interface instead of hand-edited JSON.</p>
+            <div style="display:flex;align-items:center;gap:20px;flex-wrap:wrap;">
+                <a class="btn-primary" href="#download" style="display:inline-flex;align-items:center;gap:12px;background:var(--ink);color:var(--paper);text-decoration:none;padding:15px 24px;font-family:var(--helv);font-weight:500;font-size:17px;">
+                    <svg viewBox="0 0 64 64" style="width:20px;height:20px;color:var(--paper);overflow:visible;"><use href="#dt"/></svg>
+                    Download for Mac
+                </a>
+                <div style="font-family:var(--mono);font-size:12px;line-height:1.6;color:var(--mute);">.dmg · macOS 15+<br>free · win &amp; linux soon</div>
+            </div>
+        </div>
+        <div>
+            <div style="border:1px solid var(--line2);background:var(--paper2);">
+                <div style="display:flex;align-items:center;gap:8px;padding:9px 13px;border-bottom:1px solid var(--line);font-family:var(--mono);font-size:11px;color:var(--mute);">
+                    <span style="width:9px;height:9px;border:1px solid var(--line2);display:inline-block;"></span>
+                    atelier — workshop
+                    <span style="margin-left:auto;">6 sessions</span>
+                </div>
+                <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:1px;background:var(--line);">
+                    <div style="background:var(--paper2);padding:14px;border-top:2px solid var(--ink);"><div style="font-family:var(--mono);font-size:10px;color:var(--ink);margin-bottom:9px;">01 ▸ auth-svc</div><div style="height:4px;background:var(--line2);width:90%;margin-bottom:6px;"></div><div style="height:4px;background:var(--line);width:70%;margin-bottom:6px;"></div><div style="height:4px;background:var(--line);width:80%;margin-bottom:6px;"></div><div style="display:flex;align-items:center;gap:4px;"><div style="height:4px;background:var(--line2);width:40%;"></div><span style="width:6px;height:11px;background:var(--ink);display:inline-block;animation:blink 1.1s steps(1) infinite;"></span></div></div>
+                    <div style="background:var(--paper2);padding:14px;"><div style="font-family:var(--mono);font-size:10px;color:var(--mute);margin-bottom:9px;">02 ▸ web</div><div style="height:4px;background:var(--line);width:80%;margin-bottom:6px;"></div><div style="height:4px;background:var(--line);width:60%;margin-bottom:6px;"></div><div style="height:4px;background:var(--line);width:85%;"></div></div>
+                    <div style="background:var(--paper2);padding:14px;"><div style="font-family:var(--mono);font-size:10px;color:var(--mute);margin-bottom:9px;">03 ▸ infra</div><div style="height:4px;background:var(--line);width:70%;margin-bottom:6px;"></div><div style="height:4px;background:var(--line);width:90%;margin-bottom:6px;"></div><div style="height:4px;background:var(--line);width:50%;"></div></div>
+                    <div style="background:var(--paper2);padding:14px;"><div style="font-family:var(--mono);font-size:10px;color:var(--mute);margin-bottom:9px;">04 ▸ docs</div><div style="height:4px;background:var(--line);width:85%;margin-bottom:6px;"></div><div style="height:4px;background:var(--line);width:65%;margin-bottom:6px;"></div><div style="height:4px;background:var(--line);width:75%;"></div></div>
+                    <div style="background:var(--paper2);padding:14px;"><div style="font-family:var(--mono);font-size:10px;color:var(--mute);margin-bottom:9px;">05 ▸ tests</div><div style="height:4px;background:var(--line);width:60%;margin-bottom:6px;"></div><div style="height:4px;background:var(--line);width:80%;margin-bottom:6px;"></div><div style="height:4px;background:var(--line);width:70%;"></div></div>
+                    <div style="background:var(--paper2);padding:14px;"><div style="font-family:var(--mono);font-size:10px;color:var(--mute);margin-bottom:9px;">06 ▸ scratch</div><div style="height:4px;background:var(--line);width:75%;margin-bottom:6px;"></div><div style="height:4px;background:var(--line);width:55%;margin-bottom:6px;"></div><div style="height:4px;background:var(--line);width:88%;"></div></div>
+                </div>
+            </div>
+            <div style="font-family:var(--mono);font-size:11px;color:var(--mute);margin-top:11px;text-align:right;">same claude binary · same files · one window</div>
         </div>
     </section>
 
-    <!-- Features -->
-    <section class="features" id="features">
-        <div class="container">
-            <div class="features-label">Features</div>
-            <h2>Everything in your ~/.claude, surfaced.</h2>
-            <div class="features-grid">
-                <div class="feature-card">
-                    <div class="feature-icon">&#128193;</div>
-                    <h3>Zero setup</h3>
-                    <p>Your projects appear automatically. Every directory you've run Claude in, sorted by recent activity. Nothing to configure.</p>
-                </div>
-                <div class="feature-card">
-                    <div class="feature-icon">&#128172;</div>
-                    <h3>The complete picture</h3>
-                    <p>See the full conversation — text, rendered markdown, code blocks, tool calls, and results. Not just the summary.</p>
-                </div>
-                <div class="feature-card">
-                    <div class="feature-icon">&#9654;&#65039;</div>
-                    <h3>One click to resume</h3>
-                    <p>Pick up any session in Terminal. If it's already running, Atelier finds that exact tab and brings it to the front.</p>
-                </div>
-                <div class="feature-card">
-                    <div class="feature-icon">&#128270;</div>
-                    <h3>Search by meaning</h3>
-                    <p>Find that conversation where you fixed the auth bug — even if you don't remember the exact words. On-device, fully offline.</p>
-                </div>
-                <div class="feature-card">
-                    <div class="feature-icon">&#129309;</div>
-                    <h3>Hand off to a teammate</h3>
-                    <p>Generate a context brief with one click. Your teammate pastes it into their LLM and picks up where you stopped.</p>
-                </div>
-                <div class="feature-card">
-                    <div class="feature-icon">&#128268;</div>
-                    <h3>See what's connected</h3>
-                    <p>Every plugin, skill, MCP server, and hook across all your projects. Live status so you know what's running.</p>
+    <!-- ============ HERO B — real UI ============ -->
+    <section data-hero-variant="B" data-screen-label="Hero B" class="responsive-padding" style="max-width:1180px;margin:0 auto;padding:84px 40px 72px;display:grid;grid-template-columns:1fr 1fr;gap:64px;align-items:center;">
+        <div>
+            <div style="font-family:var(--mono);font-size:12.5px;letter-spacing:.12em;text-transform:uppercase;color:var(--mute);margin-bottom:26px;">stop hand-editing ~/.claude.json</div>
+            <h1 style="font-family:var(--helv);font-weight:500;font-size:64px;line-height:1.02;letter-spacing:-.035em;margin:0 0 26px;">Give Claude Code<br>a real UI.</h1>
+            <p style="font-family:var(--helv);font-size:19px;line-height:1.55;max-width:30em;margin:0 0 36px;color:rgba(27,28,30,.82);">MCP servers, skills, plugins and session history — all visible and editable in a native Mac app. No more config archaeology at 11pm.</p>
+            <div style="display:flex;align-items:center;gap:20px;flex-wrap:wrap;">
+                <a class="btn-primary" href="#download" style="display:inline-flex;align-items:center;gap:12px;background:var(--ink);color:var(--paper);text-decoration:none;padding:15px 24px;font-family:var(--helv);font-weight:500;font-size:17px;">
+                    <svg viewBox="0 0 64 64" style="width:20px;height:20px;color:var(--paper);overflow:visible;"><use href="#dt"/></svg>
+                    Download for Mac
+                </a>
+                <div style="font-family:var(--mono);font-size:12px;line-height:1.6;color:var(--mute);">.dmg · macOS 15+<br>free · win &amp; linux soon</div>
+            </div>
+        </div>
+        <div style="display:grid;grid-template-columns:1fr auto 1fr;gap:16px;align-items:center;">
+            <div style="border:1px solid var(--line);background:var(--paper3);padding:14px;">
+                <div style="font-family:var(--mono);font-size:10px;color:var(--mute);margin-bottom:11px;">~/.claude.json</div>
+                <pre style="font-family:var(--mono);font-size:9.5px;line-height:1.7;color:rgba(27,28,30,.5);margin:0;white-space:pre-wrap;">{
+ "mcpServers":{
+  "fs":{"command":
+   "npx",-y","@m..
+  "github":{"env":
+   {"TOKEN":"gh_..
+ },"skills":[{"id"
+ :"pdf","path":".
+ ./sk/pdf"}],"per
+ missions":{"allow
+ ":["Bash(git*)"]}}</pre>
+            </div>
+            <div style="font-family:var(--mono);font-size:20px;color:var(--mute);text-align:center;">→</div>
+            <div style="border:1px solid var(--line2);background:var(--paper2);">
+                <div style="font-family:var(--mono);font-size:10px;color:var(--ink);padding:11px 13px;border-bottom:1px solid var(--line);">atelier</div>
+                <div style="padding:6px 0;">
+                    <div style="display:flex;align-items:center;gap:9px;padding:8px 13px;font-family:var(--mono);font-size:11px;"><span style="width:11px;height:11px;background:var(--ink);display:inline-block;"></span>fs<span style="margin-left:auto;color:var(--mute);">on</span></div>
+                    <div style="display:flex;align-items:center;gap:9px;padding:8px 13px;font-family:var(--mono);font-size:11px;"><span style="width:11px;height:11px;background:var(--ink);display:inline-block;"></span>github<span style="margin-left:auto;color:var(--mute);">on</span></div>
+                    <div style="display:flex;align-items:center;gap:9px;padding:8px 13px;font-family:var(--mono);font-size:11px;color:var(--mute);"><span style="width:11px;height:11px;border:1px solid var(--line2);display:inline-block;"></span>postgres<span style="margin-left:auto;">off</span></div>
+                    <div style="border-top:1px solid var(--line);margin:6px 0;"></div>
+                    <div style="padding:8px 13px;font-family:var(--mono);font-size:11px;color:var(--mute);">skills · 3</div>
+                    <div style="padding:8px 13px;font-family:var(--mono);font-size:11px;color:var(--mute);">permissions · 7 rules</div>
                 </div>
             </div>
         </div>
     </section>
 
-    <!-- How it Works -->
-    <section class="how-it-works" id="how-it-works">
-        <div class="container">
-            <div class="how-label">How it works</div>
-            <h2>No API keys. No network. No setup.</h2>
-            <div class="steps">
-                <div class="step">
-                    <div class="step-number">01</div>
-                    <h3>Claude writes</h3>
-                    <p>Every Claude Code session logs messages to ~/.claude/ on your Mac.</p>
+    <!-- ============ HERO C — the workshop ============ -->
+    <section data-hero-variant="C" data-screen-label="Hero C" class="responsive-padding" style="max-width:1180px;margin:0 auto;padding:96px 40px 72px;display:grid;grid-template-columns:minmax(0,1fr) 280px;gap:56px;align-items:start;">
+        <div>
+            <div style="font-family:var(--mono);font-size:12.5px;letter-spacing:.12em;text-transform:uppercase;color:var(--mute);margin-bottom:34px;">the doorway of the workshop</div>
+            <h1 style="font-family:var(--helv);font-weight:500;font-size:76px;line-height:1.0;letter-spacing:-.04em;margin:0 0 30px;max-width:14ch;">A workshop for Claude&nbsp;Code.</h1>
+            <p style="font-family:var(--helv);font-size:21px;line-height:1.5;max-width:34em;margin:0 0 38px;color:rgba(27,28,30,.85);">Six live sessions in one window. Every past chat searchable. Every MCP and skill in a real interface — not hand-edited JSON. Native to the Mac, continuous with the tools you already run.</p>
+            <div style="display:flex;align-items:center;gap:20px;flex-wrap:wrap;">
+                <a class="btn-primary" href="#download" style="display:inline-flex;align-items:center;gap:12px;background:var(--ink);color:var(--paper);text-decoration:none;padding:15px 24px;font-family:var(--helv);font-weight:500;font-size:17px;">
+                    <svg viewBox="0 0 64 64" style="width:20px;height:20px;color:var(--paper);overflow:visible;"><use href="#dt"/></svg>
+                    Download for Mac
+                </a>
+                <div style="font-family:var(--mono);font-size:12px;line-height:1.6;color:var(--mute);">.dmg · macOS 15+<br>free · win &amp; linux soon</div>
+            </div>
+        </div>
+        <aside style="border-left:1px solid var(--line);padding-left:24px;font-family:var(--mono);font-size:11.5px;line-height:1.85;color:var(--mute);">
+            <div style="color:var(--ink);margin-bottom:10px;">in the window</div>
+            ▸ six parallel sessions<br>
+            ▸ agents &amp; loops<br>
+            ▸ harnesses &amp; hooks<br>
+            ▸ skills, mcp &amp; plugins<br>
+            ▸ searchable history<br>
+            <div style="margin-top:18px;padding-top:14px;border-top:1px solid var(--line);">same <code>claude</code> binary.<br>your files. your auth.</div>
+        </aside>
+    </section>
+
+    <!-- ============ SHARED: the full bench (catalog) ============ -->
+    <section data-screen-label="Capabilities" style="border-top:1px solid var(--line);background:var(--paper2);">
+        <div class="responsive-padding" style="max-width:1180px;margin:0 auto;padding:72px 40px;">
+            <div class="responsive-grid-2" style="display:grid;grid-template-columns:280px 1fr;gap:48px;align-items:start;">
+                <div style="position:sticky;top:90px;">
+                    <div style="font-family:var(--mono);font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:var(--mute);margin-bottom:14px;">on the workbench</div>
+                    <h2 style="font-family:var(--helv);font-weight:500;font-size:34px;line-height:1.05;letter-spacing:-.025em;margin:0;">The whole<br>Claude&nbsp;Code stack.</h2>
+                    <p style="font-family:var(--mono);font-size:12px;line-height:1.7;color:var(--mute);margin-top:18px;">Every primitive — sessions, agents, loops, harnesses, hooks, skills, MCP, plugins — in one real interface. No hidden state, no config you can't see.</p>
                 </div>
-                <div class="step">
-                    <div class="step-number">02</div>
-                    <h3>Atelier reads</h3>
-                    <p>The app watches those files in real time and surfaces your projects and sessions.</p>
-                </div>
-                <div class="step">
-                    <div class="step-number">03</div>
-                    <h3>You pick up</h3>
-                    <p>Browse, search, read, or resume any session with a single click.</p>
+                <div style="display:grid;grid-template-columns:1fr 1fr;gap:1px;background:var(--line);border:1px solid var(--line);">
+                    <div style="background:var(--paper2);padding:22px 22px 24px;">
+                        <div style="font-family:var(--mono);font-size:11px;color:var(--mute);margin-bottom:11px;">01 · sessions</div>
+                        <h3 style="font-family:var(--helv);font-weight:500;font-size:18px;letter-spacing:-.01em;margin:0 0 6px;">Six parallel sessions</h3>
+                        <p style="font-family:var(--helv);font-size:14.5px;line-height:1.5;color:rgba(27,28,30,.7);margin:0;">Run six side by side in one window — same binary, same files.</p>
+                    </div>
+                    <div style="background:var(--paper2);padding:22px 22px 24px;">
+                        <div style="font-family:var(--mono);font-size:11px;color:var(--mute);margin-bottom:11px;">02 · agents</div>
+                        <h3 style="font-family:var(--helv);font-weight:500;font-size:18px;letter-spacing:-.01em;margin:0 0 6px;">Subagents, visual</h3>
+                        <p style="font-family:var(--helv);font-size:14.5px;line-height:1.5;color:rgba(27,28,30,.7);margin:0;">Build and route to custom agents — isolated context, per-agent model and tools.</p>
+                    </div>
+                    <div style="background:var(--paper2);padding:22px 22px 24px;">
+                        <div style="font-family:var(--mono);font-size:11px;color:var(--mute);margin-bottom:11px;">03 · loops</div>
+                        <h3 style="font-family:var(--helv);font-weight:500;font-size:18px;letter-spacing:-.01em;margin:0 0 6px;">Goal-driven loops</h3>
+                        <p style="font-family:var(--helv);font-size:14.5px;line-height:1.5;color:rgba(27,28,30,.7);margin:0;">Set a goal, a verifier and a turn budget; watch it run to a finish line.</p>
+                    </div>
+                    <div style="background:var(--paper2);padding:22px 22px 24px;">
+                        <div style="font-family:var(--mono);font-size:11px;color:var(--mute);margin-bottom:11px;">04 · harnesses</div>
+                        <h3 style="font-family:var(--helv);font-weight:500;font-size:18px;letter-spacing:-.01em;margin:0 0 6px;">Plan → work → review</h3>
+                        <p style="font-family:var(--helv);font-size:14.5px;line-height:1.5;color:rgba(27,28,30,.7);margin:0;">Wrap long tasks in a disciplined cycle with a progress file and checkpoints.</p>
+                    </div>
+                    <div style="background:var(--paper2);padding:22px 22px 24px;">
+                        <div style="font-family:var(--mono);font-size:11px;color:var(--mute);margin-bottom:11px;">05 · hooks</div>
+                        <h3 style="font-family:var(--helv);font-weight:500;font-size:18px;letter-spacing:-.01em;margin:0 0 6px;">Lifecycle hooks</h3>
+                        <p style="font-family:var(--helv);font-size:14.5px;line-height:1.5;color:rgba(27,28,30,.7);margin:0;">Deterministic control at every event — toggle PreToolUse, Stop and more, no JSON.</p>
+                    </div>
+                    <div style="background:var(--paper2);padding:22px 22px 24px;">
+                        <div style="font-family:var(--mono);font-size:11px;color:var(--mute);margin-bottom:11px;">06 · skills</div>
+                        <h3 style="font-family:var(--helv);font-weight:500;font-size:18px;letter-spacing:-.01em;margin:0 0 6px;">Skills, per project</h3>
+                        <p style="font-family:var(--helv);font-size:14.5px;line-height:1.5;color:rgba(27,28,30,.7);margin:0;">Install, pin per project, or fork a skill into its own context.</p>
+                    </div>
+                    <div style="background:var(--paper2);padding:22px 22px 24px;">
+                        <div style="font-family:var(--mono);font-size:11px;color:var(--mute);margin-bottom:11px;">07 · mcp</div>
+                        <h3 style="font-family:var(--helv);font-weight:500;font-size:18px;letter-spacing:-.01em;margin:0 0 6px;">MCP manager</h3>
+                        <p style="font-family:var(--helv);font-size:14.5px;line-height:1.5;color:rgba(27,28,30,.7);margin:0;">Add, edit and toggle servers in a real UI instead of parsing JSON.</p>
+                    </div>
+                    <div style="background:var(--paper2);padding:22px 22px 24px;">
+                        <div style="font-family:var(--mono);font-size:11px;color:var(--mute);margin-bottom:11px;">08 · plugins</div>
+                        <h3 style="font-family:var(--helv);font-weight:500;font-size:18px;letter-spacing:-.01em;margin:0 0 6px;">Plugins &amp; marketplaces</h3>
+                        <p style="font-family:var(--helv);font-size:14.5px;line-height:1.5;color:rgba(27,28,30,.7);margin:0;">Browse marketplaces; bundle your setup to share with the team.</p>
+                    </div>
+                    <div style="background:var(--paper2);padding:22px 22px 24px;">
+                        <div style="font-family:var(--mono);font-size:11px;color:var(--mute);margin-bottom:11px;">09 · history</div>
+                        <h3 style="font-family:var(--helv);font-weight:500;font-size:18px;letter-spacing:-.01em;margin:0 0 6px;">Searchable history</h3>
+                        <p style="font-family:var(--helv);font-size:14.5px;line-height:1.5;color:rgba(27,28,30,.7);margin:0;">Every past chat indexed — find where you solved it the first time.</p>
+                    </div>
+                    <div style="background:var(--paper2);padding:22px 22px 24px;">
+                        <div style="font-family:var(--mono);font-size:11px;color:var(--mute);margin-bottom:11px;">10 · checkpoints</div>
+                        <h3 style="font-family:var(--helv);font-weight:500;font-size:18px;letter-spacing:-.01em;margin:0 0 6px;">Checkpoints &amp; control</h3>
+                        <p style="font-family:var(--helv);font-size:14.5px;line-height:1.5;color:rgba(27,28,30,.7);margin:0;">Rewind a session to any point; set model, dir and permissions per task.</p>
+                    </div>
                 </div>
             </div>
         </div>
     </section>
 
-    <!-- CTA -->
-    <section class="cta-section">
-        <div class="container">
-            <h2>Your sessions are waiting.</h2>
-            <p>Free. Offline. Built for developers who live in the terminal.</p>
-            <a href="Work.dmg" class="hero-cta">
-                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3" /></svg>
-                Download for macOS
+    <!-- ============ SPOTLIGHT: loops & harnesses (centerpiece) ============ -->
+    <section data-screen-label="Loops" style="border-top:1px solid var(--line);background:var(--ink);color:var(--paper);">
+        <div class="responsive-padding" style="max-width:1180px;margin:0 auto;padding:108px 40px;">
+            <div style="font-family:var(--mono);font-size:12px;letter-spacing:.16em;text-transform:uppercase;color:rgba(233,234,232,.5);margin-bottom:30px;display:flex;align-items:center;gap:14px;">
+                <span style="width:34px;height:1px;background:rgba(233,234,232,.4);"></span>loops &amp; harnesses · the new way to work
+            </div>
+            <div class="responsive-grid-2" style="display:grid;grid-template-columns:1.05fr .95fr;gap:76px;align-items:center;">
+                <div>
+                    <h2 style="font-family:var(--helv);font-weight:500;font-size:72px;line-height:.97;letter-spacing:-.04em;margin:0 0 30px;color:var(--paper);">Stop prompting.<br>Start running loops.</h2>
+                    <p style="font-family:var(--helv);font-size:20px;line-height:1.5;color:rgba(233,234,232,.82);margin:0 0 18px;max-width:42ch;">Give Claude a goal it can check, a verifier to grade the work, and a turn budget so it can't run away. Atelier builds the loop, watches every turn, and stops at the finish line.</p>
+                    <p style="font-family:var(--helv);font-size:20px;line-height:1.5;color:rgba(233,234,232,.82);margin:0 0 32px;max-width:42ch;">For longer work, wrap it in a harness — a plan&nbsp;→&nbsp;work&nbsp;→&nbsp;review cycle with a progress file and checkpoints, so a fresh context picks up exactly where the last left off.</p>
+                    <div style="display:flex;gap:9px;flex-wrap:wrap;font-family:var(--mono);font-size:11.5px;margin-bottom:36px;">
+                        <span style="border:1px solid rgba(233,234,232,.32);padding:6px 11px;">/goal</span>
+                        <span style="border:1px solid rgba(233,234,232,.32);padding:6px 11px;">verifier model</span>
+                        <span style="border:1px solid rgba(233,234,232,.32);padding:6px 11px;">--max-turns</span>
+                        <span style="border:1px solid rgba(233,234,232,.32);padding:6px 11px;">progress file</span>
+                        <span style="border:1px solid rgba(233,234,232,.32);padding:6px 11px;">checkpoints</span>
+                    </div>
+                    <a class="btn-light" href="#download" style="display:inline-flex;align-items:center;gap:12px;background:var(--paper);color:var(--ink);text-decoration:none;padding:15px 26px;font-family:var(--helv);font-weight:500;font-size:17px;">
+                        <svg viewBox="0 0 64 64" style="width:20px;height:20px;color:var(--ink);overflow:visible;"><use href="#dt"/></svg>
+                        Run your first loop
+                    </a>
+                </div>
+
+                <div style="border:1px solid rgba(233,234,232,.26);background:rgba(233,234,232,.04);padding:36px;">
+                    <div style="display:flex;justify-content:space-between;align-items:center;font-family:var(--mono);font-size:10px;letter-spacing:.12em;text-transform:uppercase;color:rgba(233,234,232,.5);margin-bottom:28px;">
+                        <span>the loop</span>
+                        <span style="display:flex;align-items:center;gap:7px;"><span style="width:7px;height:7px;border-radius:50%;background:var(--paper);display:inline-block;animation:loopedge 1.2s ease-in-out infinite;"></span>running</span>
+                    </div>
+                    <div style="display:flex;flex-direction:column;font-family:var(--mono);font-size:13px;">
+                        <div style="border:1px solid rgba(233,234,232,.28);padding:15px 16px;display:flex;align-items:center;gap:13px;">
+                            <span style="width:9px;height:9px;border-radius:50%;background:var(--paper);display:inline-block;animation:loopstep 4s linear infinite;animation-delay:0s;"></span>
+                            <span style="flex:1;">goal</span><span style="color:rgba(233,234,232,.5);">define done</span>
+                        </div>
+                        <div style="text-align:center;color:rgba(233,234,232,.4);padding:6px 0;">↓</div>
+                        <div style="border:1px solid rgba(233,234,232,.28);padding:15px 16px;display:flex;align-items:center;gap:13px;">
+                            <span style="width:9px;height:9px;border-radius:50%;background:var(--paper);display:inline-block;animation:loopstep 4s linear infinite;animation-delay:1s;"></span>
+                            <span style="flex:1;">work</span><span style="color:rgba(233,234,232,.5);">doer · 1 turn</span>
+                        </div>
+                        <div style="text-align:center;color:rgba(233,234,232,.4);padding:6px 0;">↓</div>
+                        <div style="border:1px solid rgba(233,234,232,.28);padding:15px 16px;display:flex;align-items:center;gap:13px;">
+                            <span style="width:9px;height:9px;border-radius:50%;background:var(--paper);display:inline-block;animation:loopstep 4s linear infinite;animation-delay:2s;"></span>
+                            <span style="flex:1;">check</span><span style="color:rgba(233,234,232,.5);">verifier</span>
+                        </div>
+                        <div style="display:flex;align-items:center;gap:10px;padding:10px 0 6px;color:rgba(233,234,232,.45);font-size:11px;">
+                            <span style="flex:1;border-top:1px dashed rgba(233,234,232,.28);"></span>
+                            <span>fail ↻ repeat · within budget</span>
+                            <span style="flex:1;border-top:1px dashed rgba(233,234,232,.28);"></span>
+                        </div>
+                        <div style="text-align:center;color:rgba(233,234,232,.4);padding:4px 0;">↓ pass</div>
+                        <div style="border:2px solid var(--paper);background:var(--paper);color:var(--ink);padding:15px 16px;display:flex;align-items:center;gap:13px;">
+                            <span style="width:9px;height:9px;border-radius:50%;background:var(--ink);display:inline-block;animation:loopstep 4s linear infinite;animation-delay:3s;"></span>
+                            <span style="flex:1;font-weight:500;">done</span><span>✓ verified</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- ============ SPOTLIGHT: agents ============ -->
+    <section data-screen-label="Agents" style="border-top:1px solid var(--line);background:var(--paper2);">
+        <div class="responsive-padding responsive-grid-2" style="max-width:1180px;margin:0 auto;padding:80px 40px;display:grid;grid-template-columns:1fr 1fr;gap:64px;align-items:center;">
+            <div style="border:1px solid var(--line2);background:var(--paper);padding:30px;order:0;">
+                <div style="font-family:var(--mono);font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:var(--mute);margin-bottom:22px;">delegation</div>
+                <div style="border:2px solid var(--ink);background:var(--ink);color:var(--paper);padding:13px 15px;font-family:var(--mono);font-size:12px;display:flex;justify-content:space-between;margin-bottom:18px;"><span>main session</span><span style="color:rgba(233,234,232,.6);">your context</span></div>
+                <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;">
+                    <div style="border:1px solid var(--line2);background:var(--paper2);padding:11px;font-family:var(--mono);font-size:10.5px;"><div style="margin-bottom:6px;">reviewer</div><div style="color:var(--mute);">isolated</div></div>
+                    <div style="border:1px solid var(--line2);background:var(--paper2);padding:11px;font-family:var(--mono);font-size:10.5px;"><div style="margin-bottom:6px;">explorer</div><div style="color:var(--mute);">isolated</div></div>
+                    <div style="border:1px solid var(--line2);background:var(--paper2);padding:11px;font-family:var(--mono);font-size:10.5px;"><div style="margin-bottom:6px;">tests</div><div style="color:var(--mute);">isolated</div></div>
+                </div>
+                <div style="text-align:center;font-family:var(--mono);font-size:11px;color:var(--mute);margin-top:16px;">↑ only the summary returns ↑</div>
+            </div>
+            <div>
+                <div style="font-family:var(--mono);font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:var(--mute);margin-bottom:16px;">agents</div>
+                <h2 style="font-family:var(--helv);font-weight:500;font-size:40px;line-height:1.03;letter-spacing:-.03em;margin:0 0 20px;">A bench of<br>specialists.</h2>
+                <p style="font-family:var(--helv);font-size:17px;line-height:1.55;color:rgba(27,28,30,.8);margin:0 0 16px;max-width:44ch;">Build custom agents — a reviewer, an explorer, a test runner — each with its own prompt, model and tool access. Atelier gives <code style="font-family:var(--mono);font-size:14px;">/agents</code> a real editor.</p>
+                <p style="font-family:var(--helv);font-size:17px;line-height:1.55;color:rgba(27,28,30,.8);margin:0;max-width:44ch;">Each runs in its own context and reports back a summary — the exploration noise never lands in your main session. Delegate the heavy work, keep your window clean.</p>
+            </div>
+        </div>
+    </section>
+
+    <!-- ============ SHARED: continuity / trust ============ -->
+    <section data-screen-label="Continuity" style="border-top:1px solid var(--line);">
+        <div class="responsive-padding responsive-grid-2" style="max-width:1180px;margin:0 auto;padding:72px 40px;display:grid;grid-template-columns:1fr 1fr;gap:64px;align-items:center;">
+            <div>
+                <div style="font-family:var(--mono);font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:var(--mute);margin-bottom:16px;">a tool, not a wrapper</div>
+                <h2 style="font-family:var(--helv);font-weight:500;font-size:36px;line-height:1.05;letter-spacing:-.025em;margin:0 0 20px;">Same claude. Just a workshop.</h2>
+                <p style="font-family:var(--helv);font-size:17px;line-height:1.55;color:rgba(27,28,30,.78);margin:0 0 16px;max-width:42ch;">Atelier drives the <code style="font-family:var(--mono);font-size:14px;">claude</code> binary already on your machine, reads and writes the same files, and uses the auth you already set up.</p>
+                <p style="font-family:var(--helv);font-size:17px;line-height:1.55;color:rgba(27,28,30,.78);margin:0;max-width:42ch;">No lock-in, no hidden state, no cloud middleman. Your config stays yours — you can still edit it by hand whenever you want.</p>
+            </div>
+            <div style="font-family:var(--mono);font-size:12.5px;line-height:1;color:var(--ink);">
+                <div style="display:grid;grid-template-columns:1fr;gap:1px;background:var(--line);border:1px solid var(--line);">
+                    <div style="background:var(--paper);padding:16px 18px;display:flex;justify-content:space-between;"><span>uses your installed claude</span><span style="color:var(--mute);">✓</span></div>
+                    <div style="background:var(--paper);padding:16px 18px;display:flex;justify-content:space-between;"><span>reads / writes your files</span><span style="color:var(--mute);">✓</span></div>
+                    <div style="background:var(--paper);padding:16px 18px;display:flex;justify-content:space-between;"><span>your existing auth</span><span style="color:var(--mute);">✓</span></div>
+                    <div style="background:var(--paper);padding:16px 18px;display:flex;justify-content:space-between;"><span>config still hand-editable</span><span style="color:var(--mute);">✓</span></div>
+                    <div style="background:var(--paper);padding:16px 18px;display:flex;justify-content:space-between;"><span>no account required</span><span style="color:var(--mute);">✓</span></div>
+                </div>
+                <div style="font-family:var(--mono);font-size:11px;color:var(--mute);margin-top:11px;">the file system you care most about — treated with care.</div>
+            </div>
+        </div>
+    </section>
+
+    <!-- ============ DOWNLOAD BAND ============ -->
+    <section id="download" data-screen-label="Download" style="background:var(--ink);color:var(--paper);">
+        <div class="responsive-padding" style="max-width:1180px;margin:0 auto;padding:84px 40px;text-align:center;">
+            <svg viewBox="0 0 64 64" style="width:46px;height:46px;color:var(--paper);overflow:visible;margin-bottom:26px;"><use href="#dt"/></svg>
+            <h2 style="font-family:var(--helv);font-weight:500;font-size:46px;line-height:1.03;letter-spacing:-.03em;margin:0 0 18px;">Open the workshop.</h2>
+            <p style="font-family:var(--helv);font-size:18px;color:rgba(233,234,232,.72);margin:0 auto 36px;max-width:38ch;">Free for macOS. Windows and Linux are on the bench.</p>
+            <a class="btn-light" href="/Work.dmg" style="display:inline-flex;align-items:center;gap:12px;background:var(--paper);color:var(--ink);text-decoration:none;padding:17px 30px;font-family:var(--helv);font-weight:500;font-size:18px;">
+                <svg viewBox="0 0 64 64" style="width:22px;height:22px;color:var(--ink);overflow:visible;"><use href="#dt"/></svg>
+                Download for Mac · .dmg
             </a>
-            <p class="hero-meta">macOS 15+ &middot; Apple Silicon &amp; Intel</p>
+            <div style="font-family:var(--mono);font-size:12px;color:rgba(233,234,232,.5);margin-top:18px;letter-spacing:.04em;">macOS 15+ · free · no account</div>
         </div>
     </section>
 
-    <!-- What is Atelier — AEO definition block -->
-    <section class="how-it-works" id="about" style="padding-bottom:60px;">
-        <div class="container">
-            <div class="how-label">About</div>
-            <h2>What is Atelier?</h2>
-            <div style="max-width:640px;margin:0 auto;">
-                <p style="font-size:16px;color:var(--ivory-muted);line-height:1.8;margin-bottom:20px;">
-                    If you use Claude Code, you already have a complete history of every session sitting in <code style="font-family:var(--font-mono);font-size:14px;background:var(--ivory-ghost);padding:2px 6px;border-radius:4px;">~/.claude/</code> on your Mac. Atelier reads those files and gives you a visual interface to browse projects, read full conversations, and resume sessions in Terminal. No API keys, no network, no setup.
-                </p>
-                <p style="font-size:16px;color:var(--ivory-muted);line-height:1.8;">
-                    Atelier includes on-device semantic search powered by Apple's NLEmbedding framework, session handoff generation using Claude Code's print mode, and real-time monitoring of plugins, skills, MCP servers, and hooks. It supports macOS 15 and later on both Apple Silicon and Intel Macs.
-                </p>
+    <!-- ============ FOOTER ============ -->
+    <footer style="border-top:1px solid var(--line);">
+        <div class="responsive-padding" style="max-width:1180px;margin:0 auto;padding:44px 40px;display:flex;align-items:flex-start;justify-content:space-between;gap:40px;flex-wrap:wrap;">
+            <div style="display:flex;align-items:center;gap:11px;">
+                <svg viewBox="0 0 64 64" style="width:24px;height:24px;color:var(--ink);overflow:visible;"><use href="#dt"/></svg>
+                <div>
+                    <div style="font-family:var(--helv);font-weight:500;font-size:18px;letter-spacing:-.01em;">atelier</div>
+                    <div style="font-family:var(--mono);font-size:11px;color:var(--mute);">a workshop for claude code</div>
+                </div>
             </div>
+            <nav style="display:flex;gap:48px;font-family:var(--mono);font-size:12.5px;">
+                <div style="display:flex;flex-direction:column;gap:9px;">
+                    <span style="color:var(--mute);text-transform:uppercase;letter-spacing:.1em;font-size:10px;">product</span>
+                    <a href="#download" style="color:var(--ink);text-decoration:none;">download</a>
+                    <a href="/releases.html" style="color:var(--ink);text-decoration:none;">changelog</a>
+                    <a href="#pricing" style="color:var(--ink);text-decoration:none;">pricing</a>
+                </div>
+                <div style="display:flex;flex-direction:column;gap:9px;">
+                    <span style="color:var(--mute);text-transform:uppercase;letter-spacing:.1em;font-size:10px;">support</span>
+                    <a href="#faq" style="color:var(--ink);text-decoration:none;">faq</a>
+                    <span style="color:var(--mute);">atelier.app</span>
+                    <span style="color:var(--mute);">work.munyamakosa.com</span>
+                </div>
+            </nav>
         </div>
-    </section>
-
-    <!-- FAQ — AEO block for common questions -->
-    <section class="how-it-works" id="faq" style="padding-top:40px;">
-        <div class="container">
-            <div class="how-label">FAQ</div>
-            <h2>Frequently Asked Questions</h2>
-            <div style="max-width:640px;margin:0 auto;">
-                <details style="border-bottom:1px solid var(--border);padding:20px 0;">
-                    <summary style="font-size:15px;font-weight:600;cursor:pointer;color:var(--ivory);letter-spacing:-0.2px;">How does Atelier access my Claude Code sessions?</summary>
-                    <p style="font-size:14px;color:var(--ivory-muted);line-height:1.7;margin-top:12px;">Atelier reads the local JSONL log files that Claude Code writes to <code style="font-family:var(--font-mono);font-size:13px;background:var(--ivory-ghost);padding:2px 5px;border-radius:3px;">~/.claude/projects/</code> on your Mac. It does not make any network requests, use any API keys, or send data anywhere. All processing happens on your device.</p>
-                </details>
-                <details style="border-bottom:1px solid var(--border);padding:20px 0;">
-                    <summary style="font-size:15px;font-weight:600;cursor:pointer;color:var(--ivory);letter-spacing:-0.2px;">Does Atelier require a Claude API key or subscription?</summary>
-                    <p style="font-size:14px;color:var(--ivory-muted);line-height:1.7;margin-top:12px;">No. Atelier is a read-only viewer of files already on your Mac. It does not call the Claude API. You need Claude Code installed and to have run at least one session for Atelier to have anything to display.</p>
-                </details>
-                <details style="border-bottom:1px solid var(--border);padding:20px 0;">
-                    <summary style="font-size:15px;font-weight:600;cursor:pointer;color:var(--ivory);letter-spacing:-0.2px;">How does semantic search work offline?</summary>
-                    <p style="font-size:14px;color:var(--ivory-muted);line-height:1.7;margin-top:12px;">Atelier uses Apple's NLEmbedding framework, which runs sentence-level embeddings entirely on-device. When you open a conversation, messages are embedded into 512-dimensional vectors and searched using cosine similarity via the Accelerate framework. Embeddings are cached to disk so subsequent opens are instant.</p>
-                </details>
-                <details style="border-bottom:1px solid var(--border);padding:20px 0;">
-                    <summary style="font-size:15px;font-weight:600;cursor:pointer;color:var(--ivory);letter-spacing:-0.2px;">What is session handoff?</summary>
-                    <p style="font-size:14px;color:var(--ivory-muted);line-height:1.7;margin-top:12px;">Session handoff generates a structured summary of a conversation using Claude Code's print mode, including files changed, key decisions, and current state. The summary is copied to your clipboard so a teammate can paste it into their own LLM and continue the work with full context.</p>
-                </details>
-                <details style="border-bottom:1px solid var(--border);padding:20px 0;">
-                    <summary style="font-size:15px;font-weight:600;cursor:pointer;color:var(--ivory);letter-spacing:-0.2px;">Is Atelier free?</summary>
-                    <p style="font-size:14px;color:var(--ivory-muted);line-height:1.7;margin-top:12px;">Yes. Atelier is free to download and use. There are no subscriptions, in-app purchases, or usage limits.</p>
-                </details>
-            </div>
-        </div>
-    </section>
-
-    </main>
-    <!-- Footer -->
-    <footer>
-        <div class="container">
-            <p>Built by <a href="https://munyamakosa.com" target="_blank">Munya Makosa</a></p>
-        </div>
+        <div class="responsive-padding" style="max-width:1180px;margin:0 auto;padding:0 40px 36px;font-family:var(--mono);font-size:11px;color:var(--mute);">© mmxxvi atelier · free while in active development</div>
     </footer>
+
+    <!-- ============ CONCEPT SWITCHER (exploration control) ============ -->
+    <div data-switcher style="position:fixed;bottom:20px;right:20px;z-index:60;background:var(--ink);color:var(--paper);padding:9px 11px;display:flex;align-items:center;gap:8px;font-family:var(--mono);font-size:11px;box-shadow:0 6px 24px rgba(27,28,30,.3);">
+        <span style="color:rgba(233,234,232,.6);letter-spacing:.06em;">hero ▸ <span data-hero-label>A</span></span>
+        <button class="switcher-btn active" data-hero-target="A" style="font-family:var(--mono);font-size:11px;border:1px solid rgba(233,234,232,.4);background:none;color:var(--paper);padding:4px 9px;cursor:pointer;">A</button>
+        <button class="switcher-btn" data-hero-target="B" style="font-family:var(--mono);font-size:11px;border:1px solid rgba(233,234,232,.4);background:none;color:var(--paper);padding:4px 9px;cursor:pointer;">B</button>
+        <button class="switcher-btn" data-hero-target="C" style="font-family:var(--mono);font-size:11px;border:1px solid rgba(233,234,232,.4);background:none;color:var(--paper);padding:4px 9px;cursor:pointer;">C</button>
+    </div>
+
+</div>
+
+<script>
+    (function () {
+        var body = document.body;
+        var label = document.querySelector('[data-hero-label]');
+        var buttons = document.querySelectorAll('[data-hero-target]');
+        buttons.forEach(function (btn) {
+            btn.addEventListener('click', function () {
+                var target = btn.getAttribute('data-hero-target');
+                body.setAttribute('data-hero', target);
+                if (label) label.textContent = target;
+                buttons.forEach(function (b) { b.classList.remove('active'); });
+                btn.classList.add('active');
+            });
+        });
+    })();
+</script>
 
 </body>
 </html>
