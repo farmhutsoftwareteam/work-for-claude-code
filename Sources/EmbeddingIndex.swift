@@ -48,9 +48,11 @@ actor EmbeddingIndex {
         guard let nlEmbedding = NLEmbedding.sentenceEmbedding(for: .english) else {
             // Fall back — no embedding available, lexical only
             chunks = messages.flatMap { msg in
-                chunkText(msg).enumerated().map { (i, text) in
-                    MessageChunk(messageId: msg.id, chunkIndex: i, text: text, vector: [])
-                }
+                Self.shouldIndex(msg)
+                    ? chunkText(msg).enumerated().map { (i, text) in
+                        MessageChunk(messageId: msg.id, chunkIndex: i, text: text, vector: [])
+                    }
+                    : []
             }
             isReady = true
             progress(1.0)
@@ -58,10 +60,17 @@ actor EmbeddingIndex {
         }
         embedding = nlEmbedding
 
-        // Chunk all messages
+        // Chunk all messages — but skip `.toolResult` rows. Tool output is
+        // typically multi-MB file dumps / grep output that nobody wants to
+        // semantic-search. Indexing them was the dominant memory cost of
+        // this actor (a 191MB session produced ~1GB of chunk+vector data).
+        // We still index user prompts and assistant text replies via
+        // `shouldIndex`, which is the part anyone actually searches for.
         var allChunks: [MessageChunk] = []
         let total = Double(messages.count)
         for (idx, msg) in messages.enumerated() {
+            defer { progress(Double(idx + 1) / total) }
+            guard Self.shouldIndex(msg) else { continue }
             let texts = chunkText(msg)
             for (ci, text) in texts.enumerated() {
                 let vector = embed(text, using: nlEmbedding)
@@ -72,7 +81,6 @@ actor EmbeddingIndex {
                     vector: vector
                 ))
             }
-            progress(Double(idx + 1) / total)
         }
 
         chunks = allChunks
@@ -81,6 +89,21 @@ actor EmbeddingIndex {
         // Save to cache
         saveCache(chunks: allChunks, sessionId: sessionId, encodedCwd: encodedCwd, messageCount: messages.count)
     }
+
+    /// Whether to feed this message into the index at all. Tool results are
+    /// excluded — see the long-form note in `buildIndex`.
+    private static func shouldIndex(_ msg: ChatMessage) -> Bool {
+        switch msg.kind {
+        case .text, .toolUse: return true
+        case .toolResult:     return false
+        }
+    }
+
+    /// Cap on how many 512-char chunks we'll emit per single message. A pasted
+    /// 5MB log file shouldn't blow up the index — the first ~16KB (32 × 512)
+    /// is enough for semantic search to land you on the right message; you
+    /// can read the rest in the row view.
+    private static let maxChunksPerMessage = 32
 
     // MARK: - Search
 
@@ -151,9 +174,10 @@ actor EmbeddingIndex {
             .filter { !$0.isEmpty }
 
         var result: [String] = []
-        for para in paragraphs {
+        outer: for para in paragraphs {
             if para.count <= 512 {
                 result.append(para)
+                if result.count >= Self.maxChunksPerMessage { break outer }
             } else {
                 // Split long paragraphs by sentences
                 let tokenizer = NLTokenizer(unit: .sentence)
@@ -168,12 +192,16 @@ actor EmbeddingIndex {
                 for sentence in sentences {
                     if current.count + sentence.count > 512 && !current.isEmpty {
                         result.append(current)
+                        if result.count >= Self.maxChunksPerMessage { break outer }
                         current = sentence
                     } else {
                         current += (current.isEmpty ? "" : " ") + sentence
                     }
                 }
-                if !current.isEmpty { result.append(current) }
+                if !current.isEmpty {
+                    result.append(current)
+                    if result.count >= Self.maxChunksPerMessage { break outer }
+                }
             }
         }
         return result.isEmpty ? [text] : result

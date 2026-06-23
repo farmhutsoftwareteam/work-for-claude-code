@@ -6,6 +6,27 @@
         <description>Updates for Work</description>
         <language>en</language>
         <item>
+            <title>Version 1.3.1</title>
+            <pubDate>Mon, 23 Jun 2026 16:23:00 +0000</pubDate>
+            <sparkle:version>21</sparkle:version>
+            <sparkle:shortVersionString>1.3.1</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>15.0</sparkle:minimumSystemVersion>
+            <description><![CDATA[
+                <h3>Memory diet — large sessions no longer balloon Work's RAM</h3>
+                <ul>
+                    <li><b>Byte-walk JSONL parsing.</b> Opening a conversation used to allocate the full session file as a Swift <code>String</code> just to start parsing — a 191MB session produced a ~400-500MB heap peak before a single message was rendered. Work now memory-maps the JSONL and walks line boundaries directly, emitting one <code>Data</code> slice per line. The mmap'd region is the only large allocation, and it's pageable — the kernel reclaims it under pressure.</li>
+                    <li><b>One source of truth for tool output.</b> Every tool result was being stored twice — once in the message's <code>kind</code> enum and again in a sibling <code>text</code> field. The <code>text</code> field is now a computed property that returns a 500-char preview for tool results, so multi-megabyte file dumps and grep outputs only live in one place. Views and exports that wanted the full output read it from the enum directly.</li>
+                    <li><b>Smarter semantic search index.</b> The embedding index used to chunk every message — including 5MB tool output dumps — into 512-char fragments, each paired with a 512-float vector. For a 191MB session that built a ~1GB in-memory index just to power semantic search. Work now skips <code>.toolResult</code> rows entirely (you rarely semantic-search a <code>find . -name</code> dump) and caps any single message at 32 chunks. User prompts and assistant text replies still index normally.</li>
+                </ul>
+                <p>Expected net result: a session view that used to hold 1.5-2GB resident drops to roughly 150-300MB. Multi-session navigation should feel snappier, and Work should no longer feature in Activity Monitor's top spenders after an afternoon of browsing.</p>
+            ]]></description>
+            <enclosure
+                url="https://work.munyamakosa.com/Work.dmg"
+                length="9132148"
+                type="application/octet-stream"
+                sparkle:edSignature="8Xn7eVKjF0tOWxHHCN5bMO3Qsgix5Js4G16p4NBWCeWO72E3TRWfG/5M6rg8ye2esLYL2Yid5sYaXrxQcOHbAQ==" />
+        </item>
+        <item>
             <title>Version 1.3.0</title>
             <pubDate>Wed, 17 Jun 2026 10:10:00 +0000</pubDate>
             <sparkle:version>20</sparkle:version>

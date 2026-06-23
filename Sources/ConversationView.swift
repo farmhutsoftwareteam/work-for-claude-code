@@ -294,97 +294,48 @@ struct ConversationView: View {
                 .appendingPathComponent(encoded)
                 .appendingPathComponent(sessionId + ".jsonl")
 
-            guard let data = try? Data(contentsOf: jsonlURL, options: .mappedIfSafe),
-                  let text = String(data: data, encoding: .utf8) else {
+            // Memory-map the file and walk line boundaries directly. The old
+            // `String(data:encoding:)` + `text.split("\n")` materialised the
+            // full file as a native Swift String — a 191MB session JSONL
+            // produced a ~400-500MB peak heap allocation just to start
+            // parsing. The byte-walk below mirrors UsageAggregator's pattern
+            // and emits one `Data` per line, so the mmap'd region is the
+            // only large allocation that stays resident.
+            guard let data = try? Data(contentsOf: jsonlURL, options: .mappedIfSafe) else {
                 return ([], "Session file not found at:\n\(jsonlURL.path)")
             }
 
             // Track the last tool name for matching results to their calls
             var lastToolNames: [String: String] = [:] // tool_use_id -> tool name
-
             var parsed: [ChatMessage] = []
-            for line in text.split(separator: "\n", omittingEmptySubsequences: true) {
-                guard let lineData = line.data(using: .utf8),
-                      let obj = try? JSONSerialization.jsonObject(with: lineData) as? [String: Any],
-                      let typeStr = obj["type"] as? String,
-                      typeStr == "user" || typeStr == "assistant",
-                      let message = obj["message"] as? [String: Any] else { continue }
 
-                guard let contentArray = message["content"] as? [[String: Any]] else {
-                    // Simple string content
-                    if let contentStr = message["content"] as? String {
-                        let trimmed = contentStr.trimmingCharacters(in: .whitespacesAndNewlines)
-                        if !trimmed.isEmpty {
-                            let role: ChatMessage.Role = typeStr == "user" ? .user : .assistant
-                            parsed.append(ChatMessage(id: UUID(), role: role, kind: .text, text: trimmed))
-                        }
+            data.withUnsafeBytes { rawBuf in
+                guard let base = rawBuf.bindMemory(to: UInt8.self).baseAddress else { return }
+                let count = rawBuf.count
+                var lineStart = 0
+                for i in 0..<count where base[i] == 0x0A /* '\n' */ {
+                    var lineEnd = i
+                    if lineEnd > lineStart && base[lineEnd - 1] == 0x0D { lineEnd -= 1 }
+                    if lineEnd > lineStart {
+                        let lineData = Data(bytes: base.advanced(by: lineStart), count: lineEnd - lineStart)
+                        Self.processConversationLine(
+                            lineData,
+                            parsed: &parsed,
+                            lastToolNames: &lastToolNames
+                        )
                     }
-                    continue
+                    lineStart = i + 1
                 }
-
-                let role: ChatMessage.Role = typeStr == "user" ? .user : .assistant
-
-                for block in contentArray {
-                    let blockType = block["type"] as? String ?? ""
-
-                    switch blockType {
-                    case "text":
-                        let txt = (block["text"] as? String ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
-                        if !txt.isEmpty {
-                            parsed.append(ChatMessage(id: UUID(), role: role, kind: .text, text: txt))
-                        }
-
-                    case "tool_use":
-                        let toolName = block["name"] as? String ?? "unknown"
-                        let toolId = block["id"] as? String ?? ""
-                        lastToolNames[toolId] = toolName
-                        // Build a summary of the tool input
-                        var inputSummary = ""
-                        if let input = block["input"] as? [String: Any] {
-                            if let cmd = input["command"] as? String {
-                                inputSummary = cmd
-                            } else if let path = input["file_path"] as? String {
-                                inputSummary = path
-                            } else if let pattern = input["pattern"] as? String {
-                                inputSummary = pattern
-                            } else if let prompt = input["prompt"] as? String {
-                                inputSummary = String(prompt.prefix(120))
-                            } else if let query = input["query"] as? String {
-                                inputSummary = query
-                            }
-                        }
-                        parsed.append(ChatMessage(
-                            id: UUID(), role: .assistant,
-                            kind: .toolUse(tool: toolName, input: inputSummary),
-                            text: inputSummary.isEmpty ? toolName : "\(toolName): \(inputSummary)"
-                        ))
-
-                    case "tool_result":
-                        let toolId = block["tool_use_id"] as? String ?? ""
-                        let toolName = lastToolNames[toolId] ?? "tool"
-                        let isError = block["is_error"] as? Bool ?? false
-                        let output: String
-                        if let content = block["content"] as? String {
-                            output = content
-                        } else if let contentArr = block["content"] as? [[String: Any]] {
-                            output = contentArr.compactMap { $0["text"] as? String }.joined(separator: "\n")
-                        } else {
-                            output = ""
-                        }
-                        let trimmed = output.trimmingCharacters(in: .whitespacesAndNewlines)
-                        if !trimmed.isEmpty {
-                            parsed.append(ChatMessage(
-                                id: UUID(), role: .user,
-                                kind: .toolResult(tool: toolName, output: trimmed, isError: isError),
-                                text: trimmed
-                            ))
-                        }
-
-                    default:
-                        break // skip thinking, etc.
-                    }
+                if lineStart < count {
+                    let tail = Data(bytes: base.advanced(by: lineStart), count: count - lineStart)
+                    Self.processConversationLine(
+                        tail,
+                        parsed: &parsed,
+                        lastToolNames: &lastToolNames
+                    )
                 }
             }
+
             return (parsed, nil)
         }.value
 
@@ -396,6 +347,95 @@ struct ConversationView: View {
         // Begin indexing for semantic search
         if !messages.isEmpty {
             await searchModel.beginIndexing(sessionId: session.id, cwd: session.projectCwd, messages: messages)
+        }
+    }
+
+    // MARK: - Per-line parser
+    //
+    // Decode one JSONL line into 0…N ChatMessage values appended to `parsed`.
+    // Pulled out of `loadMessages` so the byte-walk loop stays tight and so
+    // the parser is a static, captured-context-free function (no `self`
+    // retention from the detached task). `nonisolated` so the detached
+    // task can call it without hopping back to the main actor.
+    fileprivate nonisolated static func processConversationLine(
+        _ lineData: Data,
+        parsed: inout [ChatMessage],
+        lastToolNames: inout [String: String]
+    ) {
+        guard let obj = try? JSONSerialization.jsonObject(with: lineData) as? [String: Any],
+              let typeStr = obj["type"] as? String,
+              typeStr == "user" || typeStr == "assistant",
+              let message = obj["message"] as? [String: Any] else { return }
+
+        let role: ChatMessage.Role = typeStr == "user" ? .user : .assistant
+
+        // Simple string content (no content-block array)
+        guard let contentArray = message["content"] as? [[String: Any]] else {
+            if let contentStr = message["content"] as? String {
+                let trimmed = contentStr.trimmingCharacters(in: .whitespacesAndNewlines)
+                if !trimmed.isEmpty {
+                    parsed.append(ChatMessage(id: UUID(), role: role, kind: .text(content: trimmed)))
+                }
+            }
+            return
+        }
+
+        for block in contentArray {
+            let blockType = block["type"] as? String ?? ""
+
+            switch blockType {
+            case "text":
+                let txt = (block["text"] as? String ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+                if !txt.isEmpty {
+                    parsed.append(ChatMessage(id: UUID(), role: role, kind: .text(content: txt)))
+                }
+
+            case "tool_use":
+                let toolName = block["name"] as? String ?? "unknown"
+                let toolId = block["id"] as? String ?? ""
+                lastToolNames[toolId] = toolName
+                var inputSummary = ""
+                if let input = block["input"] as? [String: Any] {
+                    if let cmd = input["command"] as? String {
+                        inputSummary = cmd
+                    } else if let path = input["file_path"] as? String {
+                        inputSummary = path
+                    } else if let pattern = input["pattern"] as? String {
+                        inputSummary = pattern
+                    } else if let prompt = input["prompt"] as? String {
+                        inputSummary = String(prompt.prefix(120))
+                    } else if let query = input["query"] as? String {
+                        inputSummary = query
+                    }
+                }
+                parsed.append(ChatMessage(
+                    id: UUID(), role: .assistant,
+                    kind: .toolUse(tool: toolName, input: inputSummary)
+                ))
+
+            case "tool_result":
+                let toolId = block["tool_use_id"] as? String ?? ""
+                let toolName = lastToolNames[toolId] ?? "tool"
+                let isError = block["is_error"] as? Bool ?? false
+                let output: String
+                if let content = block["content"] as? String {
+                    output = content
+                } else if let contentArr = block["content"] as? [[String: Any]] {
+                    output = contentArr.compactMap { $0["text"] as? String }.joined(separator: "\n")
+                } else {
+                    output = ""
+                }
+                let trimmed = output.trimmingCharacters(in: .whitespacesAndNewlines)
+                if !trimmed.isEmpty {
+                    parsed.append(ChatMessage(
+                        id: UUID(), role: .user,
+                        kind: .toolResult(tool: toolName, output: trimmed, isError: isError)
+                    ))
+                }
+
+            default:
+                break // skip thinking, image, etc.
+            }
         }
     }
 }

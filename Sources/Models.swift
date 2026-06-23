@@ -131,12 +131,26 @@ struct TokenUsage: Codable, Equatable {
 struct ChatMessage: Identifiable {
     enum Role { case user, assistant }
     enum Kind {
-        case text                              // normal text message
-        case toolUse(tool: String, input: String)  // assistant called a tool
-        case toolResult(tool: String, output: String, isError: Bool) // tool output
+        case text(content: String)
+        case toolUse(tool: String, input: String)
+        case toolResult(tool: String, output: String, isError: Bool)
     }
     let id: UUID
     let role: Role
     let kind: Kind
-    let text: String  // primary display text (for .text: the message, for toolUse: the tool summary)
+
+    /// Display/preview text derived from `kind`. For `.toolResult` this is a
+    /// 500-char preview — full output stays only in the enum case, so we
+    /// never carry two strong references to the same multi-megabyte blob.
+    /// Callers that need the full output read it directly from the case.
+    var text: String {
+        switch kind {
+        case .text(let content):
+            return content
+        case .toolUse(let tool, let input):
+            return input.isEmpty ? tool : "\(tool): \(input)"
+        case .toolResult(_, let output, _):
+            return output.count > 500 ? String(output.prefix(500)) : output
+        }
+    }
 }

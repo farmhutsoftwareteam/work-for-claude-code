@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Releases | Work</title>
-    <meta name="description" content="Every version of Work, what shipped when. Latest: v1.3.0 (June 17, 2026).">
+    <meta name="description" content="Every version of Work, what shipped when. Latest: v1.3.1 (June 23, 2026).">
     <link rel="canonical" href="https://work.munyamakosa.com/releases.html">
     <link rel="alternate" type="application/rss+xml" title="Work appcast" href="https://work.munyamakosa.com/appcast.xml">
     <meta property="og:type" content="website">
@@ -212,12 +212,38 @@
 
     <main class="container releases">
         
+    <article class="release" id="v1-3-1">
+        <header class="release-header">
+            <div class="release-title-row">
+                <h2 class="release-version">
+                    <a href="#v1-3-1" class="anchor-link" aria-label="Permalink to v1.3.1" title="Copy link to this release">#</a>
+                    v1.3.1 <span class="badge badge-latest">Latest</span>
+                </h2>
+                <span class="release-date">June 23, 2026</span>
+            </div>
+            <div class="release-meta">
+                <a href="https://work.munyamakosa.com/Work.dmg" class="download-link">
+                    Download DMG <span class="size">(8.7 MB)</span>
+                </a>
+                <span class="min-system">macOS 15.0+</span>
+            </div>
+        </header>
+        <div class="release-notes">
+            <h3>Memory diet — large sessions no longer balloon Work's RAM</h3>
+                <ul>
+                    <li><b>Byte-walk JSONL parsing.</b> Opening a conversation used to allocate the full session file as a Swift <code>String</code> just to start parsing — a 191MB session produced a ~400-500MB heap peak before a single message was rendered. Work now memory-maps the JSONL and walks line boundaries directly, emitting one <code>Data</code> slice per line. The mmap'd region is the only large allocation, and it's pageable — the kernel reclaims it under pressure.</li>
+                    <li><b>One source of truth for tool output.</b> Every tool result was being stored twice — once in the message's <code>kind</code> enum and again in a sibling <code>text</code> field. The <code>text</code> field is now a computed property that returns a 500-char preview for tool results, so multi-megabyte file dumps and grep outputs only live in one place. Views and exports that wanted the full output read it from the enum directly.</li>
+                    <li><b>Smarter semantic search index.</b> The embedding index used to chunk every message — including 5MB tool output dumps — into 512-char fragments, each paired with a 512-float vector. For a 191MB session that built a ~1GB in-memory index just to power semantic search. Work now skips <code>.toolResult</code> rows entirely (you rarely semantic-search a <code>find . -name</code> dump) and caps any single message at 32 chunks. User prompts and assistant text replies still index normally.</li>
+                </ul>
+                <p>Expected net result: a session view that used to hold 1.5-2GB resident drops to roughly 150-300MB. Multi-session navigation should feel snappier, and Work should no longer feature in Activity Monitor's top spenders after an afternoon of browsing.</p>
+        </div>
+    </article>
     <article class="release" id="v1-3-0">
         <header class="release-header">
             <div class="release-title-row">
                 <h2 class="release-version">
                     <a href="#v1-3-0" class="anchor-link" aria-label="Permalink to v1.3.0" title="Copy link to this release">#</a>
-                    v1.3.0 <span class="badge badge-latest">Latest</span>
+                    v1.3.0 
                 </h2>
                 <span class="release-date">June 17, 2026</span>
             </div>
