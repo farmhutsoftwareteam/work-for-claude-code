@@ -408,6 +408,48 @@ echo "$APPCAST_SNIPPET"
 echo ""
 
 # ─────────────────────────────────────────────────────────────────────────────
+# Step 11: Create the GitHub release (tag + notes + DMG asset)
+# Reads notes from release-notes/v${VERSION}.md. The file's expected to exist
+# before this step — write it alongside the version bump in project.yml so the
+# release flow has the full body to hand to `gh release create`. If absent,
+# we print the exact command to run later instead of failing the build.
+# ─────────────────────────────────────────────────────────────────────────────
+echo "──────────────────────────────────────────────────────────────"
+echo "  Step 11: Creating GitHub release"
+echo "──────────────────────────────────────────────────────────────"
+
+NOTES_FILE="$SCRIPT_DIR/release-notes/v${VERSION}.md"
+TAG="v${VERSION}"
+GH_TITLE="Work ${VERSION}"
+
+if ! command -v gh &>/dev/null; then
+    echo "  ⚠ gh CLI not installed — skipping. Install with: brew install gh"
+    echo "    After installing, run:"
+    echo "      gh release create $TAG --title \"$GH_TITLE\" --notes-file $NOTES_FILE $DMG_NAME"
+elif [ ! -f "$NOTES_FILE" ]; then
+    echo "  ⚠ Release notes not found at $NOTES_FILE"
+    echo "    Write the body for this release there (markdown), then run:"
+    echo "      gh release create $TAG --title \"$GH_TITLE\" --notes-file $NOTES_FILE $DMG_NAME"
+elif gh release view "$TAG" &>/dev/null; then
+    # Release already exists (re-running release.sh on the same version):
+    # just refresh the DMG asset so users get the freshest binary.
+    echo "  ⚠ GitHub release $TAG already exists — replacing the DMG asset only."
+    gh release upload "$TAG" "$DMG_NAME" --clobber
+    echo "✓ Re-uploaded $DMG_NAME to existing release $TAG."
+else
+    # `gh release create` creates the git tag at the current HEAD if it
+    # doesn't exist locally. Make sure your version-bump commit is the tip
+    # of the branch before running this — otherwise the tag will point at
+    # an older commit.
+    gh release create "$TAG" \
+        --title "$GH_TITLE" \
+        --notes-file "$NOTES_FILE" \
+        "$DMG_NAME"
+    echo "✓ GitHub release $TAG created with $DMG_NAME attached."
+fi
+echo ""
+
+# ─────────────────────────────────────────────────────────────────────────────
 # Done
 # ─────────────────────────────────────────────────────────────────────────────
 echo "============================================================"
@@ -418,9 +460,12 @@ echo "Artifacts:"
 echo "  • $DMG_NAME ($(du -h "$DMG_NAME" | cut -f1) — notarized & stapled)"
 echo ""
 echo "Next steps:"
-echo "  1. Upload $DMG_NAME to your GitHub release / hosting"
-echo "  2. Add the appcast XML snippet above to appcast.xml"
-echo "  3. Push the updated appcast.xml to GitHub Pages"
+echo "  1. Add the appcast XML snippet above to docs/appcast.xml"
+echo "  2. Re-run scripts/build-releases.js to regenerate docs/releases.html"
+echo "  3. Copy $DMG_NAME into docs/, then 'cd docs && vercel --prod --yes'"
+echo "  4. git commit + push the version bump, appcast, releases.html, and"
+echo "     release-notes/v${VERSION}.md"
+echo "  5. If the GH release step skipped above, run the command it printed"
 echo ""
 echo "────────────────────────────────────────────────────────────"
 echo "  Keychain Profile Setup (one-time)"
