@@ -406,22 +406,11 @@ const DETAIL_STYLE = `
 `;
 
 function renderDetailPage(data) {
-    const badgeStyle = `background: ${typeColor(data.type)}22; color: ${typeColor(data.type)};`;
-    const relatedHtml = data.related && data.related.length
-        ? `<div class="related">
-            <h3>Related recipes</h3>
-            <div class="related-list">
-                ${data.related.map(r => `<a href="${escHtml(r.slug)}.html"><span class="related-type">${escHtml(typeLabel(r.type))}</span>${escHtml(r.title)}</a>`).join('')}
-            </div>
-        </div>`
-        : '';
-
     const pageUrl = `${SITE_URL}/recipes/${data.slug}.html`;
 
     // SEO overrides: invisible to readers, used only in <head> / structured data.
     const seoTitle = data.seoTitle || data.title;
     const metaDesc = data.metaDescription || data.description;
-    // Default to per-recipe generated OG card unless the recipe explicitly overrides via `image:`.
     const ogImage = data.ogImage
         ? `${SITE_URL}/recipes/${data.ogImage}`
         : `${SITE_URL}/recipes/og/${data.slug}.png`;
@@ -436,6 +425,27 @@ function renderDetailPage(data) {
     const keywords = Array.isArray(data.keywords) && data.keywords.length
         ? data.keywords
         : (data.tags || []);
+    const dateShort = formatDateShort(data.date);
+
+    const nextLink = data.next
+        ? `<a class="next-link" href="${escHtml(data.next.slug)}.html" style="display:flex;align-items:center;justify-content:space-between;text-decoration:none;color:var(--ink);border-top:1px solid var(--line);margin-top:48px;padding-top:28px;gap:24px;">
+            <span style="font-family:var(--mono);font-size:11.5px;color:var(--mute);">next · ${escHtml(data.next.type)}</span>
+            <span style="font-family:var(--helv);font-weight:500;font-size:20px;letter-spacing:-.015em;text-align:right;">${escHtml(data.next.title)} →</span>
+        </a>`
+        : '';
+
+    const installCard = data.install
+        ? `<div style="margin:40px 0;border:1px solid var(--line2);background:var(--paper2);">
+            <div style="display:flex;align-items:center;justify-content:space-between;padding:14px 18px;border-bottom:1px solid var(--line);font-family:var(--mono);font-size:11.5px;">
+                <div>
+                    <span style="color:var(--mute);letter-spacing:.1em;text-transform:uppercase;margin-right:10px;">install</span>
+                    <span style="color:var(--ink);">${escHtml(data.install.label)}</span>
+                </div>
+                <button class="copy-btn" data-copy style="font-family:var(--mono);font-size:11.5px;border:1px solid var(--line2);background:var(--paper);color:var(--ink);padding:5px 10px;cursor:pointer;">Copy</button>
+            </div>
+            <pre style="font-family:var(--mono);font-size:13px;line-height:1.7;margin:0;padding:18px 20px;overflow-x:auto;white-space:pre;color:rgba(27,28,30,.85);"><code>${escHtml(data.install.content)}</code></pre>
+        </div>`
+        : '';
 
     return `<!DOCTYPE html>
 <html lang="en">
@@ -450,7 +460,6 @@ function renderDetailPage(data) {
     <link rel="canonical" href="${pageUrl}">
     <link rel="alternate" type="application/rss+xml" title="Atelier Recipes" href="${SITE_URL}/recipes/feed.xml">
 
-    <!-- Open Graph -->
     <meta property="og:type" content="article">
     <meta property="og:locale" content="en_US">
     <meta property="og:title" content="${escHtml(seoTitle)}">
@@ -466,7 +475,6 @@ function renderDetailPage(data) {
     <meta property="article:author" content="https://munyamakosa.com">
     ${(data.tags || []).map(t => `<meta property="article:tag" content="${escHtml(t)}">`).join('\n    ')}
 
-    <!-- Twitter -->
     <meta name="twitter:card" content="summary_large_image">
     <meta name="twitter:site" content="@munyamakosa">
     <meta name="twitter:creator" content="@munyamakosa">
@@ -475,7 +483,6 @@ function renderDetailPage(data) {
     <meta name="twitter:image" content="${ogImage}">
     <meta name="twitter:image:alt" content="${escHtml(ogImageAlt)}">
 
-    <!-- Article JSON-LD -->
     <script type="application/ld+json">
     {
         "@context": "https://schema.org",
@@ -515,7 +522,6 @@ function renderDetailPage(data) {
     }
     </script>
 
-    <!-- Breadcrumb JSON-LD -->
     <script type="application/ld+json">
     {
         "@context": "https://schema.org",
@@ -528,70 +534,257 @@ function renderDetailPage(data) {
     }
     </script>
 
-    <link rel="icon" type="image/png" href="../icon-256.png">
-    <style>${SHARED_STYLE}${DETAIL_STYLE}</style>
+    <link rel="icon" type="image/svg+xml" href="/atelier-mark.svg">
+    <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32.png">
+    <link rel="icon" type="image/png" sizes="16x16" href="/favicon-16.png">
+    <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png">
+
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+
+    <style>
+        :root {
+            --ink: #1b1c1e;
+            --paper: #e9eae8;
+            --paper2: #f3f4f2;
+            --paper3: #dcdedb;
+            --line: rgba(27, 28, 30, .18);
+            --line2: rgba(27, 28, 30, .34);
+            --mute: rgba(27, 28, 30, .54);
+            --helv: 'Helvetica Neue', Helvetica, Arial, sans-serif;
+            --mono: 'IBM Plex Mono', ui-monospace, monospace;
+        }
+        * { box-sizing: border-box; }
+        html, body { margin: 0; }
+        body {
+            background: var(--paper);
+            color: var(--ink);
+            -webkit-font-smoothing: antialiased;
+            text-rendering: optimizeLegibility;
+        }
+        ::selection { background: var(--ink); color: var(--paper); }
+
+        .nav-link { transition: color .12s ease; }
+        .nav-link:hover { color: var(--ink) !important; }
+        .nav-cta { transition: background .12s ease; }
+        .nav-cta:hover { background: #000 !important; }
+        .crumb-link { transition: color .12s ease; }
+        .crumb-link:hover { color: var(--ink) !important; }
+        .btn-primary { transition: background .12s ease; }
+        .btn-primary:hover { background: #000 !important; }
+        .copy-btn { transition: background .12s ease; }
+        .copy-btn:hover { background: var(--paper3); }
+        .next-link { transition: color .12s ease; }
+        .next-link:hover { color: var(--mute); }
+        .footer-link { transition: color .12s ease; }
+        .footer-link:hover { color: var(--ink) !important; }
+
+        /* Article body typography - matches the design's paragraph rhythm */
+        .article-body p {
+            font-family: var(--helv);
+            font-size: 18px;
+            line-height: 1.62;
+            margin: 0 0 22px;
+            color: rgba(27, 28, 30, .9);
+        }
+        .article-body h2 {
+            font-family: var(--helv);
+            font-weight: 500;
+            font-size: 27px;
+            letter-spacing: -.02em;
+            line-height: 1.15;
+            margin: 44px 0 16px;
+        }
+        .article-body h3 {
+            font-family: var(--helv);
+            font-weight: 500;
+            font-size: 21px;
+            letter-spacing: -.015em;
+            margin: 32px 0 12px;
+        }
+        .article-body h4 {
+            font-family: var(--mono);
+            font-size: 11.5px;
+            letter-spacing: .12em;
+            text-transform: uppercase;
+            color: var(--mute);
+            margin: 28px 0 12px;
+        }
+        .article-body blockquote {
+            font-family: var(--helv);
+            font-weight: 500;
+            font-size: 26px;
+            line-height: 1.2;
+            letter-spacing: -.02em;
+            margin: 36px 0;
+            padding-left: 22px;
+            border-left: 3px solid var(--ink);
+            max-width: 28ch;
+            color: var(--ink);
+        }
+        .article-body ul, .article-body ol {
+            font-family: var(--helv);
+            font-size: 17px;
+            line-height: 1.6;
+            color: rgba(27, 28, 30, .9);
+            margin: 0 0 22px;
+            padding-left: 20px;
+        }
+        .article-body li { margin-bottom: 10px; }
+        .article-body code {
+            font-family: var(--mono);
+            font-size: 14px;
+            background: var(--paper3);
+            padding: 1px 6px;
+            border-radius: 2px;
+        }
+        .article-body pre {
+            font-family: var(--mono);
+            font-size: 13px;
+            line-height: 1.7;
+            background: var(--paper2);
+            border: 1px solid var(--line2);
+            padding: 20px 22px;
+            margin: 0 0 28px;
+            overflow-x: auto;
+            white-space: pre;
+            color: rgba(27, 28, 30, .85);
+        }
+        .article-body pre code {
+            background: none;
+            padding: 0;
+            border-radius: 0;
+            font-size: 13px;
+        }
+        .article-body a {
+            color: var(--ink);
+            text-decoration: underline;
+            text-decoration-color: var(--line2);
+            text-underline-offset: 3px;
+        }
+        .article-body a:hover { text-decoration-color: var(--ink); }
+        .article-body strong, .article-body b { font-weight: 500; color: var(--ink); }
+        .article-body hr {
+            border: none;
+            border-top: 1px solid var(--line);
+            margin: 36px 0;
+        }
+        .article-body img {
+            max-width: 100%;
+            height: auto;
+            border: 1px solid var(--line);
+            margin: 24px 0;
+        }
+
+        @media (max-width: 800px) {
+            .responsive-padding { padding-left: 24px !important; padding-right: 24px !important; }
+            .responsive-nav { gap: 18px !important; }
+            .article-title { font-size: 36px !important; }
+            .article-subtitle { font-size: 18px !important; }
+            .cta-card { flex-direction: column !important; align-items: flex-start !important; }
+            .next-link { flex-direction: column !important; align-items: flex-start !important; gap: 8px !important; }
+            .next-link > span:last-child { text-align: left !important; font-size: 17px !important; }
+        }
+    </style>
 </head>
 <body>
-${renderNav('recipes')}
-<main>
-    <header class="article-header">
-        <div class="container-narrow">
-            <a href="./" class="back-link">← All recipes</a>
-            <div class="article-meta">
-                <span class="type-badge" style="${badgeStyle}">${escHtml(typeLabel(data.type))}</span>
-                <span class="meta-item">${escHtml(formatDate(data.date))}</span>
-                ${data.readTime ? `<span class="meta-dot">·</span><span class="meta-item">${escHtml(data.readTime)} min read</span>` : ''}
-            </div>
-            <h1 class="article-title">${escHtml(data.title)}</h1>
-            <p class="article-description">${escHtml(data.description)}</p>
+
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+    <symbol id="dt" viewBox="0 0 64 64" fill="none" stroke="currentColor" stroke-width="6" stroke-linecap="square" stroke-linejoin="miter">
+        <rect x="7" y="7" width="50" height="50"/>
+        <path d="M32 7 L32 24 L46 28 L46 36 L32 40 L32 57"/>
+    </symbol>
+</svg>
+
+<div style="min-height:100vh;">
+
+    <header style="position:sticky;top:0;z-index:40;background:rgba(233,234,232,.86);backdrop-filter:blur(8px);border-bottom:1px solid var(--line);">
+        <div class="responsive-padding" style="max-width:1180px;margin:0 auto;padding:14px 40px;display:flex;align-items:center;justify-content:space-between;">
+            <a href="/" style="display:flex;align-items:center;gap:11px;text-decoration:none;color:var(--ink);">
+                <svg viewBox="0 0 64 64" style="width:26px;height:26px;color:var(--ink);overflow:visible;"><use href="#dt"/></svg>
+                <span style="font-family:var(--helv);font-weight:500;font-size:20px;letter-spacing:-.01em;">atelier</span>
+            </a>
+            <nav class="responsive-nav" style="display:flex;align-items:center;gap:30px;font-family:var(--mono);font-size:12.5px;letter-spacing:.02em;">
+                <a class="nav-link" href="/releases.html" style="color:var(--mute);text-decoration:none;">changelog</a>
+                <a href="/recipes/" style="color:var(--ink);text-decoration:none;">recipes</a>
+                <a class="nav-link" href="/faq.html" style="color:var(--mute);text-decoration:none;">faq</a>
+                <a class="nav-link" href="/pricing.html" style="color:var(--mute);text-decoration:none;">pricing</a>
+                <a class="nav-cta" href="/#download" style="color:var(--paper);background:var(--ink);text-decoration:none;padding:8px 15px;letter-spacing:.04em;">download</a>
+            </nav>
         </div>
     </header>
 
-    <article class="article-body">
-        <div class="container-narrow">
+    <main class="responsive-padding" style="max-width:920px;margin:0 auto;padding:28px 40px 96px;">
+
+        <!-- breadcrumb -->
+        <div style="font-family:var(--mono);font-size:11.5px;color:var(--mute);padding:18px 0 36px;">
+            <a class="crumb-link" href="/recipes/" style="color:var(--mute);text-decoration:none;">recipes</a> <span style="margin:0 8px;">/</span> ${escHtml(data.type)}
+        </div>
+
+        <!-- article masthead -->
+        <article class="article-body">
+            <div style="display:flex;align-items:center;gap:12px;font-family:var(--mono);font-size:11.5px;color:var(--mute);margin-bottom:22px;">
+                <span style="border:1px solid var(--line2);padding:3px 9px;letter-spacing:.06em;">${escHtml(data.type)}</span>
+                ${data.readTime ? `<span>${escHtml(data.readTime)} min read</span>` : ''}
+            </div>
+            <h1 class="article-title" style="font-family:var(--helv);font-weight:500;font-size:52px;line-height:1.02;letter-spacing:-.035em;margin:0 0 22px;max-width:20ch;">${escHtml(data.title)}</h1>
+            <p class="article-subtitle" style="font-family:var(--helv);font-size:21px;line-height:1.45;color:rgba(27,28,30,.78);margin:0 0 30px;max-width:46ch;">${escHtml(data.description)}</p>
+            <div style="display:flex;align-items:center;gap:16px;font-family:var(--mono);font-size:12px;color:var(--mute);border-top:1px solid var(--line);border-bottom:1px solid var(--line);padding:16px 0;margin-bottom:48px;">
+                <svg viewBox="0 0 64 64" style="width:20px;height:20px;color:var(--ink);overflow:visible;"><use href="#dt"/></svg>
+                <span style="color:var(--ink);">the atelier workshop</span>
+                <span style="margin-left:auto;">${escHtml(dateShort)}</span>
+            </div>
+
             ${data.bodyHtml}
 
-            ${data.install ? `
-            <div class="install-card">
-                <div class="install-header">
-                    <div>
-                        <span class="install-label-eyebrow">Install</span>
-                        <span class="install-label">${escHtml(data.install.label)}</span>
-                    </div>
-                    <button class="copy-btn" data-copy aria-label="Copy to clipboard">
-                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M15.75 17.25v3.375c0 .621-.504 1.125-1.125 1.125h-9.75a1.125 1.125 0 01-1.125-1.125V7.875c0-.621.504-1.125 1.125-1.125H6.75a9.06 9.06 0 011.5.124m7.5 10.376h3.375c.621 0 1.125-.504 1.125-1.125V11.25c0-4.46-3.243-8.161-7.5-8.876a9.06 9.06 0 00-1.5-.124H9.375c-.621 0-1.125.504-1.125 1.125v3.5m7.5 10.375H9.375a1.125 1.125 0 01-1.125-1.125v-9.25m12 6.625v-1.875a3.375 3.375 0 00-3.375-3.375h-1.5a1.125 1.125 0 01-1.125-1.125v-1.5a3.375 3.375 0 00-3.375-3.375H9.75" /></svg>
-                        <span class="copy-label">Copy</span>
-                    </button>
-                </div>
-                <div class="install-body">
-                    <pre><code>${escHtml(data.install.content)}</code></pre>
-                </div>
-            </div>
-            ` : ''}
+            ${installCard}
+        </article>
 
-            ${relatedHtml}
+        <!-- CTA -->
+        <div class="cta-card" style="margin-top:56px;border:1px solid var(--line2);background:var(--paper2);padding:34px;display:flex;align-items:center;justify-content:space-between;gap:28px;flex-wrap:wrap;">
+            <div>
+                <h3 style="font-family:var(--helv);font-weight:500;font-size:24px;letter-spacing:-.02em;margin:0 0 6px;">Try this in Atelier</h3>
+                <p style="font-family:var(--mono);font-size:12.5px;color:var(--mute);margin:0;">Six live sessions in one window. Free for macOS 15+.</p>
+            </div>
+            <a class="btn-primary" href="/Work.dmg" style="display:inline-flex;align-items:center;gap:11px;background:var(--ink);color:var(--paper);text-decoration:none;padding:14px 22px;font-family:var(--helv);font-weight:500;font-size:16px;">
+                <svg viewBox="0 0 64 64" style="width:19px;height:19px;color:var(--paper);overflow:visible;"><use href="#dt"/></svg>
+                Download for Mac
+            </a>
         </div>
-    </article>
-</main>
-${renderFooter()}
+
+        ${nextLink}
+
+    </main>
+
+    <footer style="border-top:1px solid var(--line);">
+        <div class="responsive-padding" style="max-width:1180px;margin:0 auto;padding:36px 40px;font-family:var(--mono);font-size:11px;color:var(--mute);display:flex;justify-content:space-between;flex-wrap:wrap;gap:16px;">
+            <span>© mmxxvi atelier · a workshop for claude code</span>
+            <span><a class="footer-link" href="/recipes/" style="color:var(--mute);text-decoration:none;">← all recipes</a></span>
+        </div>
+    </footer>
+</div>
+
 <script>
-(function() {
-    document.querySelectorAll('[data-copy]').forEach(function(btn) {
-        btn.addEventListener('click', function() {
-            var code = btn.closest('.install-card').querySelector('code').innerText;
-            (async function() {
-                try {
-                    await navigator.clipboard.writeText(code);
-                    var label = btn.querySelector('.copy-label');
-                    var original = label.textContent;
-                    label.textContent = 'Copied ✓';
-                    setTimeout(function() { label.textContent = original; }, 1600);
-                } catch (e) {}
-            })();
+    (function () {
+        document.querySelectorAll('[data-copy]').forEach(function (btn) {
+            btn.addEventListener('click', function () {
+                var pre = btn.closest('div').parentElement.querySelector('pre code');
+                if (!pre) return;
+                var code = pre.innerText;
+                (async function () {
+                    try {
+                        await navigator.clipboard.writeText(code);
+                        var original = btn.textContent;
+                        btn.textContent = 'Copied ✓';
+                        setTimeout(function () { btn.textContent = original; }, 1600);
+                    } catch (e) {}
+                })();
+            });
         });
-    });
-})();
+    })();
 </script>
+
 </body>
 </html>
 `;
@@ -920,6 +1113,12 @@ async function main() {
             .sort((a, b) => b.score - a.score)
             .slice(0, 3)
             .map(x => x.recipe);
+    }
+
+    // Wire each recipe's "next" pointer to the recipe immediately older in the
+    // list (recipes are sorted newest-first). The oldest recipe has no next.
+    for (let i = 0; i < recipes.length; i++) {
+        recipes[i].next = recipes[i + 1] || null;
     }
 
     // Write detail pages

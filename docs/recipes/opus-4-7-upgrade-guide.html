@@ -11,7 +11,6 @@
     <link rel="canonical" href="https://work.munyamakosa.com/recipes/opus-4-7-upgrade-guide.html">
     <link rel="alternate" type="application/rss+xml" title="Atelier Recipes" href="https://work.munyamakosa.com/recipes/feed.xml">
 
-    <!-- Open Graph -->
     <meta property="og:type" content="article">
     <meta property="og:locale" content="en_US">
     <meta property="og:title" content="Opus 4.7 after 24 hours: an honest Claude Code field report">
@@ -30,7 +29,6 @@
     <meta property="article:tag" content="models">
     <meta property="article:tag" content="upgrade">
 
-    <!-- Twitter -->
     <meta name="twitter:card" content="summary_large_image">
     <meta name="twitter:site" content="@munyamakosa">
     <meta name="twitter:creator" content="@munyamakosa">
@@ -39,7 +37,6 @@
     <meta name="twitter:image" content="https://work.munyamakosa.com/recipes/og/opus-4-7-upgrade-guide.png">
     <meta name="twitter:image:alt" content="Opus 4.7 after 24 hours: an honest Claude Code field report">
 
-    <!-- Article JSON-LD -->
     <script type="application/ld+json">
     {
         "@context": "https://schema.org",
@@ -79,7 +76,6 @@
     }
     </script>
 
-    <!-- Breadcrumb JSON-LD -->
     <script type="application/ld+json">
     {
         "@context": "https://schema.org",
@@ -92,319 +88,208 @@
     }
     </script>
 
-    <link rel="icon" type="image/png" href="../icon-256.png">
+    <link rel="icon" type="image/svg+xml" href="/atelier-mark.svg">
+    <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32.png">
+    <link rel="icon" type="image/png" sizes="16x16" href="/favicon-16.png">
+    <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png">
+
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+
     <style>
-    :root {
-        --graphite: #111113;
-        --graphite-surface: #18181b;
-        --graphite-elevated: #1f1f23;
-        --ivory: #f0ece4;
-        --ivory-muted: rgba(240, 236, 228, 0.55);
-        --ivory-faint: rgba(240, 236, 228, 0.12);
-        --ivory-ghost: rgba(240, 236, 228, 0.06);
-        --blue: #4a6fa5;
-        --blue-bright: #5a8fd4;
-        --border: rgba(240, 236, 228, 0.08);
-        --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
-        --font-mono: 'SF Mono', 'Fira Code', 'JetBrains Mono', monospace;
-    }
-    *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
-    html { font-size: 16px; -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; scroll-behavior: smooth; }
-    body { font-family: var(--font-sans); background: var(--graphite); color: var(--ivory); line-height: 1.6; overflow-x: hidden; }
-    a { color: var(--blue-bright); text-decoration: none; }
-    a:hover { text-decoration: underline; }
-    .container { max-width: 960px; margin: 0 auto; padding: 0 24px; }
-    .container-narrow { max-width: 720px; margin: 0 auto; padding: 0 24px; }
+        :root {
+            --ink: #1b1c1e;
+            --paper: #e9eae8;
+            --paper2: #f3f4f2;
+            --paper3: #dcdedb;
+            --line: rgba(27, 28, 30, .18);
+            --line2: rgba(27, 28, 30, .34);
+            --mute: rgba(27, 28, 30, .54);
+            --helv: 'Helvetica Neue', Helvetica, Arial, sans-serif;
+            --mono: 'IBM Plex Mono', ui-monospace, monospace;
+        }
+        * { box-sizing: border-box; }
+        html, body { margin: 0; }
+        body {
+            background: var(--paper);
+            color: var(--ink);
+            -webkit-font-smoothing: antialiased;
+            text-rendering: optimizeLegibility;
+        }
+        ::selection { background: var(--ink); color: var(--paper); }
 
-    /* Nav */
-    nav.site-nav {
-        position: fixed; top: 0; left: 0; right: 0; z-index: 100;
-        padding: 16px 0;
-        background: rgba(17, 17, 19, 0.85);
-        backdrop-filter: blur(20px) saturate(1.4);
-        -webkit-backdrop-filter: blur(20px) saturate(1.4);
-        border-bottom: 1px solid var(--border);
-    }
-    nav.site-nav .container { display: flex; align-items: center; justify-content: space-between; }
-    .nav-brand { display: flex; align-items: center; gap: 10px; }
-    .nav-brand img { width: 28px; height: 28px; border-radius: 6px; }
-    .nav-brand span { font-family: var(--font-mono); font-size: 15px; font-weight: 600; letter-spacing: -0.3px; color: var(--ivory); }
-    .nav-links { display: flex; align-items: center; gap: 28px; }
-    .nav-links a { font-size: 14px; font-weight: 450; color: var(--ivory-muted); transition: color 0.15s; }
-    .nav-links a:hover { color: var(--ivory); text-decoration: none; }
-    .nav-links a.active { color: var(--ivory); }
-    .btn-download-nav {
-        font-size: 13px; font-weight: 500; color: var(--ivory) !important;
-        background: var(--blue); padding: 7px 16px; border-radius: 6px;
-        transition: background 0.15s; text-decoration: none;
-    }
-    .btn-download-nav:hover { background: var(--blue-bright); text-decoration: none; }
+        .nav-link { transition: color .12s ease; }
+        .nav-link:hover { color: var(--ink) !important; }
+        .nav-cta { transition: background .12s ease; }
+        .nav-cta:hover { background: #000 !important; }
+        .crumb-link { transition: color .12s ease; }
+        .crumb-link:hover { color: var(--ink) !important; }
+        .btn-primary { transition: background .12s ease; }
+        .btn-primary:hover { background: #000 !important; }
+        .copy-btn { transition: background .12s ease; }
+        .copy-btn:hover { background: var(--paper3); }
+        .next-link { transition: color .12s ease; }
+        .next-link:hover { color: var(--mute); }
+        .footer-link { transition: color .12s ease; }
+        .footer-link:hover { color: var(--ink) !important; }
 
-    /* Footer */
-    footer { padding: 40px 0; border-top: 1px solid var(--border); text-align: center; margin-top: 80px; }
-    footer p { font-size: 13px; color: rgba(240, 236, 228, 0.25); }
+        /* Article body typography - matches the design's paragraph rhythm */
+        .article-body p {
+            font-family: var(--helv);
+            font-size: 18px;
+            line-height: 1.62;
+            margin: 0 0 22px;
+            color: rgba(27, 28, 30, .9);
+        }
+        .article-body h2 {
+            font-family: var(--helv);
+            font-weight: 500;
+            font-size: 27px;
+            letter-spacing: -.02em;
+            line-height: 1.15;
+            margin: 44px 0 16px;
+        }
+        .article-body h3 {
+            font-family: var(--helv);
+            font-weight: 500;
+            font-size: 21px;
+            letter-spacing: -.015em;
+            margin: 32px 0 12px;
+        }
+        .article-body h4 {
+            font-family: var(--mono);
+            font-size: 11.5px;
+            letter-spacing: .12em;
+            text-transform: uppercase;
+            color: var(--mute);
+            margin: 28px 0 12px;
+        }
+        .article-body blockquote {
+            font-family: var(--helv);
+            font-weight: 500;
+            font-size: 26px;
+            line-height: 1.2;
+            letter-spacing: -.02em;
+            margin: 36px 0;
+            padding-left: 22px;
+            border-left: 3px solid var(--ink);
+            max-width: 28ch;
+            color: var(--ink);
+        }
+        .article-body ul, .article-body ol {
+            font-family: var(--helv);
+            font-size: 17px;
+            line-height: 1.6;
+            color: rgba(27, 28, 30, .9);
+            margin: 0 0 22px;
+            padding-left: 20px;
+        }
+        .article-body li { margin-bottom: 10px; }
+        .article-body code {
+            font-family: var(--mono);
+            font-size: 14px;
+            background: var(--paper3);
+            padding: 1px 6px;
+            border-radius: 2px;
+        }
+        .article-body pre {
+            font-family: var(--mono);
+            font-size: 13px;
+            line-height: 1.7;
+            background: var(--paper2);
+            border: 1px solid var(--line2);
+            padding: 20px 22px;
+            margin: 0 0 28px;
+            overflow-x: auto;
+            white-space: pre;
+            color: rgba(27, 28, 30, .85);
+        }
+        .article-body pre code {
+            background: none;
+            padding: 0;
+            border-radius: 0;
+            font-size: 13px;
+        }
+        .article-body a {
+            color: var(--ink);
+            text-decoration: underline;
+            text-decoration-color: var(--line2);
+            text-underline-offset: 3px;
+        }
+        .article-body a:hover { text-decoration-color: var(--ink); }
+        .article-body strong, .article-body b { font-weight: 500; color: var(--ink); }
+        .article-body hr {
+            border: none;
+            border-top: 1px solid var(--line);
+            margin: 36px 0;
+        }
+        .article-body img {
+            max-width: 100%;
+            height: auto;
+            border: 1px solid var(--line);
+            margin: 24px 0;
+        }
 
-    /* Section labels */
-    .section-label {
-        font-family: var(--font-mono); font-size: 11px; font-weight: 500;
-        text-transform: uppercase; letter-spacing: 1.5px;
-        color: var(--blue-bright); margin-bottom: 16px;
-    }
-
-    @media (max-width: 768px) {
-        .nav-links a:not(.btn-download-nav) { display: none; }
-    }
-
-    .article-header {
-        padding: 140px 0 40px;
-    }
-    .back-link {
-        display: inline-flex; align-items: center; gap: 6px;
-        font-size: 13px; color: var(--ivory-muted);
-        margin-bottom: 32px; text-decoration: none;
-    }
-    .back-link:hover { color: var(--ivory); text-decoration: none; }
-    .article-meta {
-        display: flex; align-items: center; gap: 12px;
-        margin-bottom: 20px;
-        font-size: 12px;
-    }
-    .type-badge {
-        display: inline-block;
-        font-family: var(--font-mono); font-size: 10px; font-weight: 700;
-        text-transform: uppercase; letter-spacing: 1.0px;
-        padding: 4px 8px; border-radius: 4px;
-    }
-    .meta-dot { color: rgba(240, 236, 228, 0.25); }
-    .meta-item { color: var(--ivory-muted); }
-    h1.article-title {
-        font-size: clamp(32px, 5vw, 44px);
-        font-weight: 700; letter-spacing: -1.6px;
-        line-height: 1.15;
-        margin-bottom: 14px;
-    }
-    .article-description {
-        font-size: 18px; color: var(--ivory-muted);
-        line-height: 1.55;
-        max-width: 640px;
-    }
-
-    /* Article body */
-    .article-body {
-        padding: 40px 0;
-        font-size: 16px;
-        line-height: 1.75;
-        color: rgba(240, 236, 228, 0.85);
-    }
-    .article-body h2 {
-        font-size: 22px; font-weight: 600; letter-spacing: -0.6px;
-        margin: 48px 0 16px;
-        color: var(--ivory);
-    }
-    .article-body h3 {
-        font-size: 18px; font-weight: 600; letter-spacing: -0.4px;
-        margin: 32px 0 12px;
-        color: var(--ivory);
-    }
-    .article-body h2:first-child, .article-body h3:first-child { margin-top: 0; }
-    .article-body p { margin-bottom: 18px; }
-    .article-body ul, .article-body ol { margin: 0 0 18px 24px; }
-    .article-body li { margin-bottom: 6px; }
-    .article-body strong { color: var(--ivory); font-weight: 600; }
-    .article-body code {
-        font-family: var(--font-mono); font-size: 13.5px;
-        background: rgba(240, 236, 228, 0.07);
-        padding: 2px 6px; border-radius: 4px;
-        color: #f0b99c;
-    }
-    .article-body pre {
-        background: var(--graphite-surface);
-        border: 1px solid var(--border);
-        border-radius: 8px;
-        padding: 16px;
-        overflow-x: auto;
-        margin-bottom: 18px;
-    }
-    .article-body pre code {
-        background: none; padding: 0; color: var(--ivory);
-        font-size: 13px; line-height: 1.6;
-    }
-    .article-body blockquote {
-        border-left: 3px solid var(--blue);
-        padding-left: 16px;
-        margin: 20px 0 20px 0;
-        color: var(--ivory-muted);
-        font-style: italic;
-    }
-    .article-body hr {
-        border: none;
-        border-top: 1px solid var(--border);
-        margin: 40px 0;
-    }
-    .article-body img {
-        display: block;
-        max-width: 100%;
-        height: auto;
-        margin: 32px auto;
-        border-radius: 12px;
-        border: 1px solid var(--border);
-        box-shadow: 0 12px 36px rgba(0, 0, 0, 0.4);
-    }
-    .article-body table {
-        width: 100%;
-        margin: 24px 0;
-        border-collapse: separate;
-        border-spacing: 0;
-        background: var(--graphite-surface);
-        border: 1px solid var(--border);
-        border-radius: 10px;
-        overflow: hidden;
-        font-size: 15px;
-    }
-    .article-body th {
-        text-align: left;
-        font-family: var(--font-mono);
-        font-size: 11px;
-        font-weight: 600;
-        text-transform: uppercase;
-        letter-spacing: 1.2px;
-        color: var(--blue-bright);
-        padding: 14px 18px;
-        background: rgba(74, 111, 165, 0.06);
-        border-bottom: 1px solid var(--border);
-    }
-    .article-body td {
-        padding: 14px 18px;
-        color: var(--ivory-muted);
-        border-bottom: 1px solid var(--border);
-        vertical-align: top;
-    }
-    .article-body tr:last-child td { border-bottom: none; }
-    .article-body td:first-child { color: var(--ivory); }
-    .article-body td code, .article-body th code {
-        background: rgba(74, 111, 165, 0.12);
-        color: var(--ivory);
-    }
-
-    /* Install card */
-    .install-card {
-        background: var(--graphite-surface);
-        border: 1px solid rgba(74, 111, 165, 0.3);
-        border-radius: 12px;
-        margin: 36px 0;
-        overflow: hidden;
-        box-shadow: 0 0 0 1px rgba(74, 111, 165, 0.1), 0 8px 24px rgba(0, 0, 0, 0.2);
-    }
-    .install-header {
-        display: flex; align-items: center; justify-content: space-between;
-        padding: 14px 18px;
-        background: rgba(74, 111, 165, 0.08);
-        border-bottom: 1px solid var(--border);
-        gap: 12px;
-        flex-wrap: wrap;
-    }
-    .install-label {
-        font-size: 12px; font-weight: 500;
-        color: var(--ivory);
-        font-family: var(--font-mono);
-    }
-    .install-label-eyebrow {
-        display: block;
-        font-size: 10px;
-        font-weight: 600;
-        color: var(--blue-bright);
-        font-family: var(--font-mono);
-        text-transform: uppercase;
-        letter-spacing: 1px;
-        margin-bottom: 4px;
-    }
-    .copy-btn {
-        display: inline-flex; align-items: center; gap: 6px;
-        padding: 6px 12px;
-        background: var(--blue);
-        color: var(--ivory);
-        border: none; border-radius: 6px;
-        font-size: 12px; font-weight: 500; cursor: pointer;
-        font-family: var(--font-sans);
-        transition: background 0.15s;
-    }
-    .copy-btn:hover { background: var(--blue-bright); }
-    .copy-btn svg { width: 12px; height: 12px; }
-    .install-body {
-        padding: 16px 18px;
-        background: #0a0a0c;
-        overflow-x: auto;
-    }
-    .install-body pre {
-        margin: 0;
-        font-family: var(--font-mono);
-        font-size: 12.5px;
-        line-height: 1.65;
-        color: #d4d4d4;
-        white-space: pre;
-    }
-
-    /* Related */
-    .related {
-        margin-top: 64px;
-        padding-top: 32px;
-        border-top: 1px solid var(--border);
-    }
-    .related h3 {
-        font-size: 12px; font-family: var(--font-mono);
-        text-transform: uppercase; letter-spacing: 1.5px;
-        color: var(--ivory-muted); margin-bottom: 14px; font-weight: 500;
-    }
-    .related-list a {
-        display: block;
-        padding: 12px 0;
-        border-bottom: 1px solid var(--border);
-        color: var(--ivory);
-        font-size: 14px;
-        text-decoration: none;
-    }
-    .related-list a:last-child { border-bottom: none; }
-    .related-list a:hover { color: var(--blue-bright); text-decoration: none; }
-    .related-list a .related-type {
-        display: inline-block;
-        font-family: var(--font-mono); font-size: 9px;
-        text-transform: uppercase; letter-spacing: 1px;
-        color: var(--ivory-muted); margin-right: 8px;
-    }
-</style>
+        @media (max-width: 800px) {
+            .responsive-padding { padding-left: 24px !important; padding-right: 24px !important; }
+            .responsive-nav { gap: 18px !important; }
+            .article-title { font-size: 36px !important; }
+            .article-subtitle { font-size: 18px !important; }
+            .cta-card { flex-direction: column !important; align-items: flex-start !important; }
+            .next-link { flex-direction: column !important; align-items: flex-start !important; gap: 8px !important; }
+            .next-link > span:last-child { text-align: left !important; font-size: 17px !important; }
+        }
+    </style>
 </head>
 <body>
-<nav class="site-nav">
-        <div class="container">
-            <a href="../" class="nav-brand">
-                <img src="../icon-256.png" alt="Atelier icon">
-                <span>Atelier</span>
+
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+    <symbol id="dt" viewBox="0 0 64 64" fill="none" stroke="currentColor" stroke-width="6" stroke-linecap="square" stroke-linejoin="miter">
+        <rect x="7" y="7" width="50" height="50"/>
+        <path d="M32 7 L32 24 L46 28 L46 36 L32 40 L32 57"/>
+    </symbol>
+</svg>
+
+<div style="min-height:100vh;">
+
+    <header style="position:sticky;top:0;z-index:40;background:rgba(233,234,232,.86);backdrop-filter:blur(8px);border-bottom:1px solid var(--line);">
+        <div class="responsive-padding" style="max-width:1180px;margin:0 auto;padding:14px 40px;display:flex;align-items:center;justify-content:space-between;">
+            <a href="/" style="display:flex;align-items:center;gap:11px;text-decoration:none;color:var(--ink);">
+                <svg viewBox="0 0 64 64" style="width:26px;height:26px;color:var(--ink);overflow:visible;"><use href="#dt"/></svg>
+                <span style="font-family:var(--helv);font-weight:500;font-size:20px;letter-spacing:-.01em;">atelier</span>
             </a>
-            <div class="nav-links">
-                <a href="../">Home</a>
-                <a href="../recipes/" class="active">Recipes</a>
-                <a href="../releases.html">Releases</a>
-                <a href="../#faq">FAQ</a>
-                <a href="../Work.dmg" class="btn-download-nav">Download</a>
-            </div>
-        </div>
-    </nav>
-<main>
-    <header class="article-header">
-        <div class="container-narrow">
-            <a href="./" class="back-link">← All recipes</a>
-            <div class="article-meta">
-                <span class="type-badge" style="background: #06b6d422; color: #06b6d4;">WORKFLOW</span>
-                <span class="meta-item">April 17, 2026</span>
-                <span class="meta-dot">·</span><span class="meta-item">6 min read</span>
-            </div>
-            <h1 class="article-title">I used Opus 4.7 for 24 hours. Here&#39;s what I actually found.</h1>
-            <p class="article-description">A day with Claude Opus 4.7. What felt different, what broke, and the four things my old code was silently depending on.</p>
+            <nav class="responsive-nav" style="display:flex;align-items:center;gap:30px;font-family:var(--mono);font-size:12.5px;letter-spacing:.02em;">
+                <a class="nav-link" href="/releases.html" style="color:var(--mute);text-decoration:none;">changelog</a>
+                <a href="/recipes/" style="color:var(--ink);text-decoration:none;">recipes</a>
+                <a class="nav-link" href="/faq.html" style="color:var(--mute);text-decoration:none;">faq</a>
+                <a class="nav-link" href="/pricing.html" style="color:var(--mute);text-decoration:none;">pricing</a>
+                <a class="nav-cta" href="/#download" style="color:var(--paper);background:var(--ink);text-decoration:none;padding:8px 15px;letter-spacing:.04em;">download</a>
+            </nav>
         </div>
     </header>
 
-    <article class="article-body">
-        <div class="container-narrow">
+    <main class="responsive-padding" style="max-width:920px;margin:0 auto;padding:28px 40px 96px;">
+
+        <!-- breadcrumb -->
+        <div style="font-family:var(--mono);font-size:11.5px;color:var(--mute);padding:18px 0 36px;">
+            <a class="crumb-link" href="/recipes/" style="color:var(--mute);text-decoration:none;">recipes</a> <span style="margin:0 8px;">/</span> workflow
+        </div>
+
+        <!-- article masthead -->
+        <article class="article-body">
+            <div style="display:flex;align-items:center;gap:12px;font-family:var(--mono);font-size:11.5px;color:var(--mute);margin-bottom:22px;">
+                <span style="border:1px solid var(--line2);padding:3px 9px;letter-spacing:.06em;">workflow</span>
+                <span>6 min read</span>
+            </div>
+            <h1 class="article-title" style="font-family:var(--helv);font-weight:500;font-size:52px;line-height:1.02;letter-spacing:-.035em;margin:0 0 22px;max-width:20ch;">I used Opus 4.7 for 24 hours. Here&#39;s what I actually found.</h1>
+            <p class="article-subtitle" style="font-family:var(--helv);font-size:21px;line-height:1.45;color:rgba(27,28,30,.78);margin:0 0 30px;max-width:46ch;">A day with Claude Opus 4.7. What felt different, what broke, and the four things my old code was silently depending on.</p>
+            <div style="display:flex;align-items:center;gap:16px;font-family:var(--mono);font-size:12px;color:var(--mute);border-top:1px solid var(--line);border-bottom:1px solid var(--line);padding:16px 0;margin-bottom:48px;">
+                <svg viewBox="0 0 64 64" style="width:20px;height:20px;color:var(--ink);overflow:visible;"><use href="#dt"/></svg>
+                <span style="color:var(--ink);">the atelier workshop</span>
+                <span style="margin-left:auto;">2026 · apr 17</span>
+            </div>
+
             <p>Opus 4.7 dropped yesterday.</p>
 <p>I&#39;ve been using it inside Claude Code for about a day now, through a real project, not a benchmark.</p>
 <p>The project is an app called Work. It&#39;s a native macOS companion for Claude Code, built in SwiftUI, with a menu-bar presence and the whole thing. The core idea is that I was sick of juggling eight Terminal.app windows to run parallel Claude sessions, granting Automation permission every time Sparkle auto-updated the bundle, and losing track of which tab was which project. Work embeds real PTY terminals as tabs inside one window, wraps a proper project + session model around them (with <a href="./claude-continue-and-resume.html">resume/continue</a> handled natively), and turns Claude Code from &quot;a thing in my terminal&quot; into a workspace.</p>
@@ -499,38 +384,54 @@
 
 
             
+        </article>
 
-            <div class="related">
-            <h3>Related recipes</h3>
-            <div class="related-list">
-                <a href="github-april-23-merge-queue-explained.html"><span class="related-type">WORKFLOW</span>What broke at GitHub on April 23, explained without jargon</a><a href="claude-continue-and-resume.html"><span class="related-type">WORKFLOW</span>Never lose your place: claude continue and claude resume</a>
+        <!-- CTA -->
+        <div class="cta-card" style="margin-top:56px;border:1px solid var(--line2);background:var(--paper2);padding:34px;display:flex;align-items:center;justify-content:space-between;gap:28px;flex-wrap:wrap;">
+            <div>
+                <h3 style="font-family:var(--helv);font-weight:500;font-size:24px;letter-spacing:-.02em;margin:0 0 6px;">Try this in Atelier</h3>
+                <p style="font-family:var(--mono);font-size:12.5px;color:var(--mute);margin:0;">Six live sessions in one window. Free for macOS 15+.</p>
             </div>
+            <a class="btn-primary" href="/Work.dmg" style="display:inline-flex;align-items:center;gap:11px;background:var(--ink);color:var(--paper);text-decoration:none;padding:14px 22px;font-family:var(--helv);font-weight:500;font-size:16px;">
+                <svg viewBox="0 0 64 64" style="width:19px;height:19px;color:var(--paper);overflow:visible;"><use href="#dt"/></svg>
+                Download for Mac
+            </a>
         </div>
-        </div>
-    </article>
-</main>
-<footer>
-        <div class="container">
-            <p>Built by <a href="https://munyamakosa.com" target="_blank" rel="noopener">Munya Makosa</a></p>
+
+        <a class="next-link" href="claude-continue-and-resume.html" style="display:flex;align-items:center;justify-content:space-between;text-decoration:none;color:var(--ink);border-top:1px solid var(--line);margin-top:48px;padding-top:28px;gap:24px;">
+            <span style="font-family:var(--mono);font-size:11.5px;color:var(--mute);">next · workflow</span>
+            <span style="font-family:var(--helv);font-weight:500;font-size:20px;letter-spacing:-.015em;text-align:right;">Never lose your place: claude continue and claude resume →</span>
+        </a>
+
+    </main>
+
+    <footer style="border-top:1px solid var(--line);">
+        <div class="responsive-padding" style="max-width:1180px;margin:0 auto;padding:36px 40px;font-family:var(--mono);font-size:11px;color:var(--mute);display:flex;justify-content:space-between;flex-wrap:wrap;gap:16px;">
+            <span>© mmxxvi atelier · a workshop for claude code</span>
+            <span><a class="footer-link" href="/recipes/" style="color:var(--mute);text-decoration:none;">← all recipes</a></span>
         </div>
     </footer>
+</div>
+
 <script>
-(function() {
-    document.querySelectorAll('[data-copy]').forEach(function(btn) {
-        btn.addEventListener('click', function() {
-            var code = btn.closest('.install-card').querySelector('code').innerText;
-            (async function() {
-                try {
-                    await navigator.clipboard.writeText(code);
-                    var label = btn.querySelector('.copy-label');
-                    var original = label.textContent;
-                    label.textContent = 'Copied ✓';
-                    setTimeout(function() { label.textContent = original; }, 1600);
-                } catch (e) {}
-            })();
+    (function () {
+        document.querySelectorAll('[data-copy]').forEach(function (btn) {
+            btn.addEventListener('click', function () {
+                var pre = btn.closest('div').parentElement.querySelector('pre code');
+                if (!pre) return;
+                var code = pre.innerText;
+                (async function () {
+                    try {
+                        await navigator.clipboard.writeText(code);
+                        var original = btn.textContent;
+                        btn.textContent = 'Copied ✓';
+                        setTimeout(function () { btn.textContent = original; }, 1600);
+                    } catch (e) {}
+                })();
+            });
         });
-    });
-})();
+    })();
 </script>
+
 </body>
 </html>
