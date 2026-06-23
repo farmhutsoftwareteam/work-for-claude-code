@@ -6,6 +6,31 @@
         <description>Updates for Work</description>
         <language>en</language>
         <item>
+            <title>Version 1.4.1</title>
+            <pubDate>Mon, 23 Jun 2026 17:51:00 +0000</pubDate>
+            <sparkle:version>23</sparkle:version>
+            <sparkle:shortVersionString>1.4.1</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>15.0</sparkle:minimumSystemVersion>
+            <description><![CDATA[
+                <h3>The new mark — Atelier's dovetail</h3>
+                <p>A few days after the rename, the brand finally has a mark to match.</p>
+                <p>Atelier's new logo is a <b>dovetail joint</b>: a square frame split by a single seam that interlocks two halves without a nail. It's a joinery technique woodworkers have used for thousands of years because it gets stronger the harder you pull on it. A workshop's mark should be a piece of joinery. This one is.</p>
+                <h4>What's new in this build</h4>
+                <ul>
+                    <li><b>New macOS app icon.</b> Graphite squircle, ivory mark, uniform stroke weight, the exact dovetail geometry. After this update lands, your Dock, Finder, App Switcher, and Cmd+Tab all show the new mark.</li>
+                    <li><b>New favicons + site icons.</b> Browser tab, iOS home screen, OG cards — every visible icon surface is now the new mark.</li>
+                    <li><b>No functional changes.</b> This is a brand release. Everything you can do with Atelier 1.4.0 you can still do here, just with a better-looking icon in your dock.</li>
+                </ul>
+                <p>The mark was designed against an explicit brief: quiet, precise, owned. The kind of thing you'd recognize stamped on the bottom of something you didn't expect to find it on. Monochrome at heart, geometric, no flourishes. Works at 16×16 in the menu bar. Works at 1024×1024 on the dock. Inverts cleanly between ivory and graphite.</p>
+                <p>— Munya</p>
+            ]]></description>
+            <enclosure
+                url="https://work.munyamakosa.com/Work.dmg"
+                length="7401975"
+                type="application/octet-stream"
+                sparkle:edSignature="Xd4Bz4ldbQE6++H6eOOn7fqWpBnmoiETFpJj9J04W52Tw/JdotlMs2ynhGS8c3dd2lxqfPCxScoIh8Nk3vKEDQ==" />
+        </item>
+        <item>
             <title>Version 1.4.0</title>
             <pubDate>Mon, 23 Jun 2026 17:06:00 +0000</pubDate>
             <sparkle:version>22</sparkle:version>
