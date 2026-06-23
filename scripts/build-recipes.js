@@ -49,7 +49,8 @@ function typeLabel(type) {
         hook: 'HOOK',
         command: 'COMMAND',
         'claude-md': 'CLAUDE.MD',
-        workflow: 'WORKFLOW'
+        workflow: 'WORKFLOW',
+        announcement: 'ANNOUNCEMENT'
     };
     return m[type] || type.toUpperCase();
 }
@@ -61,7 +62,8 @@ function typeColor(type) {
         hook: '#f59e0b',        // amber
         command: '#10b981',     // emerald
         'claude-md': '#ec4899', // pink
-        workflow: '#06b6d4'     // cyan
+        workflow: '#06b6d4',    // cyan
+        announcement: '#1b1c1e' // graphite — brand-aligned for launch posts
     };
     return m[type] || '#5a8fd4';
 }
@@ -71,7 +73,7 @@ function validate(data, filename) {
     for (const k of required) {
         if (!(k in data)) throw new Error(`${filename}: missing frontmatter "${k}"`);
     }
-    const validTypes = ['skill', 'mcp', 'hook', 'command', 'claude-md', 'workflow'];
+    const validTypes = ['skill', 'mcp', 'hook', 'command', 'claude-md', 'workflow', 'announcement'];
     if (!validTypes.includes(data.type)) {
         throw new Error(`${filename}: type "${data.type}" is not one of ${validTypes.join(', ')}`);
     }
@@ -161,8 +163,8 @@ function renderNav(active = '', base = '../') {
     return `<nav class="site-nav">
         <div class="container">
             <a href="${base}" class="nav-brand">
-                <img src="${base}icon-256.png" alt="Work icon">
-                <span>Work</span>
+                <img src="${base}icon-256.png" alt="Atelier icon">
+                <span>Atelier</span>
             </a>
             <div class="nav-links">
                 ${links.map(([href, label, id]) =>
@@ -440,13 +442,13 @@ function renderDetailPage(data) {
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>${escHtml(seoTitle)} | Work</title>
+    <title>${escHtml(seoTitle)} | Atelier</title>
     <meta name="description" content="${escHtml(metaDesc)}">
     <meta name="author" content="Munya Makosa">
     <meta name="robots" content="index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1">
     ${keywords.length ? `<meta name="keywords" content="${escHtml(keywords.join(', '))}">` : ''}
     <link rel="canonical" href="${pageUrl}">
-    <link rel="alternate" type="application/rss+xml" title="Work Recipes" href="${SITE_URL}/recipes/feed.xml">
+    <link rel="alternate" type="application/rss+xml" title="Atelier Recipes" href="${SITE_URL}/recipes/feed.xml">
 
     <!-- Open Graph -->
     <meta property="og:type" content="article">
@@ -458,7 +460,7 @@ function renderDetailPage(data) {
     <meta property="og:image:alt" content="${escHtml(ogImageAlt)}">
     <meta property="og:image:width" content="${ogImageWidth}">
     <meta property="og:image:height" content="${ogImageHeight}">
-    <meta property="og:site_name" content="Work">
+    <meta property="og:site_name" content="Atelier">
     <meta property="article:published_time" content="${datePublished}">
     <meta property="article:modified_time" content="${dateModified}">
     <meta property="article:author" content="https://munyamakosa.com">
@@ -498,7 +500,7 @@ function renderDetailPage(data) {
         },
         "publisher": {
             "@type": "Organization",
-            "name": "Work",
+            "name": "Atelier",
             "url": "${SITE_URL}",
             "logo": {
                 "@type": "ImageObject",
@@ -519,7 +521,7 @@ function renderDetailPage(data) {
         "@context": "https://schema.org",
         "@type": "BreadcrumbList",
         "itemListElement": [
-            { "@type": "ListItem", "position": 1, "name": "Work", "item": "${SITE_URL}/" },
+            { "@type": "ListItem", "position": 1, "name": "Atelier", "item": "${SITE_URL}/" },
             { "@type": "ListItem", "position": 2, "name": "Recipes", "item": "${SITE_URL}/recipes/" },
             { "@type": "ListItem", "position": 3, "name": ${JSON.stringify(data.title)}, "item": "${pageUrl}" }
         ]
@@ -695,19 +697,19 @@ function renderListingPage(recipes) {
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Recipes — Work</title>
+    <title>Recipes — Atelier</title>
     <meta name="description" content="Drop-in configs, skills, MCPs, and workflows for Claude Code. Each one is a full tutorial with a copy-paste payload.">
     <link rel="canonical" href="${SITE_URL}/recipes/">
 
     <meta property="og:type" content="website">
-    <meta property="og:title" content="Recipes — Work">
+    <meta property="og:title" content="Recipes — Atelier">
     <meta property="og:description" content="Drop-in configs, skills, and MCPs for Claude Code.">
     <meta property="og:url" content="${SITE_URL}/recipes/">
     <meta property="og:image" content="${SITE_URL}/og-image.png">
-    <meta property="og:site_name" content="Work">
+    <meta property="og:site_name" content="Atelier">
 
     <meta name="twitter:card" content="summary_large_image">
-    <meta name="twitter:title" content="Recipes — Work">
+    <meta name="twitter:title" content="Recipes — Atelier">
     <meta name="twitter:description" content="Drop-in configs, skills, and MCPs for Claude Code.">
     <meta name="twitter:image" content="${SITE_URL}/og-image.png">
 

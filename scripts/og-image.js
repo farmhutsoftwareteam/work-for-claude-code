@@ -35,7 +35,17 @@ const TYPE_COLORS = {
     mcp: '#f472b6',
     hook: '#fb923c',
     command: '#facc15',
+    announcement: '#e9eae8',
 };
+
+// Atelier dovetail mark, ivory-on-graphite tile, base64-encoded so satori can
+// inline it via <img src="..."> without any external fetch at render time.
+// Source: docs/apple-touch-icon.png (180×180, ivory mark on graphite squircle).
+const ATELIER_MARK_DATA_URI = (() => {
+    const p = path.join(ROOT, 'docs', 'apple-touch-icon.png');
+    const b64 = fs.readFileSync(p).toString('base64');
+    return `data:image/png;base64,${b64}`;
+})();
 
 function typeColor(type) {
     return TYPE_COLORS[type] || COLORS.blue;
@@ -106,20 +116,17 @@ function buildOgTree(data) {
             el('div', {
                 style: { display: 'flex', alignItems: 'center', gap: '14px' },
             },
-                el('div', {
+                el('img', {
+                    src: ATELIER_MARK_DATA_URI,
+                    width: 36,
+                    height: 36,
                     style: {
                         width: '36px',
                         height: '36px',
                         borderRadius: '8px',
-                        background: COLORS.blue,
                         display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        color: COLORS.ivory,
-                        fontWeight: 700,
-                        fontSize: '20px',
                     },
-                }, 'W'),
+                }),
                 el('span', {
                     style: {
                         fontSize: '20px',
@@ -127,7 +134,7 @@ function buildOgTree(data) {
                         color: COLORS.ivory,
                         letterSpacing: '-0.5px',
                     },
-                }, 'Work'),
+                }, 'atelier'),
                 el('span', {
                     style: {
                         fontSize: '14px',
