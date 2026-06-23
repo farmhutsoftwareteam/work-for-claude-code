@@ -6,6 +6,33 @@
         <description>Updates for Work</description>
         <language>en</language>
         <item>
+            <title>Version 1.4.0</title>
+            <pubDate>Mon, 23 Jun 2026 17:06:00 +0000</pubDate>
+            <sparkle:version>22</sparkle:version>
+            <sparkle:shortVersionString>1.4.0</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>15.0</sparkle:minimumSystemVersion>
+            <description><![CDATA[
+                <h3>Atelier — same app, better name</h3>
+                <p>"Work" was a placeholder. It said nothing. It told you nothing about what was inside. <em>Work</em> is what you do when you'd rather be doing anything else — a verb pretending to be a noun, a name that admits defeat.</p>
+                <p>An atelier is the opposite. It's where a craftsman keeps their tools, their unfinished pieces, their drawings on the wall. The work happens there — but the room itself has a name, a feel, a smell, a door you close behind you when it's time to make something.</p>
+                <p>That's what this app actually is. Six live Claude sessions in one window. Real terminals, real PTYs, a polished surface over the messy filesystem Claude Code already writes to. It's a workshop. It deserved to be named like one.</p>
+                <h4>What changed under the hood</h4>
+                <p>Almost nothing. The dock label, the menu bar, every alert and tooltip in the app now says "Atelier" instead of "Work." That's it.</p>
+                <p>The bundle identifier stays <code>com.munyamakosa.work</code>, so your install updates in place via Sparkle — no manual reinstall, no <code>/Applications/Atelier.app</code> showing up next to your existing <code>/Applications/Work.app</code>. Next launch, you'll just see the new name. The on-disk filename is still <code>Work.app</code> because changing it would orphan every install on Earth.</p>
+                <h4>What about the URLs?</h4>
+                <p><code>work.munyamakosa.com</code> stays live forever. Every binary out there checks it for updates, and we don't break things that work. The new home — <b>atelier.dev</b> — is where the marketing and docs migrate over the coming weeks. Both will resolve to the same content; Sparkle will keep updating your install from the old URL until the heat death of the universe.</p>
+                <h4>Why now</h4>
+                <p>"Work" was never going viral. Searching for it returned the dictionary. People couldn't recommend it to a friend without three sentences of explanation. A name should do work <em>for</em> you — sit in someone's head, make them curious, render well on a screenshot. "Atelier" does. "Work" never did.</p>
+                <p>If "Work" already lived in your head, mine too. It'll feel weird for about a week. Then "Atelier" will feel obvious and we'll wonder why it took this long.</p>
+                <p>— Munya</p>
+            ]]></description>
+            <enclosure
+                url="https://work.munyamakosa.com/Work.dmg"
+                length="9131973"
+                type="application/octet-stream"
+                sparkle:edSignature="CgLdVrLMOh6ElTrGaQhOtCcqwNLhENBS4mxw2C6Wwa26x+IJ6Ml+a5jN6wqzwcS/BjZ4OIfbNZU4dk+fqqqXCQ==" />
+        </item>
+        <item>
             <title>Version 1.3.1</title>
             <pubDate>Mon, 23 Jun 2026 16:23:00 +0000</pubDate>
             <sparkle:version>21</sparkle:version>

@@ -75,7 +75,7 @@ enum PathFixer {
         let exportLine = isFish
             ? #"set -gx PATH $HOME/.local/bin $PATH"#
             : #"export PATH="$HOME/.local/bin:$PATH""#
-        let header = "\n# Added by Work — make `claude` available from any terminal\n"
+        let header = "\n# Added by Atelier — make `claude` available from any terminal\n"
         let toAppend = header + exportLine + "\n"
 
         let fm = FileManager.default

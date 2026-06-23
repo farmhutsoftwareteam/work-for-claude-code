@@ -153,7 +153,7 @@ enum Launcher {
 
                 If Terminal automation was denied, go to:
                 System Settings → Privacy & Security → Automation
-                and enable Terminal for Work.
+                and enable Terminal for Atelier.
                 """
                 alert.addButton(withTitle: "OK")
                 alert.runModal()

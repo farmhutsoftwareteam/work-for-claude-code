@@ -894,7 +894,7 @@ struct RenameSessionSheet: View {
                 Text("Original: \(session.slug ?? String(session.id.prefix(8)))")
                     .font(.system(size: 10, design: .monospaced))
                     .foregroundStyle(.tertiary)
-                Text("Only changes the name shown in Work. Claude Code still sees the original.")
+                Text("Only changes the name shown in Atelier. Claude Code still sees the original.")
                     .font(.system(size: 10))
                     .foregroundStyle(.tertiary)
             }

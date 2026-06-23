@@ -93,7 +93,7 @@ struct ContentView: View {
                 ConfigBar(selection: $sidebarSelection)
                     .environmentObject(store)
             }
-            .navigationTitle("Work")
+            .navigationTitle("Atelier")
             .toolbar {
                 ToolbarItem(placement: .primaryAction) {
                     Button {
@@ -873,7 +873,7 @@ private struct ContinueFeatureCard: View {
                         Image(systemName: "pencil.circle.fill")
                             .font(.system(size: 12))
                             .foregroundStyle(Color.accentColor.opacity(0.6))
-                            .help("Renamed in Work")
+                            .help("Renamed in Atelier")
                     }
 
                     // Hover-revealed rename affordance — discoverable but never noisy.

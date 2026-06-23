@@ -77,13 +77,13 @@ struct WorkApp: App {
                     }
                     Button("Later", role: .cancel) { }
                 } message: {
-                    Text("Work needs permission to control Terminal. Please enable it in System Settings → Privacy & Security → Automation → Work → Terminal.")
+                    Text("Atelier needs permission to control Terminal. Please enable it in System Settings → Privacy & Security → Automation → Atelier → Terminal.")
                 }
                 .alert("Add Claude to your shell PATH?", isPresented: $showPathFixAlert) {
                     Button("Add to PATH") { applyPathFix() }
                     Button("Skip", role: .cancel) { pathFixOffered = true }
                 } message: {
-                    Text("Claude is installed at ~/.local/bin/claude but that folder isn't in your shell PATH. Work can add one line to your shell config so you can run `claude` from any terminal. Existing terminals need a reload — new ones get it automatically.")
+                    Text("Claude is installed at ~/.local/bin/claude but that folder isn't in your shell PATH. Atelier can add one line to your shell config so you can run `claude` from any terminal. Existing terminals need a reload — new ones get it automatically.")
                 }
                 .alert(item: $pathFixResult) { result in
                     switch result {
@@ -140,7 +140,7 @@ struct WorkApp: App {
             }
 
             CommandGroup(replacing: .help) {
-                Button("Welcome to Work…") {
+                Button("Welcome to Atelier…") {
                     onboardingComplete = false
                 }
             }

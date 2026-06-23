@@ -5,7 +5,7 @@
 	<key>CFBundleDevelopmentRegion</key>
 	<string>$(DEVELOPMENT_LANGUAGE)</string>
 	<key>CFBundleDisplayName</key>
-	<string>Work</string>
+	<string>Atelier</string>
 	<key>CFBundleExecutable</key>
 	<string>$(EXECUTABLE_NAME)</string>
 	<key>CFBundleIdentifier</key>
@@ -23,7 +23,7 @@
 	<key>LSUIElement</key>
 	<false/>
 	<key>NSAppleEventsUsageDescription</key>
-	<string>Work needs to control Terminal to launch Claude sessions.</string>
+	<string>Atelier needs to control Terminal to launch Claude sessions.</string>
 	<key>NSHumanReadableCopyright</key>
 	<string></string>
 	<key>SUAutomaticallyUpdate</key>

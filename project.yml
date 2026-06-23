@@ -6,8 +6,8 @@ options:
 
 settings:
   PRODUCT_NAME: Work
-  MARKETING_VERSION: "1.3.1"
-  CURRENT_PROJECT_VERSION: "21"
+  MARKETING_VERSION: "1.4.0"
+  CURRENT_PROJECT_VERSION: "22"
   SWIFT_VERSION: "6.0"
   SWIFT_STRICT_CONCURRENCY: minimal
   MACOSX_DEPLOYMENT_TARGET: "15.0"
@@ -47,11 +47,16 @@ targets:
     info:
       path: Sources/Info.plist
       properties:
-        CFBundleDisplayName: Work
+        # Display name is the brand surface — what macOS shows in the Dock,
+        # menu bar, Apple menu, Force Quit, and every system alert. The bundle
+        # identifier and the on-disk .app filename intentionally stay "Work" /
+        # com.munyamakosa.work so existing 1.3.x users get the rebrand
+        # seamlessly via Sparkle (Sparkle keys on bundle ID, not name).
+        CFBundleDisplayName: Atelier
         CFBundleShortVersionString: $(MARKETING_VERSION)
         CFBundleVersion: $(CURRENT_PROJECT_VERSION)
         NSHumanReadableCopyright: ""
-        NSAppleEventsUsageDescription: "Work needs to control Terminal to launch Claude sessions."
+        NSAppleEventsUsageDescription: "Atelier needs to control Terminal to launch Claude sessions."
         LSUIElement: false
         SUFeedURL: https://work.munyamakosa.com/appcast.xml
         SUPublicEDKey: OxlQLub17dx6WhaZ4eF79PE1vfQF+/x4Qo6gt/ThCH0=

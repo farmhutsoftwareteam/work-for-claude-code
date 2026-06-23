@@ -36,7 +36,7 @@ struct OnboardingView: View {
                         .stagger(0, appeared: appeared)
 
                     VStack(spacing: 8) {
-                        Text("Work")
+                        Text("Atelier")
                             .font(.system(size: 34, weight: .bold, design: .rounded))
                             .foregroundStyle(Color(red: 0.96, green: 0.94, blue: 0.91)) // warm ivory
                             .stagger(1, appeared: appeared)
@@ -80,7 +80,7 @@ struct OnboardingView: View {
                 // Options row
                 VStack(spacing: 12) {
                     Toggle(isOn: $launchAtLogin) {
-                        Text("Start Work when I log in")
+                        Text("Start Atelier when I log in")
                             .font(.system(size: 12, weight: .medium))
                             .foregroundStyle(Color(red: 0.96, green: 0.94, blue: 0.91).opacity(0.5))
                     }
@@ -101,7 +101,7 @@ struct OnboardingView: View {
 
                 // CTA
                 Button(action: completeOnboarding) {
-                    Text("Open Work")
+                    Text("Open Atelier")
                         .font(.system(size: 14, weight: .semibold))
                         .foregroundStyle(Color(red: 0.96, green: 0.94, blue: 0.91)) // warm ivory
                         .padding(.horizontal, 40)

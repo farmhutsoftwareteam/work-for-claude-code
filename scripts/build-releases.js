@@ -120,15 +120,15 @@ function renderPage(items) {
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Releases | Work</title>
-    <meta name="description" content="Every version of Work, what shipped when. Latest: v${escHtml(latestVersion)} (${escHtml(latestDate)}).">
+    <title>Releases | Atelier</title>
+    <meta name="description" content="Every version of Atelier, what shipped when. Latest: v${escHtml(latestVersion)} (${escHtml(latestDate)}).">
     <link rel="canonical" href="${SITE_URL}/releases.html">
-    <link rel="alternate" type="application/rss+xml" title="Work appcast" href="${SITE_URL}/appcast.xml">
+    <link rel="alternate" type="application/rss+xml" title="Atelier appcast" href="${SITE_URL}/appcast.xml">
     <meta property="og:type" content="website">
-    <meta property="og:title" content="Releases | Work">
-    <meta property="og:description" content="Every version of Work, what shipped when.">
+    <meta property="og:title" content="Releases | Atelier">
+    <meta property="og:description" content="Every version of Atelier, what shipped when.">
     <meta property="og:url" content="${SITE_URL}/releases.html">
-    <meta property="og:site_name" content="Work">
+    <meta property="og:site_name" content="Atelier">
     <meta name="twitter:card" content="summary">
 
     <style>
@@ -309,8 +309,8 @@ function renderPage(items) {
     <nav class="site-nav">
         <div class="container">
             <a href="/" class="nav-brand">
-                <img src="/icon-256.png" alt="Work">
-                <span>Work</span>
+                <img src="/icon-256.png" alt="Atelier">
+                <span>Atelier</span>
             </a>
             <div class="nav-links">
                 <a href="/">Home</a>
@@ -324,7 +324,7 @@ function renderPage(items) {
     <header class="page-header container">
         <div class="section-label">Changelog</div>
         <h1 class="page-title">Releases</h1>
-        <p class="page-subtitle">Every version of Work, what shipped when. Subscribe via RSS: <a href="/appcast.xml">appcast.xml</a>.</p>
+        <p class="page-subtitle">Every version of Atelier, what shipped when. Subscribe via RSS: <a href="/appcast.xml">appcast.xml</a>.</p>
     </header>
 
     <main class="container releases">
@@ -333,7 +333,7 @@ function renderPage(items) {
 
     <footer>
         <div class="container">
-            <p>Work · built by <a href="https://munyamakosa.com">Munya Makosa</a> · <a href="/appcast.xml">appcast.xml</a></p>
+            <p>Atelier · built by <a href="https://munyamakosa.com">Munya Makosa</a> · <a href="/appcast.xml">appcast.xml</a></p>
         </div>
     </footer>
 

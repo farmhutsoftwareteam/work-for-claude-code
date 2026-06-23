@@ -3,15 +3,15 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Releases | Work</title>
-    <meta name="description" content="Every version of Work, what shipped when. Latest: v1.3.1 (June 23, 2026).">
+    <title>Releases | Atelier</title>
+    <meta name="description" content="Every version of Atelier, what shipped when. Latest: v1.4.0 (June 23, 2026).">
     <link rel="canonical" href="https://work.munyamakosa.com/releases.html">
-    <link rel="alternate" type="application/rss+xml" title="Work appcast" href="https://work.munyamakosa.com/appcast.xml">
+    <link rel="alternate" type="application/rss+xml" title="Atelier appcast" href="https://work.munyamakosa.com/appcast.xml">
     <meta property="og:type" content="website">
-    <meta property="og:title" content="Releases | Work">
-    <meta property="og:description" content="Every version of Work, what shipped when.">
+    <meta property="og:title" content="Releases | Atelier">
+    <meta property="og:description" content="Every version of Atelier, what shipped when.">
     <meta property="og:url" content="https://work.munyamakosa.com/releases.html">
-    <meta property="og:site_name" content="Work">
+    <meta property="og:site_name" content="Atelier">
     <meta name="twitter:card" content="summary">
 
     <style>
@@ -192,8 +192,8 @@
     <nav class="site-nav">
         <div class="container">
             <a href="/" class="nav-brand">
-                <img src="/icon-256.png" alt="Work">
-                <span>Work</span>
+                <img src="/icon-256.png" alt="Atelier">
+                <span>Atelier</span>
             </a>
             <div class="nav-links">
                 <a href="/">Home</a>
@@ -207,17 +207,49 @@
     <header class="page-header container">
         <div class="section-label">Changelog</div>
         <h1 class="page-title">Releases</h1>
-        <p class="page-subtitle">Every version of Work, what shipped when. Subscribe via RSS: <a href="/appcast.xml">appcast.xml</a>.</p>
+        <p class="page-subtitle">Every version of Atelier, what shipped when. Subscribe via RSS: <a href="/appcast.xml">appcast.xml</a>.</p>
     </header>
 
     <main class="container releases">
         
+    <article class="release" id="v1-4-0">
+        <header class="release-header">
+            <div class="release-title-row">
+                <h2 class="release-version">
+                    <a href="#v1-4-0" class="anchor-link" aria-label="Permalink to v1.4.0" title="Copy link to this release">#</a>
+                    v1.4.0 <span class="badge badge-latest">Latest</span>
+                </h2>
+                <span class="release-date">June 23, 2026</span>
+            </div>
+            <div class="release-meta">
+                <a href="https://work.munyamakosa.com/Work.dmg" class="download-link">
+                    Download DMG <span class="size">(8.7 MB)</span>
+                </a>
+                <span class="min-system">macOS 15.0+</span>
+            </div>
+        </header>
+        <div class="release-notes">
+            <h3>Atelier — same app, better name</h3>
+                <p>"Work" was a placeholder. It said nothing. It told you nothing about what was inside. <em>Work</em> is what you do when you'd rather be doing anything else — a verb pretending to be a noun, a name that admits defeat.</p>
+                <p>An atelier is the opposite. It's where a craftsman keeps their tools, their unfinished pieces, their drawings on the wall. The work happens there — but the room itself has a name, a feel, a smell, a door you close behind you when it's time to make something.</p>
+                <p>That's what this app actually is. Six live Claude sessions in one window. Real terminals, real PTYs, a polished surface over the messy filesystem Claude Code already writes to. It's a workshop. It deserved to be named like one.</p>
+                <h4>What changed under the hood</h4>
+                <p>Almost nothing. The dock label, the menu bar, every alert and tooltip in the app now says "Atelier" instead of "Work." That's it.</p>
+                <p>The bundle identifier stays <code>com.munyamakosa.work</code>, so your install updates in place via Sparkle — no manual reinstall, no <code>/Applications/Atelier.app</code> showing up next to your existing <code>/Applications/Work.app</code>. Next launch, you'll just see the new name. The on-disk filename is still <code>Work.app</code> because changing it would orphan every install on Earth.</p>
+                <h4>What about the URLs?</h4>
+                <p><code>work.munyamakosa.com</code> stays live forever. Every binary out there checks it for updates, and we don't break things that work. The new home — <b>atelier.dev</b> — is where the marketing and docs migrate over the coming weeks. Both will resolve to the same content; Sparkle will keep updating your install from the old URL until the heat death of the universe.</p>
+                <h4>Why now</h4>
+                <p>"Work" was never going viral. Searching for it returned the dictionary. People couldn't recommend it to a friend without three sentences of explanation. A name should do work <em>for</em> you — sit in someone's head, make them curious, render well on a screenshot. "Atelier" does. "Work" never did.</p>
+                <p>If "Work" already lived in your head, mine too. It'll feel weird for about a week. Then "Atelier" will feel obvious and we'll wonder why it took this long.</p>
+                <p>— Munya</p>
+        </div>
+    </article>
     <article class="release" id="v1-3-1">
         <header class="release-header">
             <div class="release-title-row">
                 <h2 class="release-version">
                     <a href="#v1-3-1" class="anchor-link" aria-label="Permalink to v1.3.1" title="Copy link to this release">#</a>
-                    v1.3.1 <span class="badge badge-latest">Latest</span>
+                    v1.3.1 
                 </h2>
                 <span class="release-date">June 23, 2026</span>
             </div>
@@ -676,7 +708,7 @@
 
     <footer>
         <div class="container">
-            <p>Work · built by <a href="https://munyamakosa.com">Munya Makosa</a> · <a href="/appcast.xml">appcast.xml</a></p>
+            <p>Atelier · built by <a href="https://munyamakosa.com">Munya Makosa</a> · <a href="/appcast.xml">appcast.xml</a></p>
         </div>
     </footer>
 

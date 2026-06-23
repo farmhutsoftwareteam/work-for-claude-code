@@ -1,4 +1,4 @@
-# Work
+# Atelier
 
 **The native macOS companion app for [Claude Code](https://www.anthropic.com/claude-code).**
 
@@ -67,9 +67,9 @@ recipes/                  Marketplace recipes for one-click MCP installs
 resources/                Icons, DMG background, etc.
 ```
 
-## How Work talks to Claude Code
+## How Atelier talks to Claude Code
 
-Work never re-implements anything Claude Code already does. It's a UI layer over Claude Code's existing files:
+Atelier never re-implements anything Claude Code already does. It's a UI layer over Claude Code's existing files:
 
 - Reads `~/.claude/projects/<cwd-hash>/*.jsonl` for session history + token counts
 - Reads `~/.claude.json` (top-level + `projects.<cwd>.mcpServers`) for user/local MCPs
@@ -78,13 +78,13 @@ Work never re-implements anything Claude Code already does. It's a UI layer over
 - Spawns `claude` / `claude --resume` / `claude --continue` via embedded SwiftTerm PTYs
 - Writes back to `~/.claude.json` and `.mcp.json` through `NSFileCoordinator` so the CLI and the app cooperate cleanly
 
-When Claude Code's data model changes, Work follows. There is no proprietary database, no cloud service, no telemetry.
+When Claude Code's data model changes, Atelier follows. There is no proprietary database, no cloud service, no telemetry.
 
 ## Architecture notes
 
 - **SwiftUI + AppKit hybrid.** The embedded terminal is a `LocalProcessTerminalView` from [SwiftTerm](https://github.com/migueldeicaza/SwiftTerm) wrapped in `NSViewRepresentable`. Everything else is pure SwiftUI.
 - **No tests** at the moment. The codebase is small enough that the dogfood loop (every change ships through a live release) catches regressions quickly. Contributions to add an XCTest target are welcome.
-- **Self-relocates to /Applications.** First-launch from any location outside /Applications triggers an offer to move + relaunch — Sparkle can't update an app running from a translocated quarantine path, and this avoids the "Work can't be updated" trap.
+- **Self-relocates to /Applications.** First-launch from any location outside /Applications triggers an offer to move + relaunch — Sparkle can't update an app running from a translocated quarantine path, and this avoids the "Atelier can't be updated" trap.
 - **No CI yet.** Releases are built locally on the maintainer's machine because they require an Apple Developer ID signing identity. CI signing is on the roadmap.
 
 ## Contributing
@@ -100,9 +100,9 @@ If you find a bug: open an issue with the symptom, your macOS version, and (if p
 
 ## What this is not
 
-- **Not affiliated with Anthropic.** Work is a third-party companion app. Claude Code is a separate product made by Anthropic.
-- **Not a Claude Code replacement.** It runs Claude Code; you still need `claude` installed (Work helps you find / install it if missing).
-- **Not a chat interface.** There's no Work-owned chat — every conversation lives in a real Claude Code session in a real PTY.
+- **Not affiliated with Anthropic.** Atelier is a third-party companion app. Claude Code is a separate product made by Anthropic.
+- **Not a Claude Code replacement.** It runs Claude Code; you still need `claude` installed (Atelier helps you find / install it if missing).
+- **Not a chat interface.** There's no Atelier-owned chat — every conversation lives in a real Claude Code session in a real PTY.
 
 ## License
 

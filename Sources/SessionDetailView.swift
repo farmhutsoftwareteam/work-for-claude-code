@@ -72,7 +72,7 @@ struct SessionDetailView: View {
                         Image(systemName: "pencil.circle.fill")
                             .font(.system(size: 10))
                             .foregroundStyle(Color.accentColor.opacity(0.6))
-                            .help("Renamed in Work")
+                            .help("Renamed in Atelier")
                     }
                 }
                 HStack(spacing: 8) {

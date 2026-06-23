@@ -3,23 +3,23 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Work — Browse and Resume Claude Code Sessions on macOS</title>
+    <title>Atelier — Browse and Resume Claude Code Sessions on macOS</title>
     <meta name="description" content="Never lose a Claude Code session. Browse projects, read full conversations, and resume in Terminal — all from a native macOS app. Semantic search, session handoff. Offline and free.">
     <link rel="canonical" href="https://work.munyamakosa.com/">
 
     <!-- Open Graph -->
     <meta property="og:type" content="website">
-    <meta property="og:title" content="Work — Browse and Resume Claude Code Sessions">
+    <meta property="og:title" content="Atelier — Browse and Resume Claude Code Sessions">
     <meta property="og:description" content="A native macOS app to browse, read, and resume your Claude Code sessions. Fully offline.">
     <meta property="og:image" content="https://work.munyamakosa.com/og-image.png">
     <meta property="og:image:width" content="1200">
     <meta property="og:image:height" content="630">
     <meta property="og:url" content="https://work.munyamakosa.com/">
-    <meta property="og:site_name" content="Work">
+    <meta property="og:site_name" content="Atelier">
 
     <!-- Twitter -->
     <meta name="twitter:card" content="summary_large_image">
-    <meta name="twitter:title" content="Work — Browse and Resume Claude Code Sessions">
+    <meta name="twitter:title" content="Atelier — Browse and Resume Claude Code Sessions">
     <meta name="twitter:description" content="A native macOS app to browse, read, and resume your Claude Code sessions. Fully offline.">
     <meta name="twitter:image" content="https://work.munyamakosa.com/og-image.png">
 
@@ -28,7 +28,7 @@
     {
         "@context": "https://schema.org",
         "@type": "SoftwareApplication",
-        "name": "Work",
+        "name": "Atelier",
         "description": "A native macOS app to browse, read, and resume your Claude Code sessions.",
         "applicationCategory": "DeveloperApplication",
         "operatingSystem": "macOS 15+",
@@ -53,31 +53,31 @@
         "mainEntity": [
             {
                 "@type": "Question",
-                "name": "How does Work access my Claude Code sessions?",
+                "name": "How does Atelier access my Claude Code sessions?",
                 "acceptedAnswer": {
                     "@type": "Answer",
-                    "text": "Work reads the local JSONL log files that Claude Code writes to ~/.claude/projects/ on your Mac. It does not make any network requests, use any API keys, or send data anywhere. All processing happens on your device."
+                    "text": "Atelier reads the local JSONL log files that Claude Code writes to ~/.claude/projects/ on your Mac. It does not make any network requests, use any API keys, or send data anywhere. All processing happens on your device."
                 }
             },
             {
                 "@type": "Question",
-                "name": "Does Work require a Claude API key or subscription?",
+                "name": "Does Atelier require a Claude API key or subscription?",
                 "acceptedAnswer": {
                     "@type": "Answer",
-                    "text": "No. Work is a read-only viewer of files already on your Mac. It does not call the Claude API. You need Claude Code installed and to have run at least one session for Work to have anything to display."
+                    "text": "No. Atelier is a read-only viewer of files already on your Mac. It does not call the Claude API. You need Claude Code installed and to have run at least one session for Atelier to have anything to display."
                 }
             },
             {
                 "@type": "Question",
-                "name": "How does semantic search work offline in Work?",
+                "name": "How does semantic search work offline in Atelier?",
                 "acceptedAnswer": {
                     "@type": "Answer",
-                    "text": "Work uses Apple's NLEmbedding framework, which runs sentence-level embeddings entirely on-device. When you open a conversation, messages are embedded into 512-dimensional vectors and searched using cosine similarity via the Accelerate framework. Embeddings are cached to disk so subsequent opens are instant."
+                    "text": "Atelier uses Apple's NLEmbedding framework, which runs sentence-level embeddings entirely on-device. When you open a conversation, messages are embedded into 512-dimensional vectors and searched using cosine similarity via the Accelerate framework. Embeddings are cached to disk so subsequent opens are instant."
                 }
             },
             {
                 "@type": "Question",
-                "name": "What is session handoff in Work?",
+                "name": "What is session handoff in Atelier?",
                 "acceptedAnswer": {
                     "@type": "Answer",
                     "text": "Session handoff generates a structured summary of a conversation using Claude Code's print mode, including files changed, key decisions, and current state. The summary is copied to your clipboard so a teammate can paste it into their own LLM and continue the work with full context."
@@ -85,10 +85,10 @@
             },
             {
                 "@type": "Question",
-                "name": "Is Work free?",
+                "name": "Is Atelier free?",
                 "acceptedAnswer": {
                     "@type": "Answer",
-                    "text": "Yes. Work is free to download and use. There are no subscriptions, in-app purchases, or usage limits."
+                    "text": "Yes. Atelier is free to download and use. There are no subscriptions, in-app purchases, or usage limits."
                 }
             }
         ]
@@ -449,8 +449,8 @@
     <nav>
         <div class="container">
             <div class="nav-brand">
-                <img src="icon-256.png" alt="Work icon">
-                <span>Work</span>
+                <img src="icon-256.png" alt="Atelier icon">
+                <span>Atelier</span>
             </div>
             <div class="nav-links">
                 <a href="#features">Features</a>
@@ -466,8 +466,8 @@
     <!-- Hero -->
     <section class="hero">
         <div class="container">
-            <img src="icon-256.png" alt="Work app icon" class="hero-icon">
-            <h1>Work <span style="display:block;font-family:var(--font-sans);font-size:clamp(18px,3vw,24px);font-weight:400;letter-spacing:-0.5px;color:var(--ivory-muted);margin-top:12px;">Never lose a Claude Code session again</span></h1>
+            <img src="icon-256.png" alt="Atelier app icon" class="hero-icon">
+            <h1>Atelier <span style="display:block;font-family:var(--font-sans);font-size:clamp(18px,3vw,24px);font-weight:400;letter-spacing:-0.5px;color:var(--ivory-muted);margin-top:12px;">Never lose a Claude Code session again</span></h1>
             <p>Every project, every conversation, every tool call — searchable and resumable from your Mac. No API keys, no network.</p>
             <a href="Work.dmg" class="hero-cta">
                 <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3" /></svg>
@@ -496,7 +496,7 @@
                 <div class="feature-card">
                     <div class="feature-icon">&#9654;&#65039;</div>
                     <h3>One click to resume</h3>
-                    <p>Pick up any session in Terminal. If it's already running, Work finds that exact tab and brings it to the front.</p>
+                    <p>Pick up any session in Terminal. If it's already running, Atelier finds that exact tab and brings it to the front.</p>
                 </div>
                 <div class="feature-card">
                     <div class="feature-icon">&#128270;</div>
@@ -530,7 +530,7 @@
                 </div>
                 <div class="step">
                     <div class="step-number">02</div>
-                    <h3>Work reads</h3>
+                    <h3>Atelier reads</h3>
                     <p>The app watches those files in real time and surfaces your projects and sessions.</p>
                 </div>
                 <div class="step">
@@ -555,17 +555,17 @@
         </div>
     </section>
 
-    <!-- What is Work — AEO definition block -->
+    <!-- What is Atelier — AEO definition block -->
     <section class="how-it-works" id="about" style="padding-bottom:60px;">
         <div class="container">
             <div class="how-label">About</div>
-            <h2>What is Work?</h2>
+            <h2>What is Atelier?</h2>
             <div style="max-width:640px;margin:0 auto;">
                 <p style="font-size:16px;color:var(--ivory-muted);line-height:1.8;margin-bottom:20px;">
-                    If you use Claude Code, you already have a complete history of every session sitting in <code style="font-family:var(--font-mono);font-size:14px;background:var(--ivory-ghost);padding:2px 6px;border-radius:4px;">~/.claude/</code> on your Mac. Work reads those files and gives you a visual interface to browse projects, read full conversations, and resume sessions in Terminal. No API keys, no network, no setup.
+                    If you use Claude Code, you already have a complete history of every session sitting in <code style="font-family:var(--font-mono);font-size:14px;background:var(--ivory-ghost);padding:2px 6px;border-radius:4px;">~/.claude/</code> on your Mac. Atelier reads those files and gives you a visual interface to browse projects, read full conversations, and resume sessions in Terminal. No API keys, no network, no setup.
                 </p>
                 <p style="font-size:16px;color:var(--ivory-muted);line-height:1.8;">
-                    Work includes on-device semantic search powered by Apple's NLEmbedding framework, session handoff generation using Claude Code's print mode, and real-time monitoring of plugins, skills, MCP servers, and hooks. It supports macOS 15 and later on both Apple Silicon and Intel Macs.
+                    Atelier includes on-device semantic search powered by Apple's NLEmbedding framework, session handoff generation using Claude Code's print mode, and real-time monitoring of plugins, skills, MCP servers, and hooks. It supports macOS 15 and later on both Apple Silicon and Intel Macs.
                 </p>
             </div>
         </div>
@@ -578,24 +578,24 @@
             <h2>Frequently Asked Questions</h2>
             <div style="max-width:640px;margin:0 auto;">
                 <details style="border-bottom:1px solid var(--border);padding:20px 0;">
-                    <summary style="font-size:15px;font-weight:600;cursor:pointer;color:var(--ivory);letter-spacing:-0.2px;">How does Work access my Claude Code sessions?</summary>
-                    <p style="font-size:14px;color:var(--ivory-muted);line-height:1.7;margin-top:12px;">Work reads the local JSONL log files that Claude Code writes to <code style="font-family:var(--font-mono);font-size:13px;background:var(--ivory-ghost);padding:2px 5px;border-radius:3px;">~/.claude/projects/</code> on your Mac. It does not make any network requests, use any API keys, or send data anywhere. All processing happens on your device.</p>
+                    <summary style="font-size:15px;font-weight:600;cursor:pointer;color:var(--ivory);letter-spacing:-0.2px;">How does Atelier access my Claude Code sessions?</summary>
+                    <p style="font-size:14px;color:var(--ivory-muted);line-height:1.7;margin-top:12px;">Atelier reads the local JSONL log files that Claude Code writes to <code style="font-family:var(--font-mono);font-size:13px;background:var(--ivory-ghost);padding:2px 5px;border-radius:3px;">~/.claude/projects/</code> on your Mac. It does not make any network requests, use any API keys, or send data anywhere. All processing happens on your device.</p>
                 </details>
                 <details style="border-bottom:1px solid var(--border);padding:20px 0;">
-                    <summary style="font-size:15px;font-weight:600;cursor:pointer;color:var(--ivory);letter-spacing:-0.2px;">Does Work require a Claude API key or subscription?</summary>
-                    <p style="font-size:14px;color:var(--ivory-muted);line-height:1.7;margin-top:12px;">No. Work is a read-only viewer of files already on your Mac. It does not call the Claude API. You need Claude Code installed and to have run at least one session for Work to have anything to display.</p>
+                    <summary style="font-size:15px;font-weight:600;cursor:pointer;color:var(--ivory);letter-spacing:-0.2px;">Does Atelier require a Claude API key or subscription?</summary>
+                    <p style="font-size:14px;color:var(--ivory-muted);line-height:1.7;margin-top:12px;">No. Atelier is a read-only viewer of files already on your Mac. It does not call the Claude API. You need Claude Code installed and to have run at least one session for Atelier to have anything to display.</p>
                 </details>
                 <details style="border-bottom:1px solid var(--border);padding:20px 0;">
                     <summary style="font-size:15px;font-weight:600;cursor:pointer;color:var(--ivory);letter-spacing:-0.2px;">How does semantic search work offline?</summary>
-                    <p style="font-size:14px;color:var(--ivory-muted);line-height:1.7;margin-top:12px;">Work uses Apple's NLEmbedding framework, which runs sentence-level embeddings entirely on-device. When you open a conversation, messages are embedded into 512-dimensional vectors and searched using cosine similarity via the Accelerate framework. Embeddings are cached to disk so subsequent opens are instant.</p>
+                    <p style="font-size:14px;color:var(--ivory-muted);line-height:1.7;margin-top:12px;">Atelier uses Apple's NLEmbedding framework, which runs sentence-level embeddings entirely on-device. When you open a conversation, messages are embedded into 512-dimensional vectors and searched using cosine similarity via the Accelerate framework. Embeddings are cached to disk so subsequent opens are instant.</p>
                 </details>
                 <details style="border-bottom:1px solid var(--border);padding:20px 0;">
                     <summary style="font-size:15px;font-weight:600;cursor:pointer;color:var(--ivory);letter-spacing:-0.2px;">What is session handoff?</summary>
                     <p style="font-size:14px;color:var(--ivory-muted);line-height:1.7;margin-top:12px;">Session handoff generates a structured summary of a conversation using Claude Code's print mode, including files changed, key decisions, and current state. The summary is copied to your clipboard so a teammate can paste it into their own LLM and continue the work with full context.</p>
                 </details>
                 <details style="border-bottom:1px solid var(--border);padding:20px 0;">
-                    <summary style="font-size:15px;font-weight:600;cursor:pointer;color:var(--ivory);letter-spacing:-0.2px;">Is Work free?</summary>
-                    <p style="font-size:14px;color:var(--ivory-muted);line-height:1.7;margin-top:12px;">Yes. Work is free to download and use. There are no subscriptions, in-app purchases, or usage limits.</p>
+                    <summary style="font-size:15px;font-weight:600;cursor:pointer;color:var(--ivory);letter-spacing:-0.2px;">Is Atelier free?</summary>
+                    <p style="font-size:14px;color:var(--ivory-muted);line-height:1.7;margin-top:12px;">Yes. Atelier is free to download and use. There are no subscriptions, in-app purchases, or usage limits.</p>
                 </details>
             </div>
         </div>

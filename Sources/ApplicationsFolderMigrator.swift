@@ -114,21 +114,21 @@ enum ApplicationsFolderMigrator {
 
         if translocated {
             // First-launch translocation, no copy in /Applications yet.
-            alert.messageText = "Drag Work to your Applications folder"
+            alert.messageText = "Drag Atelier to your Applications folder"
             alert.informativeText = """
-            macOS is currently running Work from a temporary location to keep \
-            you safe. To get automatic updates and keep Work between \
+            macOS is currently running Atelier from a temporary location to \
+            keep you safe. To get automatic updates and keep Atelier between \
             restarts, drag it from the disk image into the Applications \
             folder, then launch it from there.
 
             I can do this move for you now if you'd like.
             """
         } else if runningFromDMG {
-            alert.messageText = "Move Work to your Applications folder?"
-            alert.informativeText = "Work is running from a mounted disk image. It needs to live in /Applications to receive automatic updates."
+            alert.messageText = "Move Atelier to your Applications folder?"
+            alert.informativeText = "Atelier is running from a mounted disk image. It needs to live in /Applications to receive automatic updates."
         } else {
-            alert.messageText = "Move Work to your Applications folder?"
-            alert.informativeText = "Work isn't in /Applications. If you leave it here, automatic updates will fail. Move it for me?"
+            alert.messageText = "Move Atelier to your Applications folder?"
+            alert.informativeText = "Atelier isn't in /Applications. If you leave it here, automatic updates will fail. Move it for me?"
         }
 
         alert.addButton(withTitle: alreadyInstalled
@@ -240,9 +240,9 @@ enum ApplicationsFolderMigrator {
             // Launch the new copy. Shared helper handles the
             // completion / watchdog / exit sequence (see launchAndExit
             // above).
-            launchAndExit(at: dest, failureMessage: "Couldn't launch Work from /Applications:")
+            launchAndExit(at: dest, failureMessage: "Couldn't launch Atelier from /Applications:")
         } catch {
-            showError("Couldn't move Work to /Applications: \(error.localizedDescription)\n\nYou can drag it over manually from the DMG or Downloads.")
+            showError("Couldn't move Atelier to /Applications: \(error.localizedDescription)\n\nYou can drag it over manually from the DMG or Downloads.")
         }
     }
 

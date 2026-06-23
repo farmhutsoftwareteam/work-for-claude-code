@@ -139,7 +139,7 @@ private struct OpenExistingFolderTab: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
-            Text("Pick a directory you already have on disk. Work will track it as a project and register it with Claude Code.")
+            Text("Pick a directory you already have on disk. Atelier will track it as a project and register it with Claude Code.")
                 .font(.callout)
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
@@ -436,7 +436,7 @@ private struct CreateNewFolderTab: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
-            Text("Work will create an empty folder on disk and register it as a project. Great for starting something new from scratch.")
+            Text("Atelier will create an empty folder on disk and register it as a project. Great for starting something new from scratch.")
                 .font(.callout)
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
