@@ -231,14 +231,44 @@
             margin: 24px 0;
         }
 
+        /* Mobile nav — full-screen paper overlay with editorial-sized links */
+        .menu-toggle { display: none; }
+        .menu-overlay { display: none; }
+        .menu-link { transition: color .12s ease, transform .18s ease; }
+        .menu-link:hover { color: var(--mute) !important; }
+        body[data-menu="open"] { overflow: hidden; }
+        body[data-menu="open"] .menu-overlay { display: flex !important; animation: menuFade .18s ease-out; }
+        body[data-menu="open"] .menu-overlay .menu-link { animation: menuRise .42s cubic-bezier(.2,.7,.2,1) backwards; }
+        body[data-menu="open"] .menu-overlay .menu-link:nth-child(1) { animation-delay: .04s; }
+        body[data-menu="open"] .menu-overlay .menu-link:nth-child(2) { animation-delay: .09s; }
+        body[data-menu="open"] .menu-overlay .menu-link:nth-child(3) { animation-delay: .14s; }
+        body[data-menu="open"] .menu-overlay .menu-link:nth-child(4) { animation-delay: .19s; }
+        @keyframes menuFade { from { opacity: 0; } to { opacity: 1; } }
+        @keyframes menuRise { from { opacity: 0; transform: translateY(14px); } to { opacity: 1; transform: translateY(0); } }
+
         @media (max-width: 800px) {
             .responsive-padding { padding-left: 24px !important; padding-right: 24px !important; }
-            .responsive-nav { gap: 18px !important; }
             .article-title { font-size: 36px !important; }
             .article-subtitle { font-size: 18px !important; }
             .cta-card { flex-direction: column !important; align-items: flex-start !important; }
             .next-link { flex-direction: column !important; align-items: flex-start !important; gap: 8px !important; }
             .next-link > span:last-child { text-align: left !important; font-size: 17px !important; }
+            .nav-desktop { display: none !important; }
+            .menu-toggle {
+                display: inline-flex !important;
+                align-items: center;
+                gap: 8px;
+                background: none;
+                border: 1px solid var(--line2);
+                font-family: var(--mono);
+                font-size: 12.5px;
+                letter-spacing: .06em;
+                color: var(--ink);
+                cursor: pointer;
+                padding: 7px 13px;
+                transition: background .12s ease, border-color .12s ease;
+            }
+            .menu-toggle:hover { background: var(--paper3); border-color: var(--ink); }
         }
     </style>
 </head>
@@ -259,15 +289,39 @@
                 <svg viewBox="0 0 64 64" style="width:26px;height:26px;color:var(--ink);overflow:visible;"><use href="#dt"/></svg>
                 <span style="font-family:var(--helv);font-weight:500;font-size:20px;letter-spacing:-.01em;">atelier</span>
             </a>
-            <nav class="responsive-nav" style="display:flex;align-items:center;gap:30px;font-family:var(--mono);font-size:12.5px;letter-spacing:.02em;">
+            <nav class="nav-desktop" style="display:flex;align-items:center;gap:30px;font-family:var(--mono);font-size:12.5px;letter-spacing:.02em;">
                 <a class="nav-link" href="/releases.html" style="color:var(--mute);text-decoration:none;">changelog</a>
                 <a href="/recipes/" style="color:var(--ink);text-decoration:none;">recipes</a>
                 <a class="nav-link" href="/faq.html" style="color:var(--mute);text-decoration:none;">faq</a>
                 <a class="nav-link" href="/pricing.html" style="color:var(--mute);text-decoration:none;">pricing</a>
                 <a class="nav-cta" href="/#download" style="color:var(--paper);background:var(--ink);text-decoration:none;padding:8px 15px;letter-spacing:.04em;">download</a>
             </nav>
+            <button class="menu-toggle" type="button" data-menu-toggle aria-label="Open menu" aria-expanded="false" aria-controls="site-menu">menu</button>
         </div>
     </header>
+
+    <div class="menu-overlay" id="site-menu" data-menu-overlay aria-hidden="true" style="position:fixed;inset:0;z-index:100;background:var(--paper);flex-direction:column;">
+        <div style="display:flex;align-items:center;justify-content:space-between;padding:14px 24px;border-bottom:1px solid var(--line);">
+            <a href="/" style="display:flex;align-items:center;gap:11px;text-decoration:none;color:var(--ink);">
+                <svg viewBox="0 0 64 64" style="width:26px;height:26px;color:var(--ink);overflow:visible;"><use href="#dt"/></svg>
+                <span style="font-family:var(--helv);font-weight:500;font-size:20px;letter-spacing:-.01em;">atelier</span>
+            </a>
+            <button type="button" data-menu-close aria-label="Close menu" style="background:none;border:1px solid var(--line2);font-family:var(--mono);font-size:12.5px;letter-spacing:.06em;color:var(--ink);cursor:pointer;padding:7px 13px;">close</button>
+        </div>
+        <nav style="flex:1;display:flex;flex-direction:column;justify-content:center;padding:0 28px;gap:22px;">
+            <a class="menu-link" href="/releases.html" style="text-decoration:none;color:var(--ink);font-family:var(--helv);font-weight:500;font-size:clamp(38px,11vw,56px);letter-spacing:-.03em;line-height:1;">changelog</a>
+            <a class="menu-link" href="/recipes/" style="text-decoration:none;color:var(--mute);font-family:var(--helv);font-weight:500;font-size:clamp(38px,11vw,56px);letter-spacing:-.03em;line-height:1;">recipes</a>
+            <a class="menu-link" href="/faq.html" style="text-decoration:none;color:var(--ink);font-family:var(--helv);font-weight:500;font-size:clamp(38px,11vw,56px);letter-spacing:-.03em;line-height:1;">faq</a>
+            <a class="menu-link" href="/pricing.html" style="text-decoration:none;color:var(--ink);font-family:var(--helv);font-weight:500;font-size:clamp(38px,11vw,56px);letter-spacing:-.03em;line-height:1;">pricing</a>
+        </nav>
+        <div style="padding:24px 28px 32px;border-top:1px solid var(--line);">
+            <a href="/Work.dmg" style="display:flex;align-items:center;justify-content:center;gap:11px;background:var(--ink);color:var(--paper);text-decoration:none;padding:16px 22px;font-family:var(--helv);font-weight:500;font-size:17px;">
+                <svg viewBox="0 0 64 64" style="width:20px;height:20px;color:var(--paper);overflow:visible;"><use href="#dt"/></svg>
+                Download for Mac
+            </a>
+            <div style="font-family:var(--mono);font-size:11px;color:var(--mute);margin-top:12px;text-align:center;letter-spacing:.06em;">.dmg · macOS 15+ · free</div>
+        </div>
+    </div>
 
     <main class="responsive-padding" style="max-width:920px;margin:0 auto;padding:28px 40px 96px;">
 
@@ -430,6 +484,18 @@
                 })();
             });
         });
+    })();
+    (function () {
+        var body = document.body;
+        var toggle = document.querySelector('[data-menu-toggle]');
+        var closeBtn = document.querySelector('[data-menu-close]');
+        var links = document.querySelectorAll('[data-menu-overlay] a');
+        function openMenu() { body.setAttribute('data-menu', 'open'); if (toggle) toggle.setAttribute('aria-expanded', 'true'); }
+        function closeMenu() { body.removeAttribute('data-menu'); if (toggle) toggle.setAttribute('aria-expanded', 'false'); }
+        if (toggle) toggle.addEventListener('click', openMenu);
+        if (closeBtn) closeBtn.addEventListener('click', closeMenu);
+        links.forEach(function (a) { a.addEventListener('click', closeMenu); });
+        document.addEventListener('keydown', function (e) { if (e.key === 'Escape') closeMenu(); });
     })();
 </script>
 
