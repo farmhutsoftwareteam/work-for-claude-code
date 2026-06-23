@@ -597,100 +597,92 @@ ${renderFooter()}
 `;
 }
 
-// ─── Listing template ───────────────────────────────────────────────────────
+// ─── Listing template (Atelier dovetail design, light palette) ──────────────
 
-const LIST_STYLE = `
-    .list-header {
-        padding: 140px 0 40px;
-    }
-    h1.list-title {
-        font-family: var(--font-mono);
-        font-size: clamp(48px, 8vw, 72px);
-        font-weight: 700; letter-spacing: -3px;
-        line-height: 1.0; margin-bottom: 16px;
-    }
-    .list-subtitle {
-        font-size: 18px; color: var(--ivory-muted);
-        max-width: 480px; line-height: 1.6;
-    }
+function formatDateShort(d) {
+    const date = new Date(d);
+    const y = date.getFullYear();
+    const mon = date.toLocaleDateString('en-US', { month: 'short' }).toLowerCase();
+    const day = String(date.getDate()).padStart(2, '0');
+    return `${y} · ${mon} ${day}`;
+}
 
-    .recipe-grid {
-        display: grid;
-        grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
-        gap: 16px;
-        padding-bottom: 80px;
+// Render the featured card's right-side decoration card. Specific to each
+// recipe slug — designed so visitors see something unique to the recipe, not
+// a placeholder. Falls back to a generic metadata card if the slug doesn't
+// have a custom decoration.
+function renderFeaturedDecoration(r) {
+    const tag = (r.tags && r.tags[0]) || r.type || 'recipe';
+    if (r.slug === 'welcome-to-atelier') {
+        return `<div style="border:1px solid var(--line2);background:var(--paper);padding:24px;font-family:var(--mono);font-size:12px;line-height:1.75;color:var(--mute);">
+            <div style="color:var(--ink);margin-bottom:12px;">recipe.atelier</div>
+            work &nbsp;→ atelier (display name)<br>
+            mark &nbsp;= dovetail joint<br>
+            site &nbsp;= workshop framing<br>
+            bench = loops · agents · harnesses
+            <div style="margin-top:12px;padding-top:12px;border-top:1px solid var(--line);color:var(--ink);">→ open the workshop<br>&nbsp;&nbsp;same binary · same files · sharper name</div>
+        </div>`;
     }
-    .recipe-card {
-        display: block;
-        padding: 24px;
-        border-radius: 12px;
-        background: var(--graphite-surface);
-        border: 1px solid var(--border);
-        text-decoration: none;
-        color: inherit;
-        transition: border-color 0.2s, background 0.2s, transform 0.15s;
-    }
-    .recipe-card:hover {
-        border-color: rgba(240, 236, 228, 0.14);
-        background: var(--graphite-elevated);
-        transform: translateY(-2px);
-        text-decoration: none;
-    }
-    .card-meta {
-        display: flex; align-items: center; gap: 10px;
-        margin-bottom: 14px;
-    }
-    .card-type-badge {
-        display: inline-block;
-        font-family: var(--font-mono); font-size: 9px; font-weight: 700;
-        text-transform: uppercase; letter-spacing: 1.2px;
-        padding: 3px 7px; border-radius: 4px;
-    }
-    .card-date {
-        font-size: 11px; color: var(--ivory-muted);
-    }
-    .card-title {
-        font-size: 15px; font-weight: 600;
-        letter-spacing: -0.3px; margin-bottom: 6px;
-        line-height: 1.35;
-        color: var(--ivory);
-    }
-    .card-description {
-        font-size: 13px;
-        color: var(--ivory-muted);
-        line-height: 1.55;
-    }
-    .card-readtime {
-        margin-top: 14px;
-        font-size: 10px; color: rgba(240, 236, 228, 0.35);
-        font-family: var(--font-mono);
-    }
-    .empty-state {
-        grid-column: 1 / -1;
-        padding: 80px 40px;
-        text-align: center;
-        color: var(--ivory-muted);
-    }
-`;
+    return `<div style="border:1px solid var(--line2);background:var(--paper);padding:24px;font-family:var(--mono);font-size:12px;line-height:1.75;color:var(--mute);">
+        <div style="color:var(--ink);margin-bottom:12px;">recipe.${escHtml(r.slug)}</div>
+        type &nbsp;= ${escHtml(r.type)}<br>
+        date &nbsp;= ${escHtml(formatDateShort(r.date))}<br>
+        tags &nbsp;= ${escHtml((r.tags || []).slice(0, 3).join(', ') || '—')}
+        <div style="margin-top:12px;padding-top:12px;border-top:1px solid var(--line);color:var(--ink);">→ read · apply · ship</div>
+    </div>`;
+}
 
 function renderListingPage(recipes) {
-    const cards = recipes.map(r => {
-        const badgeStyle = `background: ${typeColor(r.type)}22; color: ${typeColor(r.type)};`;
-        // Same-directory relative link — works in file:// and on Vercel
-        return `<a href="${escHtml(r.slug)}.html" class="recipe-card">
-            <div class="card-meta">
-                <span class="card-type-badge" style="${badgeStyle}">${escHtml(typeLabel(r.type))}</span>
-                <span class="card-date">${escHtml(formatDate(r.date))}</span>
-            </div>
-            <h3 class="card-title">${escHtml(r.title)}</h3>
-            <p class="card-description">${escHtml(r.description)}</p>
-            ${r.readTime ? `<div class="card-readtime">${escHtml(r.readTime)} min read</div>` : ''}
-        </a>`;
-    }).join('\n');
+    const featured = recipes[0];
+    const rest = recipes.slice(1);
 
-    const grid = recipes.length > 0
-        ? `<div class="recipe-grid">${cards}</div>`
-        : `<div class="recipe-grid"><p class="empty-state">No recipes yet — first one coming soon.</p></div>`;
+    // Category chips — derived from real recipe types so we never advertise
+    // a filter that returns an empty list.
+    const realTypes = Array.from(new Set(recipes.map(r => r.type)));
+    const chips = ['all', ...realTypes];
+    const chipMarkup = chips.map((c, i) => {
+        const active = i === 0;
+        const bg = active ? 'var(--ink)' : 'transparent';
+        const color = active ? 'var(--paper)' : 'var(--mute)';
+        const border = active ? 'var(--ink)' : 'var(--line2)';
+        return `<button class="filter-chip" data-filter="${escHtml(c)}" style="border:1px solid ${border};background:${bg};color:${color};padding:6px 12px;font-family:var(--mono);font-size:11.5px;cursor:pointer;letter-spacing:.02em;">${escHtml(c)}</button>`;
+    }).join('');
+
+    const featuredCard = featured
+        ? `<a href="${escHtml(featured.slug)}.html" class="featured-card" style="text-decoration:none;color:var(--ink);display:grid;grid-template-columns:1.25fr 1fr;gap:48px;align-items:center;border:1px solid var(--line2);background:var(--paper2);padding:44px;">
+            <div>
+                <div style="display:flex;align-items:center;gap:12px;font-family:var(--mono);font-size:11px;color:var(--mute);margin-bottom:18px;">
+                    <span style="border:1px solid var(--line2);padding:3px 9px;letter-spacing:.06em;">${escHtml(featured.type)}</span>
+                    <span>featured</span>
+                    ${featured.readTime ? `<span>· ${escHtml(featured.readTime)} min</span>` : ''}
+                </div>
+                <h2 style="font-family:var(--helv);font-weight:500;font-size:38px;line-height:1.05;letter-spacing:-.03em;margin:0 0 16px;">${escHtml(featured.title)}</h2>
+                <p style="font-family:var(--helv);font-size:17px;line-height:1.55;color:rgba(27,28,30,.74);margin:0 0 22px;max-width:46ch;">${escHtml(featured.description)}</p>
+                <span style="font-family:var(--mono);font-size:12.5px;border-bottom:1px solid var(--ink);padding-bottom:2px;">read the recipe →</span>
+            </div>
+            ${renderFeaturedDecoration(featured)}
+        </a>`
+        : '';
+
+    const rows = rest.map((r, i) => {
+        const last = i === rest.length - 1;
+        const border = last ? '' : 'border-bottom:1px solid var(--line);';
+        return `<a class="recipe-row" data-type="${escHtml(r.type)}" href="${escHtml(r.slug)}.html" style="text-decoration:none;color:var(--ink);display:grid;grid-template-columns:170px 1fr 96px;gap:32px;padding:30px 0;${border}align-items:start;">
+            <div style="font-family:var(--mono);font-size:11.5px;color:var(--mute);line-height:1.7;">
+                <div>${escHtml(formatDateShort(r.date))}</div>
+                <div style="margin-top:6px;"><span style="border:1px solid var(--line2);padding:2px 7px;">${escHtml(r.type)}</span></div>
+            </div>
+            <div>
+                <h3 style="font-family:var(--helv);font-weight:500;font-size:23px;letter-spacing:-.015em;margin:0 0 7px;">${escHtml(r.title)}</h3>
+                <p style="font-family:var(--helv);font-size:16px;line-height:1.5;color:rgba(27,28,30,.72);margin:0;max-width:62ch;">${escHtml(r.description)}</p>
+            </div>
+            <div style="font-family:var(--mono);font-size:11.5px;color:var(--mute);text-align:right;">${r.readTime ? `${escHtml(r.readTime)} min` : ''}</div>
+        </a>`;
+    }).join('');
+
+    const emptyMarkup = recipes.length === 0
+        ? `<p style="font-family:var(--mono);font-size:13px;color:var(--mute);padding:80px 0;text-align:center;">No recipes yet — first one coming soon.</p>`
+        : '';
 
     return `<!DOCTYPE html>
 <html lang="en">
@@ -698,42 +690,156 @@ function renderListingPage(recipes) {
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Recipes — Atelier</title>
-    <meta name="description" content="Drop-in configs, skills, MCPs, and workflows for Claude Code. Each one is a full tutorial with a copy-paste payload.">
+    <meta name="description" content="Field notes from the workshop — practical playbooks for Claude Code. Loops, agents, harnesses and the small moves that separate dabblers from power users.">
     <link rel="canonical" href="${SITE_URL}/recipes/">
 
     <meta property="og:type" content="website">
     <meta property="og:title" content="Recipes — Atelier">
-    <meta property="og:description" content="Drop-in configs, skills, and MCPs for Claude Code.">
+    <meta property="og:description" content="Field notes from the workshop — practical playbooks for Claude Code.">
     <meta property="og:url" content="${SITE_URL}/recipes/">
     <meta property="og:image" content="${SITE_URL}/og-image.png">
     <meta property="og:site_name" content="Atelier">
 
     <meta name="twitter:card" content="summary_large_image">
     <meta name="twitter:title" content="Recipes — Atelier">
-    <meta name="twitter:description" content="Drop-in configs, skills, and MCPs for Claude Code.">
+    <meta name="twitter:description" content="Field notes from the workshop — practical playbooks for Claude Code.">
     <meta name="twitter:image" content="${SITE_URL}/og-image.png">
 
-    <link rel="icon" type="image/png" href="../icon-256.png">
-    <style>${SHARED_STYLE}${LIST_STYLE}</style>
+    <link rel="icon" type="image/svg+xml" href="/atelier-mark.svg">
+    <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32.png">
+    <link rel="icon" type="image/png" sizes="16x16" href="/favicon-16.png">
+    <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png">
+
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+
+    <style>
+        :root {
+            --ink: #1b1c1e;
+            --paper: #e9eae8;
+            --paper2: #f3f4f2;
+            --paper3: #dcdedb;
+            --line: rgba(27, 28, 30, .18);
+            --line2: rgba(27, 28, 30, .34);
+            --mute: rgba(27, 28, 30, .54);
+            --helv: 'Helvetica Neue', Helvetica, Arial, sans-serif;
+            --mono: 'IBM Plex Mono', ui-monospace, monospace;
+        }
+        * { box-sizing: border-box; }
+        html, body { margin: 0; }
+        body {
+            background: var(--paper);
+            color: var(--ink);
+            -webkit-font-smoothing: antialiased;
+            text-rendering: optimizeLegibility;
+        }
+        ::selection { background: var(--ink); color: var(--paper); }
+
+        .nav-link { transition: color .12s ease; }
+        .nav-link:hover { color: var(--ink) !important; }
+        .nav-cta { transition: background .12s ease; }
+        .nav-cta:hover { background: #000 !important; }
+        .featured-card { transition: background .12s ease; }
+        .featured-card:hover { background: #fff !important; }
+        .recipe-row { transition: background .12s ease; }
+        .recipe-row:hover { background: var(--paper2) !important; }
+        .filter-chip { transition: background .12s ease, color .12s ease, border-color .12s ease; }
+        .footer-link { transition: color .12s ease; }
+        .footer-link:hover { color: var(--ink) !important; }
+
+        @media (max-width: 800px) {
+            .responsive-padding { padding-left: 24px !important; padding-right: 24px !important; }
+            .responsive-nav { gap: 18px !important; }
+            .featured-card { grid-template-columns: 1fr !important; gap: 28px !important; padding: 28px !important; }
+            .featured-card h2 { font-size: 28px !important; }
+            .recipe-row { grid-template-columns: 1fr !important; gap: 10px !important; }
+            .recipe-row > div:last-child { text-align: left !important; }
+            h1 { font-size: 40px !important; }
+        }
+    </style>
 </head>
 <body>
-${renderNav('recipes')}
-<main>
-    <header class="list-header">
-        <div class="container">
-            <div class="section-label">Recipes</div>
-            <h1 class="list-title">Read. Copy.<br>Paste. Keep coding.</h1>
-            <p class="list-subtitle">Tutorials for your Claude Code setup — each one ends with a drop-in skill, MCP, hook, or command you can paste straight into your config.</p>
+
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+    <symbol id="dt" viewBox="0 0 64 64" fill="none" stroke="currentColor" stroke-width="6" stroke-linecap="square" stroke-linejoin="miter">
+        <rect x="7" y="7" width="50" height="50"/>
+        <path d="M32 7 L32 24 L46 28 L46 36 L32 40 L32 57"/>
+    </symbol>
+</svg>
+
+<div style="min-height:100vh;">
+
+    <header style="position:sticky;top:0;z-index:40;background:rgba(233,234,232,.86);backdrop-filter:blur(8px);border-bottom:1px solid var(--line);">
+        <div class="responsive-padding" style="max-width:1180px;margin:0 auto;padding:14px 40px;display:flex;align-items:center;justify-content:space-between;">
+            <a href="/" style="display:flex;align-items:center;gap:11px;text-decoration:none;color:var(--ink);">
+                <svg viewBox="0 0 64 64" style="width:26px;height:26px;color:var(--ink);overflow:visible;"><use href="#dt"/></svg>
+                <span style="font-family:var(--helv);font-weight:500;font-size:20px;letter-spacing:-.01em;">atelier</span>
+            </a>
+            <nav class="responsive-nav" style="display:flex;align-items:center;gap:30px;font-family:var(--mono);font-size:12.5px;letter-spacing:.02em;">
+                <a class="nav-link" href="/releases.html" style="color:var(--mute);text-decoration:none;">changelog</a>
+                <a href="/recipes/" style="color:var(--ink);text-decoration:none;">recipes</a>
+                <a class="nav-link" href="/faq.html" style="color:var(--mute);text-decoration:none;">faq</a>
+                <a class="nav-link" href="/pricing.html" style="color:var(--mute);text-decoration:none;">pricing</a>
+                <a class="nav-cta" href="/#download" style="color:var(--paper);background:var(--ink);text-decoration:none;padding:8px 15px;letter-spacing:.04em;">download</a>
+            </nav>
         </div>
     </header>
 
-    <section>
-        <div class="container">
-            ${grid}
+    <main class="responsive-padding" style="max-width:1180px;margin:0 auto;padding:72px 40px 96px;">
+
+        <!-- masthead -->
+        <div style="border-bottom:1px solid var(--line2);padding-bottom:34px;">
+            <div style="font-family:var(--mono);font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:var(--mute);margin-bottom:16px;">field notes from the workshop</div>
+            <h1 style="font-family:var(--helv);font-weight:500;font-size:54px;line-height:1.02;letter-spacing:-.035em;margin:0;">Recipes</h1>
+            <p style="font-family:var(--helv);font-size:18px;line-height:1.5;color:rgba(27,28,30,.78);margin:18px 0 0;max-width:54ch;">Practical playbooks for Claude&nbsp;Code — loops, agents, harnesses and the small moves that separate dabblers from power users.</p>
         </div>
-    </section>
-</main>
-${renderFooter()}
+
+        <!-- category row -->
+        <div style="display:flex;gap:9px;flex-wrap:wrap;font-family:var(--mono);font-size:11.5px;padding:26px 0 40px;">
+            ${chipMarkup}
+        </div>
+
+        ${featuredCard}
+
+        <!-- index list -->
+        <div style="margin-top:8px;">
+            ${rows}
+            ${emptyMarkup}
+        </div>
+
+    </main>
+
+    <footer style="border-top:1px solid var(--line);">
+        <div class="responsive-padding" style="max-width:1180px;margin:0 auto;padding:36px 40px;font-family:var(--mono);font-size:11px;color:var(--mute);display:flex;justify-content:space-between;flex-wrap:wrap;gap:16px;">
+            <span>© mmxxvi atelier · a workshop for claude code</span>
+            <span><a class="footer-link" href="/" style="color:var(--mute);text-decoration:none;">← home</a></span>
+        </div>
+    </footer>
+</div>
+
+<script>
+    (function () {
+        var chips = document.querySelectorAll('.filter-chip');
+        var rows = document.querySelectorAll('.recipe-row');
+        chips.forEach(function (chip) {
+            chip.addEventListener('click', function () {
+                var filter = chip.getAttribute('data-filter');
+                chips.forEach(function (c) {
+                    var active = c.getAttribute('data-filter') === filter;
+                    c.style.background = active ? 'var(--ink)' : 'transparent';
+                    c.style.color = active ? 'var(--paper)' : 'var(--mute)';
+                    c.style.borderColor = active ? 'var(--ink)' : 'var(--line2)';
+                });
+                rows.forEach(function (row) {
+                    var match = filter === 'all' || row.getAttribute('data-type') === filter;
+                    row.style.display = match ? '' : 'none';
+                });
+            });
+        });
+    })();
+</script>
+
 </body>
 </html>
 `;

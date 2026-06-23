@@ -4,236 +4,214 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Recipes — Atelier</title>
-    <meta name="description" content="Drop-in configs, skills, MCPs, and workflows for Claude Code. Each one is a full tutorial with a copy-paste payload.">
+    <meta name="description" content="Field notes from the workshop — practical playbooks for Claude Code. Loops, agents, harnesses and the small moves that separate dabblers from power users.">
     <link rel="canonical" href="https://work.munyamakosa.com/recipes/">
 
     <meta property="og:type" content="website">
     <meta property="og:title" content="Recipes — Atelier">
-    <meta property="og:description" content="Drop-in configs, skills, and MCPs for Claude Code.">
+    <meta property="og:description" content="Field notes from the workshop — practical playbooks for Claude Code.">
     <meta property="og:url" content="https://work.munyamakosa.com/recipes/">
     <meta property="og:image" content="https://work.munyamakosa.com/og-image.png">
     <meta property="og:site_name" content="Atelier">
 
     <meta name="twitter:card" content="summary_large_image">
     <meta name="twitter:title" content="Recipes — Atelier">
-    <meta name="twitter:description" content="Drop-in configs, skills, and MCPs for Claude Code.">
+    <meta name="twitter:description" content="Field notes from the workshop — practical playbooks for Claude Code.">
     <meta name="twitter:image" content="https://work.munyamakosa.com/og-image.png">
 
-    <link rel="icon" type="image/png" href="../icon-256.png">
+    <link rel="icon" type="image/svg+xml" href="/atelier-mark.svg">
+    <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32.png">
+    <link rel="icon" type="image/png" sizes="16x16" href="/favicon-16.png">
+    <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png">
+
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+
     <style>
-    :root {
-        --graphite: #111113;
-        --graphite-surface: #18181b;
-        --graphite-elevated: #1f1f23;
-        --ivory: #f0ece4;
-        --ivory-muted: rgba(240, 236, 228, 0.55);
-        --ivory-faint: rgba(240, 236, 228, 0.12);
-        --ivory-ghost: rgba(240, 236, 228, 0.06);
-        --blue: #4a6fa5;
-        --blue-bright: #5a8fd4;
-        --border: rgba(240, 236, 228, 0.08);
-        --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
-        --font-mono: 'SF Mono', 'Fira Code', 'JetBrains Mono', monospace;
-    }
-    *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
-    html { font-size: 16px; -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; scroll-behavior: smooth; }
-    body { font-family: var(--font-sans); background: var(--graphite); color: var(--ivory); line-height: 1.6; overflow-x: hidden; }
-    a { color: var(--blue-bright); text-decoration: none; }
-    a:hover { text-decoration: underline; }
-    .container { max-width: 960px; margin: 0 auto; padding: 0 24px; }
-    .container-narrow { max-width: 720px; margin: 0 auto; padding: 0 24px; }
+        :root {
+            --ink: #1b1c1e;
+            --paper: #e9eae8;
+            --paper2: #f3f4f2;
+            --paper3: #dcdedb;
+            --line: rgba(27, 28, 30, .18);
+            --line2: rgba(27, 28, 30, .34);
+            --mute: rgba(27, 28, 30, .54);
+            --helv: 'Helvetica Neue', Helvetica, Arial, sans-serif;
+            --mono: 'IBM Plex Mono', ui-monospace, monospace;
+        }
+        * { box-sizing: border-box; }
+        html, body { margin: 0; }
+        body {
+            background: var(--paper);
+            color: var(--ink);
+            -webkit-font-smoothing: antialiased;
+            text-rendering: optimizeLegibility;
+        }
+        ::selection { background: var(--ink); color: var(--paper); }
 
-    /* Nav */
-    nav.site-nav {
-        position: fixed; top: 0; left: 0; right: 0; z-index: 100;
-        padding: 16px 0;
-        background: rgba(17, 17, 19, 0.85);
-        backdrop-filter: blur(20px) saturate(1.4);
-        -webkit-backdrop-filter: blur(20px) saturate(1.4);
-        border-bottom: 1px solid var(--border);
-    }
-    nav.site-nav .container { display: flex; align-items: center; justify-content: space-between; }
-    .nav-brand { display: flex; align-items: center; gap: 10px; }
-    .nav-brand img { width: 28px; height: 28px; border-radius: 6px; }
-    .nav-brand span { font-family: var(--font-mono); font-size: 15px; font-weight: 600; letter-spacing: -0.3px; color: var(--ivory); }
-    .nav-links { display: flex; align-items: center; gap: 28px; }
-    .nav-links a { font-size: 14px; font-weight: 450; color: var(--ivory-muted); transition: color 0.15s; }
-    .nav-links a:hover { color: var(--ivory); text-decoration: none; }
-    .nav-links a.active { color: var(--ivory); }
-    .btn-download-nav {
-        font-size: 13px; font-weight: 500; color: var(--ivory) !important;
-        background: var(--blue); padding: 7px 16px; border-radius: 6px;
-        transition: background 0.15s; text-decoration: none;
-    }
-    .btn-download-nav:hover { background: var(--blue-bright); text-decoration: none; }
+        .nav-link { transition: color .12s ease; }
+        .nav-link:hover { color: var(--ink) !important; }
+        .nav-cta { transition: background .12s ease; }
+        .nav-cta:hover { background: #000 !important; }
+        .featured-card { transition: background .12s ease; }
+        .featured-card:hover { background: #fff !important; }
+        .recipe-row { transition: background .12s ease; }
+        .recipe-row:hover { background: var(--paper2) !important; }
+        .filter-chip { transition: background .12s ease, color .12s ease, border-color .12s ease; }
+        .footer-link { transition: color .12s ease; }
+        .footer-link:hover { color: var(--ink) !important; }
 
-    /* Footer */
-    footer { padding: 40px 0; border-top: 1px solid var(--border); text-align: center; margin-top: 80px; }
-    footer p { font-size: 13px; color: rgba(240, 236, 228, 0.25); }
-
-    /* Section labels */
-    .section-label {
-        font-family: var(--font-mono); font-size: 11px; font-weight: 500;
-        text-transform: uppercase; letter-spacing: 1.5px;
-        color: var(--blue-bright); margin-bottom: 16px;
-    }
-
-    @media (max-width: 768px) {
-        .nav-links a:not(.btn-download-nav) { display: none; }
-    }
-
-    .list-header {
-        padding: 140px 0 40px;
-    }
-    h1.list-title {
-        font-family: var(--font-mono);
-        font-size: clamp(48px, 8vw, 72px);
-        font-weight: 700; letter-spacing: -3px;
-        line-height: 1.0; margin-bottom: 16px;
-    }
-    .list-subtitle {
-        font-size: 18px; color: var(--ivory-muted);
-        max-width: 480px; line-height: 1.6;
-    }
-
-    .recipe-grid {
-        display: grid;
-        grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
-        gap: 16px;
-        padding-bottom: 80px;
-    }
-    .recipe-card {
-        display: block;
-        padding: 24px;
-        border-radius: 12px;
-        background: var(--graphite-surface);
-        border: 1px solid var(--border);
-        text-decoration: none;
-        color: inherit;
-        transition: border-color 0.2s, background 0.2s, transform 0.15s;
-    }
-    .recipe-card:hover {
-        border-color: rgba(240, 236, 228, 0.14);
-        background: var(--graphite-elevated);
-        transform: translateY(-2px);
-        text-decoration: none;
-    }
-    .card-meta {
-        display: flex; align-items: center; gap: 10px;
-        margin-bottom: 14px;
-    }
-    .card-type-badge {
-        display: inline-block;
-        font-family: var(--font-mono); font-size: 9px; font-weight: 700;
-        text-transform: uppercase; letter-spacing: 1.2px;
-        padding: 3px 7px; border-radius: 4px;
-    }
-    .card-date {
-        font-size: 11px; color: var(--ivory-muted);
-    }
-    .card-title {
-        font-size: 15px; font-weight: 600;
-        letter-spacing: -0.3px; margin-bottom: 6px;
-        line-height: 1.35;
-        color: var(--ivory);
-    }
-    .card-description {
-        font-size: 13px;
-        color: var(--ivory-muted);
-        line-height: 1.55;
-    }
-    .card-readtime {
-        margin-top: 14px;
-        font-size: 10px; color: rgba(240, 236, 228, 0.35);
-        font-family: var(--font-mono);
-    }
-    .empty-state {
-        grid-column: 1 / -1;
-        padding: 80px 40px;
-        text-align: center;
-        color: var(--ivory-muted);
-    }
-</style>
+        @media (max-width: 800px) {
+            .responsive-padding { padding-left: 24px !important; padding-right: 24px !important; }
+            .responsive-nav { gap: 18px !important; }
+            .featured-card { grid-template-columns: 1fr !important; gap: 28px !important; padding: 28px !important; }
+            .featured-card h2 { font-size: 28px !important; }
+            .recipe-row { grid-template-columns: 1fr !important; gap: 10px !important; }
+            .recipe-row > div:last-child { text-align: left !important; }
+            h1 { font-size: 40px !important; }
+        }
+    </style>
 </head>
 <body>
-<nav class="site-nav">
-        <div class="container">
-            <a href="../" class="nav-brand">
-                <img src="../icon-256.png" alt="Atelier icon">
-                <span>Atelier</span>
+
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+    <symbol id="dt" viewBox="0 0 64 64" fill="none" stroke="currentColor" stroke-width="6" stroke-linecap="square" stroke-linejoin="miter">
+        <rect x="7" y="7" width="50" height="50"/>
+        <path d="M32 7 L32 24 L46 28 L46 36 L32 40 L32 57"/>
+    </symbol>
+</svg>
+
+<div style="min-height:100vh;">
+
+    <header style="position:sticky;top:0;z-index:40;background:rgba(233,234,232,.86);backdrop-filter:blur(8px);border-bottom:1px solid var(--line);">
+        <div class="responsive-padding" style="max-width:1180px;margin:0 auto;padding:14px 40px;display:flex;align-items:center;justify-content:space-between;">
+            <a href="/" style="display:flex;align-items:center;gap:11px;text-decoration:none;color:var(--ink);">
+                <svg viewBox="0 0 64 64" style="width:26px;height:26px;color:var(--ink);overflow:visible;"><use href="#dt"/></svg>
+                <span style="font-family:var(--helv);font-weight:500;font-size:20px;letter-spacing:-.01em;">atelier</span>
             </a>
-            <div class="nav-links">
-                <a href="../">Home</a>
-                <a href="../recipes/" class="active">Recipes</a>
-                <a href="../releases.html">Releases</a>
-                <a href="../#faq">FAQ</a>
-                <a href="../Work.dmg" class="btn-download-nav">Download</a>
-            </div>
-        </div>
-    </nav>
-<main>
-    <header class="list-header">
-        <div class="container">
-            <div class="section-label">Recipes</div>
-            <h1 class="list-title">Read. Copy.<br>Paste. Keep coding.</h1>
-            <p class="list-subtitle">Tutorials for your Claude Code setup — each one ends with a drop-in skill, MCP, hook, or command you can paste straight into your config.</p>
+            <nav class="responsive-nav" style="display:flex;align-items:center;gap:30px;font-family:var(--mono);font-size:12.5px;letter-spacing:.02em;">
+                <a class="nav-link" href="/releases.html" style="color:var(--mute);text-decoration:none;">changelog</a>
+                <a href="/recipes/" style="color:var(--ink);text-decoration:none;">recipes</a>
+                <a class="nav-link" href="/faq.html" style="color:var(--mute);text-decoration:none;">faq</a>
+                <a class="nav-link" href="/pricing.html" style="color:var(--mute);text-decoration:none;">pricing</a>
+                <a class="nav-cta" href="/#download" style="color:var(--paper);background:var(--ink);text-decoration:none;padding:8px 15px;letter-spacing:.04em;">download</a>
+            </nav>
         </div>
     </header>
 
-    <section>
-        <div class="container">
-            <div class="recipe-grid"><a href="welcome-to-atelier.html" class="recipe-card">
-            <div class="card-meta">
-                <span class="card-type-badge" style="background: #1b1c1e22; color: #1b1c1e;">ANNOUNCEMENT</span>
-                <span class="card-date">June 23, 2026</span>
-            </div>
-            <h3 class="card-title">Welcome to Atelier</h3>
-            <p class="card-description">We renamed the app, redesigned the website, and committed to a sharper direction. Here&#39;s why — and what comes next.</p>
-            <div class="card-readtime">5 min read</div>
-        </a>
-<a href="github-april-23-merge-queue-explained.html" class="recipe-card">
-            <div class="card-meta">
-                <span class="card-type-badge" style="background: #06b6d422; color: #06b6d4;">WORKFLOW</span>
-                <span class="card-date">April 30, 2026</span>
-            </div>
-            <h3 class="card-title">What broke at GitHub on April 23, explained without jargon</h3>
-            <p class="card-description">GitHub silently undid 2,092 pull requests of code last week. Most explanations assume you already know what a merge queue is. This one doesn&#39;t.</p>
-            <div class="card-readtime">6 min read</div>
-        </a>
-<a href="opus-4-7-upgrade-guide.html" class="recipe-card">
-            <div class="card-meta">
-                <span class="card-type-badge" style="background: #06b6d422; color: #06b6d4;">WORKFLOW</span>
-                <span class="card-date">April 17, 2026</span>
-            </div>
-            <h3 class="card-title">I used Opus 4.7 for 24 hours. Here&#39;s what I actually found.</h3>
-            <p class="card-description">A day with Claude Opus 4.7. What felt different, what broke, and the four things my old code was silently depending on.</p>
-            <div class="card-readtime">6 min read</div>
-        </a>
-<a href="claude-continue-and-resume.html" class="recipe-card">
-            <div class="card-meta">
-                <span class="card-type-badge" style="background: #06b6d422; color: #06b6d4;">WORKFLOW</span>
-                <span class="card-date">April 13, 2026</span>
-            </div>
-            <h3 class="card-title">Never lose your place: claude continue and claude resume</h3>
-            <p class="card-description">Two built-in flags that turn Claude Code sessions into persistent workstreams. The version of this workflow I wish someone had shown me on day one.</p>
-            <div class="card-readtime">4 min read</div>
-        </a>
-<a href="review-prs-like-a-staff-engineer.html" class="recipe-card">
-            <div class="card-meta">
-                <span class="card-type-badge" style="background: #a78bfa22; color: #a78bfa;">SKILL</span>
-                <span class="card-date">April 13, 2026</span>
-            </div>
-            <h3 class="card-title">Review PRs like a staff engineer</h3>
-            <p class="card-description">A Claude Code skill that catches real bugs, not style nits — ranked by blast radius with confidence filtering so you only see what matters.</p>
-            <div class="card-readtime">4 min read</div>
-        </a></div>
+    <main class="responsive-padding" style="max-width:1180px;margin:0 auto;padding:72px 40px 96px;">
+
+        <!-- masthead -->
+        <div style="border-bottom:1px solid var(--line2);padding-bottom:34px;">
+            <div style="font-family:var(--mono);font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:var(--mute);margin-bottom:16px;">field notes from the workshop</div>
+            <h1 style="font-family:var(--helv);font-weight:500;font-size:54px;line-height:1.02;letter-spacing:-.035em;margin:0;">Recipes</h1>
+            <p style="font-family:var(--helv);font-size:18px;line-height:1.5;color:rgba(27,28,30,.78);margin:18px 0 0;max-width:54ch;">Practical playbooks for Claude&nbsp;Code — loops, agents, harnesses and the small moves that separate dabblers from power users.</p>
         </div>
-    </section>
-</main>
-<footer>
-        <div class="container">
-            <p>Built by <a href="https://munyamakosa.com" target="_blank" rel="noopener">Munya Makosa</a></p>
+
+        <!-- category row -->
+        <div style="display:flex;gap:9px;flex-wrap:wrap;font-family:var(--mono);font-size:11.5px;padding:26px 0 40px;">
+            <button class="filter-chip" data-filter="all" style="border:1px solid var(--ink);background:var(--ink);color:var(--paper);padding:6px 12px;font-family:var(--mono);font-size:11.5px;cursor:pointer;letter-spacing:.02em;">all</button><button class="filter-chip" data-filter="announcement" style="border:1px solid var(--line2);background:transparent;color:var(--mute);padding:6px 12px;font-family:var(--mono);font-size:11.5px;cursor:pointer;letter-spacing:.02em;">announcement</button><button class="filter-chip" data-filter="workflow" style="border:1px solid var(--line2);background:transparent;color:var(--mute);padding:6px 12px;font-family:var(--mono);font-size:11.5px;cursor:pointer;letter-spacing:.02em;">workflow</button><button class="filter-chip" data-filter="skill" style="border:1px solid var(--line2);background:transparent;color:var(--mute);padding:6px 12px;font-family:var(--mono);font-size:11.5px;cursor:pointer;letter-spacing:.02em;">skill</button>
+        </div>
+
+        <a href="welcome-to-atelier.html" class="featured-card" style="text-decoration:none;color:var(--ink);display:grid;grid-template-columns:1.25fr 1fr;gap:48px;align-items:center;border:1px solid var(--line2);background:var(--paper2);padding:44px;">
+            <div>
+                <div style="display:flex;align-items:center;gap:12px;font-family:var(--mono);font-size:11px;color:var(--mute);margin-bottom:18px;">
+                    <span style="border:1px solid var(--line2);padding:3px 9px;letter-spacing:.06em;">announcement</span>
+                    <span>featured</span>
+                    <span>· 5 min</span>
+                </div>
+                <h2 style="font-family:var(--helv);font-weight:500;font-size:38px;line-height:1.05;letter-spacing:-.03em;margin:0 0 16px;">Welcome to Atelier</h2>
+                <p style="font-family:var(--helv);font-size:17px;line-height:1.55;color:rgba(27,28,30,.74);margin:0 0 22px;max-width:46ch;">We renamed the app, redesigned the website, and committed to a sharper direction. Here&#39;s why — and what comes next.</p>
+                <span style="font-family:var(--mono);font-size:12.5px;border-bottom:1px solid var(--ink);padding-bottom:2px;">read the recipe →</span>
+            </div>
+            <div style="border:1px solid var(--line2);background:var(--paper);padding:24px;font-family:var(--mono);font-size:12px;line-height:1.75;color:var(--mute);">
+            <div style="color:var(--ink);margin-bottom:12px;">recipe.atelier</div>
+            work &nbsp;→ atelier (display name)<br>
+            mark &nbsp;= dovetail joint<br>
+            site &nbsp;= workshop framing<br>
+            bench = loops · agents · harnesses
+            <div style="margin-top:12px;padding-top:12px;border-top:1px solid var(--line);color:var(--ink);">→ open the workshop<br>&nbsp;&nbsp;same binary · same files · sharper name</div>
+        </div>
+        </a>
+
+        <!-- index list -->
+        <div style="margin-top:8px;">
+            <a class="recipe-row" data-type="workflow" href="github-april-23-merge-queue-explained.html" style="text-decoration:none;color:var(--ink);display:grid;grid-template-columns:170px 1fr 96px;gap:32px;padding:30px 0;border-bottom:1px solid var(--line);align-items:start;">
+            <div style="font-family:var(--mono);font-size:11.5px;color:var(--mute);line-height:1.7;">
+                <div>2026 · apr 30</div>
+                <div style="margin-top:6px;"><span style="border:1px solid var(--line2);padding:2px 7px;">workflow</span></div>
+            </div>
+            <div>
+                <h3 style="font-family:var(--helv);font-weight:500;font-size:23px;letter-spacing:-.015em;margin:0 0 7px;">What broke at GitHub on April 23, explained without jargon</h3>
+                <p style="font-family:var(--helv);font-size:16px;line-height:1.5;color:rgba(27,28,30,.72);margin:0;max-width:62ch;">GitHub silently undid 2,092 pull requests of code last week. Most explanations assume you already know what a merge queue is. This one doesn&#39;t.</p>
+            </div>
+            <div style="font-family:var(--mono);font-size:11.5px;color:var(--mute);text-align:right;">6 min</div>
+        </a><a class="recipe-row" data-type="workflow" href="opus-4-7-upgrade-guide.html" style="text-decoration:none;color:var(--ink);display:grid;grid-template-columns:170px 1fr 96px;gap:32px;padding:30px 0;border-bottom:1px solid var(--line);align-items:start;">
+            <div style="font-family:var(--mono);font-size:11.5px;color:var(--mute);line-height:1.7;">
+                <div>2026 · apr 17</div>
+                <div style="margin-top:6px;"><span style="border:1px solid var(--line2);padding:2px 7px;">workflow</span></div>
+            </div>
+            <div>
+                <h3 style="font-family:var(--helv);font-weight:500;font-size:23px;letter-spacing:-.015em;margin:0 0 7px;">I used Opus 4.7 for 24 hours. Here&#39;s what I actually found.</h3>
+                <p style="font-family:var(--helv);font-size:16px;line-height:1.5;color:rgba(27,28,30,.72);margin:0;max-width:62ch;">A day with Claude Opus 4.7. What felt different, what broke, and the four things my old code was silently depending on.</p>
+            </div>
+            <div style="font-family:var(--mono);font-size:11.5px;color:var(--mute);text-align:right;">6 min</div>
+        </a><a class="recipe-row" data-type="workflow" href="claude-continue-and-resume.html" style="text-decoration:none;color:var(--ink);display:grid;grid-template-columns:170px 1fr 96px;gap:32px;padding:30px 0;border-bottom:1px solid var(--line);align-items:start;">
+            <div style="font-family:var(--mono);font-size:11.5px;color:var(--mute);line-height:1.7;">
+                <div>2026 · apr 13</div>
+                <div style="margin-top:6px;"><span style="border:1px solid var(--line2);padding:2px 7px;">workflow</span></div>
+            </div>
+            <div>
+                <h3 style="font-family:var(--helv);font-weight:500;font-size:23px;letter-spacing:-.015em;margin:0 0 7px;">Never lose your place: claude continue and claude resume</h3>
+                <p style="font-family:var(--helv);font-size:16px;line-height:1.5;color:rgba(27,28,30,.72);margin:0;max-width:62ch;">Two built-in flags that turn Claude Code sessions into persistent workstreams. The version of this workflow I wish someone had shown me on day one.</p>
+            </div>
+            <div style="font-family:var(--mono);font-size:11.5px;color:var(--mute);text-align:right;">4 min</div>
+        </a><a class="recipe-row" data-type="skill" href="review-prs-like-a-staff-engineer.html" style="text-decoration:none;color:var(--ink);display:grid;grid-template-columns:170px 1fr 96px;gap:32px;padding:30px 0;align-items:start;">
+            <div style="font-family:var(--mono);font-size:11.5px;color:var(--mute);line-height:1.7;">
+                <div>2026 · apr 13</div>
+                <div style="margin-top:6px;"><span style="border:1px solid var(--line2);padding:2px 7px;">skill</span></div>
+            </div>
+            <div>
+                <h3 style="font-family:var(--helv);font-weight:500;font-size:23px;letter-spacing:-.015em;margin:0 0 7px;">Review PRs like a staff engineer</h3>
+                <p style="font-family:var(--helv);font-size:16px;line-height:1.5;color:rgba(27,28,30,.72);margin:0;max-width:62ch;">A Claude Code skill that catches real bugs, not style nits — ranked by blast radius with confidence filtering so you only see what matters.</p>
+            </div>
+            <div style="font-family:var(--mono);font-size:11.5px;color:var(--mute);text-align:right;">4 min</div>
+        </a>
+            
+        </div>
+
+    </main>
+
+    <footer style="border-top:1px solid var(--line);">
+        <div class="responsive-padding" style="max-width:1180px;margin:0 auto;padding:36px 40px;font-family:var(--mono);font-size:11px;color:var(--mute);display:flex;justify-content:space-between;flex-wrap:wrap;gap:16px;">
+            <span>© mmxxvi atelier · a workshop for claude code</span>
+            <span><a class="footer-link" href="/" style="color:var(--mute);text-decoration:none;">← home</a></span>
         </div>
     </footer>
+</div>
+
+<script>
+    (function () {
+        var chips = document.querySelectorAll('.filter-chip');
+        var rows = document.querySelectorAll('.recipe-row');
+        chips.forEach(function (chip) {
+            chip.addEventListener('click', function () {
+                var filter = chip.getAttribute('data-filter');
+                chips.forEach(function (c) {
+                    var active = c.getAttribute('data-filter') === filter;
+                    c.style.background = active ? 'var(--ink)' : 'transparent';
+                    c.style.color = active ? 'var(--paper)' : 'var(--mute)';
+                    c.style.borderColor = active ? 'var(--ink)' : 'var(--line2)';
+                });
+                rows.forEach(function (row) {
+                    var match = filter === 'all' || row.getAttribute('data-type') === filter;
+                    row.style.display = match ? '' : 'none';
+                });
+            });
+        });
+    })();
+</script>
+
 </body>
 </html>

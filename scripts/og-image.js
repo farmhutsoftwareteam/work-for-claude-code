@@ -38,11 +38,11 @@ const TYPE_COLORS = {
     announcement: '#e9eae8',
 };
 
-// Atelier dovetail mark, ivory-on-graphite tile, base64-encoded so satori can
-// inline it via <img src="..."> without any external fetch at render time.
-// Source: docs/apple-touch-icon.png (180×180, ivory mark on graphite squircle).
+// Atelier dovetail mark — the bare ivory stroke (no squircle background) so
+// it floats cleanly on the graphite OG card without a tile-within-a-tile look.
+// Source: docs/atelier-mark-ivory.png (256×256, ivory mark on transparent).
 const ATELIER_MARK_DATA_URI = (() => {
-    const p = path.join(ROOT, 'docs', 'apple-touch-icon.png');
+    const p = path.join(ROOT, 'docs', 'atelier-mark-ivory.png');
     const b64 = fs.readFileSync(p).toString('base64');
     return `data:image/png;base64,${b64}`;
 })();
@@ -118,12 +118,11 @@ function buildOgTree(data) {
             },
                 el('img', {
                     src: ATELIER_MARK_DATA_URI,
-                    width: 36,
-                    height: 36,
+                    width: 40,
+                    height: 40,
                     style: {
-                        width: '36px',
-                        height: '36px',
-                        borderRadius: '8px',
+                        width: '40px',
+                        height: '40px',
                         display: 'flex',
                     },
                 }),
