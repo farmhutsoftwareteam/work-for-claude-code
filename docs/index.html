@@ -204,6 +204,11 @@
                narrow widths squeezed every card title. */
             .catalog-grid { grid-template-columns: 1fr !important; }
 
+            /* Kill the sticky title on mobile - in a single-column stack
+               it just hovers in place and overlaps the catalog cards
+               scrolling past behind it. */
+            .workbench-aside { position: static !important; top: auto !important; }
+
             /* Loops & harnesses dark spotlight: oversized h2 + heavy padding
                override at this breakpoint. */
             .loops-title { font-size: 44px !important; line-height: 1.02 !important; }
@@ -333,7 +338,7 @@
     <section data-screen-label="Capabilities" style="border-top:1px solid var(--line);background:var(--paper2);">
         <div class="responsive-padding" style="max-width:1180px;margin:0 auto;padding:72px 40px;">
             <div class="responsive-grid-2" style="display:grid;grid-template-columns:280px 1fr;gap:48px;align-items:start;">
-                <div style="position:sticky;top:90px;">
+                <div class="workbench-aside" style="position:sticky;top:90px;">
                     <div style="font-family:var(--mono);font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:var(--mute);margin-bottom:14px;">on the workbench</div>
                     <h2 style="font-family:var(--helv);font-weight:500;font-size:34px;line-height:1.05;letter-spacing:-.025em;margin:0;">The whole<br>Claude&nbsp;Code stack.</h2>
                     <p style="font-family:var(--mono);font-size:12px;line-height:1.7;color:var(--mute);margin-top:18px;">Every primitive - sessions, agents, loops, harnesses, hooks, skills, MCP, plugins - in one real interface. No hidden state, no config you can't see.</p>
