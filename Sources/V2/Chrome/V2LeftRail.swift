@@ -86,16 +86,23 @@ struct V2LeftRail: View {
 
     @ViewBuilder
     private var railContent: some View {
-        switch appState.railTab {
-        case .projects:
-            VStack(spacing: 0) {
-                projectsHeader
-                projectList
+        // Wrapped in a Group + frame so the inner ScrollView (projectList /
+        // V2HistoryRail) actually expands. Without an explicit
+        // maxHeight: .infinity the ScrollView collapses to zero inside this
+        // sibling VStack and the rail appears empty between the tabs and
+        // the workbench grid.
+        Group {
+            switch appState.railTab {
+            case .projects:
+                VStack(spacing: 0) {
+                    projectsHeader
+                    projectList
+                }
+            case .history:
+                V2HistoryRail()
             }
-        case .history:
-            V2HistoryRail()
-                .frame(maxHeight: .infinity)
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
     private var projectsHeader: some View {
