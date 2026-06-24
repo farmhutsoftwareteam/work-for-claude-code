@@ -30,6 +30,19 @@ actor StreamInputWriter {
         try writeLine(UserEnvelope(message: .init(role: "user", content: text)))
     }
 
+    /// Send the initialize handshake claude expects on spawn. Without this,
+    /// `claude -p --input-format stream-json` sits idle waiting for input
+    /// and never emits its first `system/init` event — the session stays
+    /// stuck on .initializing forever. The SDK clients
+    /// (claude-agent-sdk-python / claude-code-acp) send this same envelope
+    /// right after process.run() before any user turn.
+    func initialize() throws {
+        try writeLine(InitializeEnvelope(
+            requestId: nextRequestId(prefix: "init"),
+            request: .init(subtype: "initialize")
+        ))
+    }
+
     // MARK: - Permissions
 
     enum Behavior: String { case allow, deny }
@@ -116,6 +129,24 @@ actor StreamInputWriter {
         let subtype: String
         var mode: String? = nil
         var model: String? = nil
+    }
+
+    // Initialize uses the same envelope shape as ControlRequestEnvelope but
+    // we keep a dedicated type so the request body is tightly scoped to
+    // 'subtype: initialize' with no extra fields.
+    private struct InitializeEnvelope: Encodable {
+        let type = "control_request"
+        let requestId: String
+        let request: InitializeBody
+
+        enum CodingKeys: String, CodingKey {
+            case type
+            case requestId = "request_id"
+            case request
+        }
+    }
+    private struct InitializeBody: Encodable {
+        let subtype: String
     }
     private struct ControlResponseEnvelope: Encodable {
         let type = "control_response"

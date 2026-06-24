@@ -146,8 +146,22 @@ final class StreamSession: ObservableObject {
         log.info("StreamSession spawned pid=\(process.processIdentifier)")
 
         self.process = process
-        self.inputWriter = StreamInputWriter(fileHandle: stdinPipe.fileHandleForWriting)
+        let writer = StreamInputWriter(fileHandle: stdinPipe.fileHandleForWriting)
+        self.inputWriter = writer
         self.state = .initializing
+
+        // CRITICAL: claude with --input-format stream-json sits idle until
+        // it receives the SDK's `initialize` control_request handshake on
+        // stdin. Without this, system/init is never emitted and the session
+        // is stuck on .initializing forever. (#36)
+        Task {
+            do {
+                try await writer.initialize()
+                log.info("StreamSession sent initialize handshake")
+            } catch {
+                log.error("initialize handshake failed: \(error.localizedDescription, privacy: .public)")
+            }
+        }
 
         // Drain stdout via readabilityHandler — the exact pattern AtelierSpike
         // uses and that we know works against the live binary. We previously
