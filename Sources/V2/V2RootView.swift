@@ -11,16 +11,21 @@ struct V2RootView: View {
     @EnvironmentObject private var store: Store
     @EnvironmentObject private var terminals: TerminalsController
     @StateObject private var appState = V2AppState()
-    @State private var theme: V2ThemeChoice = .light
+    @AppStorage("v2.theme") private var themeRaw: String = V2ThemeChoice.system.rawValue
+    @Environment(\.colorScheme) private var systemColorScheme
     @State private var dockPanel: V2DockPanel = .loop
 
+    private var theme: V2ThemeChoice {
+        V2ThemeChoice(rawValue: themeRaw) ?? .system
+    }
+
     private var palette: V2Palette {
-        theme == .dark ? V2Theme.dark : V2Theme.light
+        theme.palette(systemColorScheme: systemColorScheme)
     }
 
     var body: some View {
         VStack(spacing: 0) {
-            V2TitleBar(theme: $theme)
+            V2TitleBar(themeRaw: $themeRaw)
 
             HStack(spacing: 0) {
                 V2LeftRail()
@@ -45,7 +50,7 @@ struct V2RootView: View {
         .background(palette.paper)
         .environment(\.v2, palette)
         .environmentObject(appState)
-        .preferredColorScheme(theme == .dark ? .dark : .light)
+        .preferredColorScheme(theme.preferredColorScheme)
         .task {
             appState.attach(terminals: terminals)
             appState.resolveBinary()
@@ -234,8 +239,6 @@ struct V2RootView: View {
         }
     }
 }
-
-enum V2ThemeChoice { case light, dark }
 
 // MARK: - Dovetail mark
 

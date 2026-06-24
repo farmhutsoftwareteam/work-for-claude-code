@@ -7,8 +7,12 @@ import Inject
 
 struct V2TitleBar: View {
     @ObserveInjection private var inject
-    @Binding var theme: V2ThemeChoice
+    @Binding var themeRaw: String
     @Environment(\.v2) private var v2
+
+    private var theme: V2ThemeChoice {
+        V2ThemeChoice(rawValue: themeRaw) ?? .system
+    }
 
     var body: some View {
         HStack(spacing: 16) {
@@ -37,15 +41,15 @@ struct V2TitleBar: View {
             // Right cluster.
             HStack(spacing: 12) {
                 Button {
-                    theme = theme == .dark ? .light : .dark
+                    themeRaw = theme.next.rawValue
                 } label: {
-                    Image(systemName: theme == .dark ? "sun.max" : "moon")
+                    Image(systemName: theme.icon)
                         .font(.system(size: 13))
                         .foregroundColor(v2.mute)
                         .frame(width: 28, height: 28)
                 }
                 .buttonStyle(.plain)
-                .help("Toggle theme")
+                .help("Theme: \(theme.label) (click to cycle)")
 
                 Text("workshop")
                     .font(.system(size: 11, design: .monospaced))

@@ -68,3 +68,55 @@ extension EnvironmentValues {
         set { self[V2PaletteKey.self] = newValue }
     }
 }
+
+// MARK: - Theme choice (persisted)
+
+/// User's theme preference. Persisted via @AppStorage under "v2.theme".
+/// `.system` follows macOS effective appearance via the active window.
+enum V2ThemeChoice: String, CaseIterable, Identifiable {
+    case light
+    case dark
+    case system
+
+    var id: String { rawValue }
+
+    var label: String { rawValue }
+
+    /// Resolve to a concrete palette given the system's current colorScheme
+    /// (passed in by the root view via the environment).
+    func palette(systemColorScheme: ColorScheme) -> V2Palette {
+        switch self {
+        case .light:  return V2Theme.light
+        case .dark:   return V2Theme.dark
+        case .system: return systemColorScheme == .dark ? V2Theme.dark : V2Theme.light
+        }
+    }
+
+    /// What to pass to .preferredColorScheme. Nil for .system so SwiftUI
+    /// reads the OS appearance and lets controls render natively.
+    var preferredColorScheme: ColorScheme? {
+        switch self {
+        case .light:  return .light
+        case .dark:   return .dark
+        case .system: return nil
+        }
+    }
+
+    /// Icon shown in the title-bar toggle.
+    var icon: String {
+        switch self {
+        case .light:  return "sun.max"
+        case .dark:   return "moon"
+        case .system: return "circle.lefthalf.filled"
+        }
+    }
+
+    /// Next choice in the cycle when the title-bar button is clicked.
+    var next: V2ThemeChoice {
+        switch self {
+        case .light:  return .dark
+        case .dark:   return .system
+        case .system: return .light
+        }
+    }
+}

@@ -379,6 +379,44 @@ final class ConformanceTests: XCTestCase {
         XCTAssertEqual(cmd, "new")
     }
 
+    // MARK: - Theme model (V2ThemeChoice)
+
+    func test_themeChoice_lightAndDark_returnFixedPalettes() {
+        // Sanity: passing the opposite system appearance doesn't sway the
+        // explicit choice — light is always light, dark is always dark.
+        let light = V2ThemeChoice.light.palette(systemColorScheme: .dark)
+        let dark = V2ThemeChoice.dark.palette(systemColorScheme: .light)
+        // Distinguish by checking the paper token (light = #e9eae8 ≈ near-white).
+        XCTAssertEqual(light.ink, V2Theme.light.ink)
+        XCTAssertEqual(dark.ink, V2Theme.dark.ink)
+    }
+
+    func test_themeChoice_systemFollowsActiveColorScheme() {
+        let underLight = V2ThemeChoice.system.palette(systemColorScheme: .light)
+        let underDark = V2ThemeChoice.system.palette(systemColorScheme: .dark)
+        XCTAssertEqual(underLight.ink, V2Theme.light.ink)
+        XCTAssertEqual(underDark.ink, V2Theme.dark.ink)
+    }
+
+    func test_themeChoice_systemReturnsNilPreferredColorScheme() {
+        // .system must NOT force a colorScheme — sheets/controls render
+        // natively against the OS appearance.
+        XCTAssertNil(V2ThemeChoice.system.preferredColorScheme)
+        XCTAssertEqual(V2ThemeChoice.light.preferredColorScheme, .light)
+        XCTAssertEqual(V2ThemeChoice.dark.preferredColorScheme, .dark)
+    }
+
+    func test_themeChoice_cycleVisitsAllThreeStates() {
+        var t = V2ThemeChoice.light
+        var seen: [V2ThemeChoice] = [t]
+        for _ in 0..<3 {
+            t = t.next
+            seen.append(t)
+        }
+        // light → dark → system → light (closes the cycle)
+        XCTAssertEqual(seen, [.light, .dark, .system, .light])
+    }
+
     func test_claudeHookEvent_coversAllSupportedEvents() {
         let expected = ["SessionStart", "UserPromptSubmit", "PreToolUse", "PostToolUse",
                         "PostToolUseFailure", "Stop", "SubagentStop", "Notification",
