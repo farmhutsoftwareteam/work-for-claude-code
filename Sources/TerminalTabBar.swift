@@ -26,7 +26,9 @@ struct TerminalTabBar: View {
     var body: some View {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: 2) {
-                ForEach(terminals.tabs) { tab in
+                // v1 tab bar shows Mode-A tabs only. Mode-B tabs spawned by
+                // the v2 window are hidden here (they have no PTY view).
+                ForEach(terminals.tabs.filter { $0.surface == .modeA }) { tab in
                     TerminalTabChip(
                         tab: tab,
                         isActive: terminals.activeTabId == tab.id,

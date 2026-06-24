@@ -319,7 +319,7 @@ struct ContentView: View {
         VStack(spacing: 0) {
             // Chrome-style tab strip — sits above everything whenever any
             // session is open. Click a tab → that session takes over below.
-            if !terminals.tabs.isEmpty {
+            if terminals.tabs.contains(where: { $0.surface == .modeA }) {
                 TerminalTabBar(
                     onClickTab: handleTabClick,
                     onOpenInTerminalApp: handleOpenExternal

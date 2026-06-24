@@ -152,6 +152,71 @@ final class TerminalsController: ObservableObject {
         ))
     }
 
+    // MARK: - Mode-B entry points (v2-redesign)
+
+    /// Create a new Mode-B tab in the given project. No PTY is spawned — the
+    /// tab carries a fresh `StreamSession` which the v2 UI starts on demand.
+    /// Returns the tab id so the caller can route activation / focus.
+    @discardableResult
+    func openModeB(projectCwd: String, title: String) -> UUID {
+        let session = StreamSession()
+        let tab = TerminalTab(
+            projectCwd: projectCwd,
+            title: title,
+            state: .running, // Mode-B isLive defers to streamSession.state
+            surface: .modeB,
+            streamSession: session
+        )
+        tabs.append(tab)
+        activeTabId = tab.id
+        viewsEpoch += 1
+        return tab.id
+    }
+
+    /// Flip a tab between Mode-A (SwiftTerm) and Mode-B (StreamSession).
+    /// Terminates the outgoing surface's process; the incoming surface is
+    /// spawned fresh (PTY for A, idle StreamSession for B). Idempotent on
+    /// missing ids.
+    func flipSurface(tabId: UUID) {
+        guard let idx = tabs.firstIndex(where: { $0.id == tabId }) else { return }
+        let tab = tabs[idx]
+
+        switch tab.surface {
+        case .modeA:
+            // Going A → B. SIGTERM the PTY child (if any), drop the view, and
+            // mark the tab as Mode-B with a fresh idle StreamSession.
+            if tab.isLive, let view = views[tabId] {
+                let pid = view.process.shellPid
+                if pid > 0 { kill(pid, SIGTERM) }
+            }
+            views.removeValue(forKey: tabId)
+            delegates.removeValue(forKey: tabId)
+            idleWorkItems[tabId]?.cancel()
+            idleWorkItems.removeValue(forKey: tabId)
+            activityGenerations.removeValue(forKey: tabId)
+            busyTabIds.remove(tabId)
+
+            tabs[idx].surface = .modeB
+            tabs[idx].streamSession = StreamSession()
+            tabs[idx].state = .running
+            viewsEpoch += 1
+
+        case .modeB:
+            // Going B → A. Stop the StreamSession and spawn a fresh PTY in
+            // the same cwd.
+            tab.streamSession?.stop()
+            tabs[idx].streamSession = nil
+            tabs[idx].surface = .modeA
+            tabs[idx].state = .running
+            viewsEpoch += 1
+
+            // Reuse the existing spawn path so PTY setup, PATH inheritance,
+            // skip-permissions handling, etc. all flow through one branch.
+            let command = "cd \(shellQuote(tab.projectCwd)) && \(shellQuote(Self.claudeBinary))\(Self.skipFlag(tab.skipPermissions))"
+            spawnInto(existingTabId: tabId, command: command)
+        }
+    }
+
     // MARK: - User-initiated entry points (route through skip-permissions prompt)
     //
     // The three `request*` methods below are the ones every UI surface should
@@ -288,6 +353,13 @@ final class TerminalsController: ObservableObject {
         let tab = tabs[idx]
         if tab.isLive && !force { return false }
 
+        // Mode-B tabs: terminate the StreamSession before removing the tab so
+        // the child `claude` process exits cleanly and the file handles are
+        // released.
+        if tab.surface == .modeB {
+            tab.streamSession?.stop()
+        }
+
         if tab.isLive, let view = views[id] {
             let pid = view.process.shellPid
             if pid > 0 {
@@ -333,20 +405,24 @@ final class TerminalsController: ObservableObject {
     }
 
     /// Switch to the next/previous tab for Cmd+] / Cmd+[ style nav.
+    /// v1 nav restricted to Mode-A tabs (the v1 tab bar is the only place
+    /// these shortcuts trigger from; v2 has its own navigation).
     func cycleFocus(delta: Int) {
-        guard !tabs.isEmpty,
+        let modeA = tabs.filter { $0.surface == .modeA }
+        guard !modeA.isEmpty,
               let currentId = activeTabId,
-              let currentIdx = tabs.firstIndex(where: { $0.id == currentId })
+              let currentIdx = modeA.firstIndex(where: { $0.id == currentId })
         else { return }
-        let next = (currentIdx + delta + tabs.count) % tabs.count
-        activeTabId = tabs[next].id
+        let next = (currentIdx + delta + modeA.count) % modeA.count
+        activeTabId = modeA[next].id
     }
 
-    /// Jump to the Nth tab (1-based for Cmd+1 … Cmd+9).
+    /// Jump to the Nth Mode-A tab (1-based for Cmd+1 … Cmd+9).
     func focus(index oneBased: Int) {
+        let modeA = tabs.filter { $0.surface == .modeA }
         let i = oneBased - 1
-        guard tabs.indices.contains(i) else { return }
-        activeTabId = tabs[i].id
+        guard modeA.indices.contains(i) else { return }
+        activeTabId = modeA[i].id
     }
 
     /// Inject text directly into a tab's PTY, as if the user typed it.
@@ -425,7 +501,23 @@ final class TerminalsController: ObservableObject {
     /// Spawn a new terminal view running the given shell command. Returns the
     /// tab id so the caller can focus / rename later.
     private func spawn(command: String, tab: TerminalTab) -> UUID {
-        let tabId = tab.id
+        tabs.append(tab)
+        attachPTY(tabId: tab.id, command: command)
+        activeTabId = tab.id
+        return tab.id
+    }
+
+    /// Attach a fresh `LocalProcessTerminalView` to an existing tab id —
+    /// used by `flipSurface(B→A)` where the tab already lives in `tabs` but
+    /// has no PTY yet, and by the common spawn path that appends a brand-new
+    /// tab and then attaches.
+    private func spawnInto(existingTabId: UUID, command: String) {
+        guard tabs.contains(where: { $0.id == existingTabId }) else { return }
+        attachPTY(tabId: existingTabId, command: command)
+        activeTabId = existingTabId
+    }
+
+    private func attachPTY(tabId: UUID, command: String) {
         let view = WorkTerminalView(frame: NSRect(x: 0, y: 0, width: 800, height: 500))
         view.onData = { [weak self] in
             Task { @MainActor [weak self] in
@@ -445,9 +537,9 @@ final class TerminalsController: ObservableObject {
         // to `_` and forgot to apply it.
         view.getTerminal().changeScrollback(defaultScrollback)
 
-        let delegate = TerminalProcessDelegate(tabId: tab.id, controller: self)
+        let delegate = TerminalProcessDelegate(tabId: tabId, controller: self)
         view.processDelegate = delegate
-        delegates[tab.id] = delegate
+        delegates[tabId] = delegate
 
         let env = Self.enrichedEnvironment()
         view.startProcess(
@@ -456,11 +548,8 @@ final class TerminalsController: ObservableObject {
             environment: env
         )
 
-        views[tab.id] = view
-        tabs.append(tab)
-        activeTabId = tab.id
+        views[tabId] = view
         viewsEpoch += 1
-        return tab.id
     }
 
     /// Called by the delegate on the main actor when a PTY child exits.

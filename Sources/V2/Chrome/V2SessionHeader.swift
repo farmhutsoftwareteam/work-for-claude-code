@@ -1,7 +1,7 @@
-// Session header — bound to V2AppState's active tab. Shows project name +
-// LIVE badge driven by real session state, path subline with branch,
-// dock switcher (loop/agents/mcp), Running pill that reflects the live
-// lifecycle state.
+// Session header — bound to V2AppState's active tab (a TerminalTab from
+// TerminalsController). Shows project name + LIVE badge driven by surface
+// state, path subline with model, dock switcher, mode toggle pill, and
+// the live Running pill.
 
 import SwiftUI
 import Inject
@@ -27,9 +27,7 @@ struct V2SessionHeader: View {
                     Text(headerTitle)
                         .font(.system(size: 19, weight: .medium))
                         .kerning(-0.38)
-                    if showLive {
-                        liveBadge
-                    }
+                    if showLive { liveBadge }
                 }
                 Text(pathSubline)
                     .font(.system(size: 11, design: .monospaced))
@@ -56,11 +54,11 @@ struct V2SessionHeader: View {
     }
 
     private var headerTitle: String {
-        appState.activeTab?.displayName ?? appState.selectedProjectName.ifEmpty("no project")
+        appState.activeTab?.title ?? appState.selectedProjectName.ifEmpty("no project")
     }
 
     private var pathSubline: String {
-        let path = appState.activeTab?.cwd.path
+        let path = appState.activeTab?.projectCwd
             ?? appState.selectedProjectCwd?.path
             ?? "—"
         let model = appState.activeSession?.model ?? "claude"
@@ -68,10 +66,15 @@ struct V2SessionHeader: View {
     }
 
     private var showLive: Bool {
-        guard let s = appState.activeSession else { return false }
-        switch s.state {
-        case .idle, .terminated: return false
-        default: return true
+        guard let tab = appState.activeTab else { return false }
+        switch tab.surface {
+        case .modeA: return tab.isLive
+        case .modeB:
+            guard let s = tab.streamSession else { return false }
+            switch s.state {
+            case .idle, .terminated: return false
+            default: return true
+            }
         }
     }
 
@@ -88,10 +91,8 @@ struct V2SessionHeader: View {
         .overlay(Rectangle().stroke(v2.line2, lineWidth: 1))
     }
 
-    // Tab surface pill — click to flip between Mode B (chat) and Mode A
-    // (terminal). Disabled when there's no active tab.
     private var modePill: some View {
-        let isModeA = appState.activeTab?.mode.isModeA ?? false
+        let isModeA = appState.activeTab?.surface == .modeA
         let label = isModeA ? "terminal" : "chat"
         let help = isModeA
             ? "Switch to native chat (Mode B)"
@@ -157,16 +158,29 @@ struct V2SessionHeader: View {
 
     @ViewBuilder
     private var stateDot: some View {
-        if let s = appState.activeSession {
-            switch s.state {
-            case .working, .awaitingPermission:
-                V2PulseDot(size: 7, color: v2.ink)
-            case .terminated:
-                Circle().fill(v2.del).frame(width: 7, height: 7)
-            case .idle:
-                Circle().stroke(v2.line2, lineWidth: 1).frame(width: 7, height: 7)
-            default:
-                Circle().fill(v2.ink).frame(width: 7, height: 7)
+        if let tab = appState.activeTab {
+            switch tab.surface {
+            case .modeA:
+                if tab.isLive {
+                    V2PulseDot(size: 7, color: v2.ink)
+                } else {
+                    Circle().fill(v2.del).frame(width: 7, height: 7)
+                }
+            case .modeB:
+                if let s = tab.streamSession {
+                    switch s.state {
+                    case .working, .awaitingPermission:
+                        V2PulseDot(size: 7, color: v2.ink)
+                    case .terminated:
+                        Circle().fill(v2.del).frame(width: 7, height: 7)
+                    case .idle:
+                        Circle().stroke(v2.line2, lineWidth: 1).frame(width: 7, height: 7)
+                    default:
+                        Circle().fill(v2.ink).frame(width: 7, height: 7)
+                    }
+                } else {
+                    Circle().stroke(v2.line2, lineWidth: 1).frame(width: 7, height: 7)
+                }
             }
         } else {
             Circle().stroke(v2.line2, lineWidth: 1).frame(width: 7, height: 7)
@@ -174,15 +188,21 @@ struct V2SessionHeader: View {
     }
 
     private var stateLabel: String {
-        guard let s = appState.activeSession else { return "No session" }
-        switch s.state {
-        case .idle: return "Idle"
-        case .spawning: return "Spawning"
-        case .initializing: return "Initializing"
-        case .working: return s.isRetrying ? "Retrying" : "Running"
-        case .awaitingPermission: return "Awaiting permission"
-        case .closing: return "Closing"
-        case .terminated: return "Ended"
+        guard let tab = appState.activeTab else { return "No session" }
+        switch tab.surface {
+        case .modeA:
+            return tab.isLive ? "Terminal" : "Ended"
+        case .modeB:
+            guard let s = tab.streamSession else { return "Idle" }
+            switch s.state {
+            case .idle: return "Idle"
+            case .spawning: return "Spawning"
+            case .initializing: return "Initializing"
+            case .working: return s.isRetrying ? "Retrying" : "Running"
+            case .awaitingPermission: return "Awaiting permission"
+            case .closing: return "Closing"
+            case .terminated: return "Ended"
+            }
         }
     }
 }

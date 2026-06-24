@@ -1,5 +1,5 @@
-// Session tabs strip (40px) — one chip per live V2Tab from V2AppState,
-// "+" new-tab button (disabled until a project is selected).
+// Session tabs strip (40px) — one chip per TerminalTab in
+// TerminalsController, "+" new-tab button (creates Mode-B tabs by default).
 
 import SwiftUI
 import Inject
@@ -8,10 +8,11 @@ struct V2SessionTabs: View {
     @ObserveInjection private var inject
     @Environment(\.v2) private var v2
     @EnvironmentObject private var appState: V2AppState
+    @EnvironmentObject private var terminals: TerminalsController
 
     var body: some View {
         HStack(spacing: 0) {
-            ForEach(appState.tabs) { tab in
+            ForEach(terminals.tabs) { tab in
                 V2TabChip(
                     tab: tab,
                     isActive: tab.id == appState.activeTabId,
@@ -45,7 +46,7 @@ struct V2SessionTabs: View {
 
 private struct V2TabChip: View {
     @Environment(\.v2) private var v2
-    @ObservedObject var tab: V2Tab
+    let tab: TerminalTab
     let isActive: Bool
     let onActivate: () -> Void
     let onClose: () -> Void
@@ -55,7 +56,7 @@ private struct V2TabChip: View {
         Button(action: onActivate) {
             HStack(spacing: 9) {
                 stateDot
-                Text(tab.displayName)
+                Text(tab.title)
                     .font(.system(size: 12, design: .monospaced))
                     .foregroundColor(isActive ? v2.ink : v2.mute)
                 if hover {
@@ -81,21 +82,29 @@ private struct V2TabChip: View {
 
     @ViewBuilder
     private var stateDot: some View {
-        // Mode A tabs always pulse (the PTY is alive until the v2 tab closes).
-        // Mode B tabs reflect StreamSession lifecycle.
-        switch tab.mode {
+        switch tab.surface {
         case .modeA:
-            V2PulseDot(size: 7, color: v2.ink)
-        case .modeB:
-            switch tab.session.state {
-            case .working, .awaitingPermission:
+            // PTY surface: pulse while live (process running), red when exited.
+            if tab.isLive {
                 V2PulseDot(size: 7, color: v2.ink)
-            case .terminated:
+            } else {
                 Circle().fill(v2.del).frame(width: 7, height: 7)
-            case .idle:
+            }
+        case .modeB:
+            // Reflect StreamSession lifecycle.
+            if let s = tab.streamSession {
+                switch s.state {
+                case .working, .awaitingPermission:
+                    V2PulseDot(size: 7, color: v2.ink)
+                case .terminated:
+                    Circle().fill(v2.del).frame(width: 7, height: 7)
+                case .idle:
+                    Circle().stroke(v2.line2, lineWidth: 1).frame(width: 7, height: 7)
+                default:
+                    Circle().fill(v2.ink).frame(width: 7, height: 7)
+                }
+            } else {
                 Circle().stroke(v2.line2, lineWidth: 1).frame(width: 7, height: 7)
-            default:
-                Circle().fill(v2.ink).frame(width: 7, height: 7)
             }
         }
     }

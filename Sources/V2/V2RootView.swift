@@ -1,6 +1,7 @@
-// V2 root — wires V2AppState (multi-tab StreamSession controller) into the
-// three-column layout. Real projects from Store, real session tabs, active
-// tab's StreamSession drives the transcript / composer / permission card.
+// V2 root — owns V2AppState (per-window state) and reads the tab list from
+// TerminalsController (the single source of truth after #22). Active tab's
+// surface decides whether the main column renders the embedded terminal
+// (Mode A) or the live chat (Mode B).
 
 import SwiftUI
 import Inject
@@ -48,7 +49,6 @@ struct V2RootView: View {
         .task {
             appState.attach(terminals: terminals)
             appState.resolveBinary()
-            // Seed initial project selection from Store on first appear.
             if appState.selectedProjectCwd == nil, let first = store.projects.first {
                 appState.selectProject(cwd: first.cwd, name: first.displayName)
             }
@@ -56,24 +56,28 @@ struct V2RootView: View {
         .enableInjection()
     }
 
-    // MARK: - Body content
+    // MARK: - Main body
 
     @ViewBuilder
     private var mainBody: some View {
         if let tab = appState.activeTab {
-            switch tab.mode {
-            case .modeA(let terminalTabId):
-                EmbeddedTerminalView(tabId: terminalTabId)
+            switch tab.surface {
+            case .modeA:
+                EmbeddedTerminalView(tabId: tab.id)
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                     .background(Color.black)
             case .modeB:
-                VStack(spacing: 0) {
-                    V2LiveTranscript(session: tab.session)
-                    V2LivePermissionCard(session: tab.session)
-                        .padding(.horizontal, 36)
-                        .padding(.bottom, tab.session.pendingPermission == nil ? 0 : 16)
+                if let session = tab.streamSession {
+                    VStack(spacing: 0) {
+                        V2LiveTranscript(session: session)
+                        V2LivePermissionCard(session: session)
+                            .padding(.horizontal, 36)
+                            .padding(.bottom, session.pendingPermission == nil ? 0 : 16)
+                    }
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                } else {
+                    invalidStateView
                 }
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
         } else {
             emptyState
@@ -83,32 +87,42 @@ struct V2RootView: View {
     @ViewBuilder
     private var composerOrControls: some View {
         if let tab = appState.activeTab {
-            switch tab.mode {
+            switch tab.surface {
             case .modeA:
                 modeAFooter(tab: tab)
             case .modeB:
-                switch tab.session.state {
-                case .idle, .terminated:
-                    startCTA(tab: tab)
-                default:
-                    V2LiveComposer(session: tab.session)
+                if let session = tab.streamSession {
+                    switch session.state {
+                    case .idle, .terminated:
+                        startCTA(tab: tab, session: session)
+                    default:
+                        V2LiveComposer(session: session)
+                    }
                 }
             }
         }
     }
 
-    private func modeAFooter(tab: V2Tab) -> some View {
+    private var invalidStateView: some View {
+        Text("Mode-B tab missing StreamSession — close and reopen.")
+            .font(.system(size: 12, design: .monospaced))
+            .foregroundColor(palette.del)
+            .padding()
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
+    private func modeAFooter(tab: TerminalTab) -> some View {
         HStack(spacing: 12) {
             Image(systemName: "terminal")
                 .font(.system(size: 11))
                 .foregroundColor(palette.mute)
-            Text("Terminal session in \(tab.cwd.path)")
+            Text("Terminal session in \(tab.projectCwd)")
                 .font(.system(size: 10.5, design: .monospaced))
                 .foregroundColor(palette.faint)
                 .lineLimit(1)
                 .truncationMode(.middle)
             Spacer()
-            Button { appState.flipMode(tab: tab) } label: {
+            Button { appState.flipMode(tabId: tab.id) } label: {
                 HStack(spacing: 7) {
                     Image(systemName: "text.bubble")
                         .font(.system(size: 11))
@@ -130,7 +144,7 @@ struct V2RootView: View {
         }
     }
 
-    // MARK: - Empty state
+    // MARK: - Empty / start states
 
     private var emptyState: some View {
         VStack(spacing: 16) {
@@ -170,9 +184,7 @@ struct V2RootView: View {
         .background(palette.paper)
     }
 
-    // MARK: - Start CTA per tab
-
-    private func startCTA(tab: V2Tab) -> some View {
+    private func startCTA(tab: TerminalTab, session: StreamSession) -> some View {
         let canStart = appState.claudeBinary != nil
             && (appState.claudeVersion ?? .init(major: 0, minor: 0, patch: 0)) >= ClaudeBinary.minimumSupported
 
@@ -181,7 +193,7 @@ struct V2RootView: View {
                 Button { appState.startActiveSession() } label: {
                     HStack(spacing: 9) {
                         Image(systemName: "play.fill").font(.system(size: 11))
-                        Text("Start session in \(tab.displayName)")
+                        Text("Start session in \(tab.title)")
                             .font(.system(size: 12, design: .monospaced))
                     }
                     .foregroundColor(palette.paper)
@@ -192,7 +204,7 @@ struct V2RootView: View {
                 .buttonStyle(.plain)
                 .disabled(!canStart)
 
-                Text(tab.cwd.path)
+                Text(tab.projectCwd)
                     .font(.system(size: 10.5, design: .monospaced))
                     .foregroundColor(palette.faint)
                     .lineLimit(1)
@@ -201,7 +213,7 @@ struct V2RootView: View {
                 Spacer()
             }
 
-            if case .terminated(let reason) = tab.session.state {
+            if case .terminated(let reason) = session.state {
                 Text("Last session ended: \(reason)")
                     .font(.system(size: 10.5, design: .monospaced))
                     .foregroundColor(palette.faint)
@@ -225,7 +237,7 @@ struct V2RootView: View {
 
 enum V2ThemeChoice { case light, dark }
 
-// MARK: - Dovetail mark (brand glyph used everywhere)
+// MARK: - Dovetail mark
 
 struct V2DovetailMark: View {
     let size: CGFloat
