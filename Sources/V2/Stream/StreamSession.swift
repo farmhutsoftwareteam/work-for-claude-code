@@ -25,11 +25,16 @@ final class StreamSession: ObservableObject {
     // MARK: - Public state
 
     enum LifecycleState: Equatable, Sendable {
+        /// Session has never been started — show the "Start session" CTA.
         case idle
         case spawning
         case initializing
+        /// Actively processing a user turn (assistant streaming).
         case working
         case awaitingPermission
+        /// Between turns — session alive and ready for the next message.
+        /// Composer should be visible, Send button (not Stop).
+        case ready
         case closing
         case terminated(reason: String)
     }
@@ -392,8 +397,11 @@ final class StreamSession: ObservableObject {
             tokensUsed = r.usage?.total ?? tokensUsed
             isRetrying = false
             lastRetry = nil
+            // Result = current turn done. Session stays alive for the next
+            // message → .ready (not .idle, which would re-trigger the Start
+            // CTA in the UI).
             if state == .working || state == .awaitingPermission {
-                state = .idle
+                state = .ready
             }
         case .controlRequest(let req):
             handleControlRequest(req)

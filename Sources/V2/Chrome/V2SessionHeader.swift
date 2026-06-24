@@ -267,6 +267,7 @@ struct V2SessionHeader: View {
             guard let s = tab.streamSession else { return "Idle" }
             switch s.state {
             case .idle: return "Idle"
+            case .ready: return "Ready"
             case .spawning: return "Spawning"
             case .initializing: return "Initializing"
             case .working: return s.isRetrying ? "Retrying" : "Running"

@@ -98,6 +98,7 @@ struct V2LiveComposer: View {
     private var placeholder: String {
         switch session.state {
         case .idle, .terminated:    return "Ask anything…"
+        case .ready:                return "Reply…"
         case .spawning:             return "Spawning…"
         case .initializing:         return "Initializing…"
         case .working:              return "Reply, or ⎋ to interrupt…"
@@ -108,7 +109,7 @@ struct V2LiveComposer: View {
 
     private var canType: Bool {
         switch session.state {
-        case .idle, .working, .initializing: return true
+        case .idle, .working, .initializing, .ready: return true
         default: return false
         }
     }

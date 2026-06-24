@@ -109,8 +109,12 @@ struct V2RootView: View {
                 if let session = tab.streamSession {
                     switch session.state {
                     case .idle, .terminated:
+                        // .idle = never started; .terminated = previous
+                        // session ended. Both want the Start CTA.
                         startCTA(tab: tab, session: session)
                     default:
+                        // .spawning / .initializing / .working / .ready /
+                        // .awaitingPermission / .closing all show composer.
                         V2LiveComposer(session: session)
                     }
                 }
