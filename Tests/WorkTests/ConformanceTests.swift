@@ -192,6 +192,42 @@ final class ConformanceTests: XCTestCase {
         XCTAssertNil(SemVer.parse("not a version"))
     }
 
+    // MARK: - Loop verifier output parsing
+
+    func test_loopVerifier_parsesPlainPass() {
+        let v = LoopOrchestrator.parseVerdict(raw: "PASS\n\nAll tests green.")
+        XCTAssertTrue(v.isPass)
+    }
+
+    func test_loopVerifier_parsesPassWithSuffix() {
+        let v = LoopOrchestrator.parseVerdict(raw: "PASS: tests + lint clean")
+        XCTAssertTrue(v.isPass)
+        XCTAssertEqual(v.summary, "tests + lint clean")
+    }
+
+    func test_loopVerifier_parsesFailWithReason() {
+        let v = LoopOrchestrator.parseVerdict(raw: "FAIL: linter still red — fix the unused import in foo.swift")
+        XCTAssertFalse(v.isPass)
+        XCTAssertTrue(v.summary.contains("linter still red"))
+    }
+
+    func test_loopVerifier_defaultsToFailOnAmbiguousOutput() {
+        let v = LoopOrchestrator.parseVerdict(raw: "Looks alright to me — I think we're good.")
+        XCTAssertFalse(v.isPass, "ambiguous output should default to fail, not auto-pass")
+    }
+
+    func test_loopVerifier_caseInsensitive() {
+        let p = LoopOrchestrator.parseVerdict(raw: "pass: ok")
+        let f = LoopOrchestrator.parseVerdict(raw: "fail: nope")
+        XCTAssertTrue(p.isPass)
+        XCTAssertFalse(f.isPass)
+    }
+
+    func test_loopVerifier_ignoresLeadingBlankLines() {
+        let v = LoopOrchestrator.parseVerdict(raw: "\n\n   \n\nPASS — all good")
+        XCTAssertTrue(v.isPass)
+    }
+
     func test_semVerOrdering() {
         XCTAssertLessThan(
             SemVer(major: 2, minor: 1, patch: 127),

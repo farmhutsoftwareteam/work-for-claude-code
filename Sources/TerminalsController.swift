@@ -173,6 +173,13 @@ final class TerminalsController: ObservableObject {
         return tab.id
     }
 
+    /// Attach or detach a LoopOrchestrator on a Mode-B tab. Stopping any
+    /// previous loop is the caller's responsibility (V2AppState handles it).
+    func setLoop(_ loop: LoopOrchestrator?, on tabId: UUID) {
+        guard let idx = tabs.firstIndex(where: { $0.id == tabId }) else { return }
+        tabs[idx].loop = loop
+    }
+
     /// Flip a tab between Mode-A (SwiftTerm) and Mode-B (StreamSession).
     /// Terminates the outgoing surface's process; the incoming surface is
     /// spawned fresh (PTY for A, idle StreamSession for B). Idempotent on
@@ -355,8 +362,10 @@ final class TerminalsController: ObservableObject {
 
         // Mode-B tabs: terminate the StreamSession before removing the tab so
         // the child `claude` process exits cleanly and the file handles are
-        // released.
+        // released. Also stop any orchestrator (loop) running on this tab so
+        // its verifier task doesn't outlive the tab.
         if tab.surface == .modeB {
+            tab.loop?.stop()
             tab.streamSession?.stop()
         }
 

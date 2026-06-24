@@ -37,6 +37,11 @@ struct TerminalTab: Identifiable {
     /// to keep a sibling dictionary.
     var streamSession: StreamSession?
 
+    /// Active loop orchestrator on this tab (issue #24). Non-nil while a loop
+    /// is configured or running; cleared when the loop reaches a terminal
+    /// state and the user dismisses it.
+    var loop: LoopOrchestrator?
+
     enum ProcessState: Equatable {
         case running
         case exited(code: Int32?)
@@ -57,7 +62,8 @@ struct TerminalTab: Identifiable {
         createdAt: Date = Date(),
         skipPermissions: Bool = false,
         surface: Surface = .modeA,
-        streamSession: StreamSession? = nil
+        streamSession: StreamSession? = nil,
+        loop: LoopOrchestrator? = nil
     ) {
         self.id = id
         self.sessionId = sessionId
@@ -68,6 +74,7 @@ struct TerminalTab: Identifiable {
         self.skipPermissions = skipPermissions
         self.surface = surface
         self.streamSession = streamSession
+        self.loop = loop
     }
 
     /// True while the underlying process is alive. For Mode-A that means the

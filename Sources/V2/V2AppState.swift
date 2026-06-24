@@ -134,6 +134,26 @@ final class V2AppState: ObservableObject {
         }
     }
 
+    // MARK: - Loop attachment
+
+    /// Set / clear the loop on a tab. Re-publishes loop state changes so
+    /// the dock panel reacts to lifecycle transitions.
+    func attachLoop(_ loop: LoopOrchestrator?, toTab tabId: UUID) {
+        guard let terminals,
+              let existing = terminals.tabs.first(where: { $0.id == tabId }) else { return }
+        // Stop any previous loop on this tab before swapping.
+        existing.loop?.stop()
+        terminals.setLoop(loop, on: tabId)
+
+        if let loop {
+            loop.objectWillChange
+                .receive(on: RunLoop.main)
+                .sink { [weak self] _ in self?.objectWillChange.send() }
+                .store(in: &cancellables)
+        }
+        objectWillChange.send()
+    }
+
     // MARK: - Binary resolution
 
     func resolveBinary() {
