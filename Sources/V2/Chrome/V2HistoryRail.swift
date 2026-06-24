@@ -66,7 +66,14 @@ struct V2HistoryRail: View {
     }
 
     private var entries: [V2HistoryEntry] {
-        V2HistoryEntry.collect(from: store.projects)
+        let all = V2HistoryEntry.collect(from: store.projects)
+        let q = appState.searchQuery.trimmingCharacters(in: .whitespaces).lowercased()
+        guard !q.isEmpty else { return all }
+        return all.filter {
+            $0.title.lowercased().contains(q)
+                || $0.projectName.lowercased().contains(q)
+                || $0.sessionId.lowercased().contains(q)
+        }
     }
 
     private var groups: [V2HistoryGroup] {

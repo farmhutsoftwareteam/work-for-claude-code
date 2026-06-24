@@ -24,43 +24,29 @@ struct V2RootView: View {
     }
 
     var body: some View {
-        ZStack(alignment: .top) {
-            VStack(spacing: 0) {
-                V2TitleBar(themeRaw: $themeRaw)
+        VStack(spacing: 0) {
+            V2TitleBar(themeRaw: $themeRaw)
 
-                HStack(spacing: 0) {
-                    V2LeftRail()
-                        .frame(width: 264)
+            HStack(spacing: 0) {
+                V2LeftRail()
+                    .frame(width: 264)
 
-                    VStack(spacing: 0) {
-                        V2SessionTabs()
-                        V2SessionHeader(dockPanel: $dockPanel)
+                VStack(spacing: 0) {
+                    V2SessionTabs()
+                    V2SessionHeader(dockPanel: $dockPanel)
 
-                        mainBody
+                    mainBody
 
-                        composerOrControls
-                    }
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-                    .background(palette.paper)
-
-                    V2RightDock(panel: $dockPanel)
-                        .frame(width: 360)
+                    composerOrControls
                 }
-                .frame(maxHeight: .infinity)
-            }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .background(palette.paper)
 
-            if appState.searchOpen {
-                V2SearchOverlay()
-                    .transition(
-                        .asymmetric(
-                            insertion: .opacity.combined(with: .scale(scale: 0.98, anchor: .top)),
-                            removal: .opacity
-                        )
-                    )
-                    .zIndex(60)
+                V2RightDock(panel: $dockPanel)
+                    .frame(width: 360)
             }
+            .frame(maxHeight: .infinity)
         }
-        .animation(.spring(response: 0.28, dampingFraction: 0.86), value: appState.searchOpen)
         .background(palette.paper)
         .environment(\.v2, palette)
         .environmentObject(appState)

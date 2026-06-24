@@ -10,7 +10,7 @@ struct V2LeftRail: View {
     @Environment(\.v2) private var v2
     @EnvironmentObject private var store: Store
     @EnvironmentObject private var appState: V2AppState
-    @State private var search: String = ""
+    @FocusState private var searchFocused: Bool
     @State private var showingHooksEditor = false
 
     var body: some View {
@@ -34,15 +34,24 @@ struct V2LeftRail: View {
     // MARK: - Search
 
     private var searchBox: some View {
-        Button { appState.searchOpen = true } label: {
-            HStack(spacing: 8) {
-                Image(systemName: "magnifyingglass")
-                    .font(.system(size: 11))
-                    .foregroundColor(v2.faint)
-                Text("Search sessions…")
-                    .font(.system(size: 11.5, design: .monospaced))
-                    .foregroundColor(v2.faint)
-                Spacer()
+        HStack(spacing: 8) {
+            Image(systemName: "magnifyingglass")
+                .font(.system(size: 11))
+                .foregroundColor(v2.faint)
+            TextField(searchPlaceholder, text: $appState.searchQuery)
+                .textFieldStyle(.plain)
+                .focused($searchFocused)
+                .font(.system(size: 11.5, design: .monospaced))
+                .foregroundColor(v2.ink)
+                .onSubmit(openFirstMatch)
+            if !appState.searchQuery.isEmpty {
+                Button { appState.searchQuery = "" } label: {
+                    Image(systemName: "xmark.circle.fill")
+                        .font(.system(size: 11))
+                        .foregroundColor(v2.faint)
+                }
+                .buttonStyle(.plain)
+            } else {
                 Text("⌘K")
                     .font(.system(size: 10, design: .monospaced))
                     .foregroundColor(v2.faint)
@@ -50,15 +59,50 @@ struct V2LeftRail: View {
                     .padding(.vertical, 1)
                     .overlay(Rectangle().stroke(v2.line2, lineWidth: 1))
             }
-            .padding(.horizontal, 11)
-            .padding(.vertical, 8)
-            .background(v2.card)
-            .overlay(Rectangle().stroke(v2.line2, lineWidth: 1))
         }
-        .buttonStyle(.plain)
+        .padding(.horizontal, 11)
+        .padding(.vertical, 8)
+        .background(v2.card)
+        .overlay(Rectangle().stroke(searchFocused ? v2.ink : v2.line2, lineWidth: 1))
         .padding(.horizontal, 14)
         .padding(.top, 14)
         .padding(.bottom, 10)
+        // ⌘K from anywhere in the v2 window focuses this field — that's it.
+        // No modal pops up; the rail just lights up and the user starts
+        // typing.
+        .onChange(of: appState.searchOpen) { _, open in
+            if open {
+                searchFocused = true
+                // Reset the flag — V2RootView toggles it, we consume it.
+                appState.searchOpen = false
+            }
+        }
+    }
+
+    private var searchPlaceholder: String {
+        switch appState.railTab {
+        case .projects: return "Filter projects…"
+        case .history:  return "Search sessions…"
+        }
+    }
+
+    private func openFirstMatch() {
+        guard appState.railTab == .history else { return }
+        let entries = V2HistoryEntry.collect(from: store.projects)
+        let q = appState.searchQuery.trimmingCharacters(in: .whitespaces).lowercased()
+        guard !q.isEmpty,
+              let first = entries.first(where: {
+                  $0.title.lowercased().contains(q)
+                      || $0.projectName.lowercased().contains(q)
+                      || $0.sessionId.lowercased().contains(q)
+              }) else { return }
+        appState.openHistorySession(
+            sessionId: first.sessionId,
+            projectCwd: first.projectCwd,
+            projectName: first.projectName,
+            title: first.title
+        )
+        appState.searchQuery = ""
     }
 
     @ViewBuilder
@@ -147,7 +191,7 @@ struct V2LeftRail: View {
     }
 
     private var filtered: [Project] {
-        let q = search.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        let q = appState.searchQuery.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
         let sorted = store.projects.sorted { l, r in
             // Live projects first, then alphabetical.
             if l.isActive != r.isActive { return l.isActive }
