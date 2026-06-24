@@ -15,7 +15,8 @@ Source-of-truth design files for the v2 redesign. Each `.dc.html` was authored i
 
 | File | Purpose | Maps to |
 |---|---|---|
-| `chat-states.dc.html` | The full chat surface: every state for transcript, tool widgets, permissions, composer, status. Light + dark themes. | Epic [#8](https://github.com/farmhutsoftwareteam/work-for-claude-code/issues/8) → Phase 3 issues [#17](https://github.com/farmhutsoftwareteam/work-for-claude-code/issues/17) – [#21](https://github.com/farmhutsoftwareteam/work-for-claude-code/issues/21) |
+| `app-shell.dc.html` | The macro app shell: 1440×900 window, title bar with app-level buttons, three-column layout (left rail + main column + right dock), session tabs, rich session header with LIVE badge + dock switcher, and the right dock's Loop / Agents / MCP panels. | Epic [#8](https://github.com/farmhutsoftwareteam/work-for-claude-code/issues/8) → the new app-shell issues + existing Loop / Agents / MCP issues |
+| `chat-states.dc.html` | The chat surface that lives in the main column: every state for transcript, tool widgets, permissions, composer, status. Light + dark themes. | Phase 3 issues [#17](https://github.com/farmhutsoftwareteam/work-for-claude-code/issues/17) – [#21](https://github.com/farmhutsoftwareteam/work-for-claude-code/issues/21), [#29](https://github.com/farmhutsoftwareteam/work-for-claude-code/issues/29) |
 
 ## Engineering note (not implemented, kept as reference)
 

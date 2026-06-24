@@ -1,0 +1,382 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --ink:#1b1c1e; --paper:#e9eae8; --paper2:#f3f4f2; --paper3:#dcdedb; --card:#fbfbfa; --desk:#cfd0ce;
+    --line:rgba(27,28,30,.16); --line2:rgba(27,28,30,.30); --mute:rgba(27,28,30,.52); --faint:rgba(27,28,30,.36);
+    --helv:'Helvetica Neue',Helvetica,Arial,sans-serif;
+    --mono:'IBM Plex Mono',ui-monospace,monospace;
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;}
+  body{background:#cfd0ce;color:var(--ink);-webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility;}
+  ::selection{background:var(--ink);color:var(--paper);}
+  ::-webkit-scrollbar{width:9px;height:9px;}
+  ::-webkit-scrollbar-thumb{background:rgba(27,28,30,.2);}
+  ::-webkit-scrollbar-track{background:transparent;}
+  @keyframes blink{0%,49%{opacity:1}50%,100%{opacity:0}}
+  @keyframes loopstep{0%,18%{opacity:1;transform:scale(1)}30%,100%{opacity:.18;transform:scale(.78)}}
+  @keyframes runpulse{0%,18%{opacity:1}30%,100%{opacity:.25}}
+</style>
+</helmet>
+
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <symbol id="dt" viewBox="0 0 64 64" fill="none" stroke="currentColor" stroke-width="6" stroke-linecap="square" stroke-linejoin="miter">
+    <rect x="7" y="7" width="50" height="50"/>
+    <path d="M32 7 L32 24 L46 28 L46 36 L32 40 L32 57"/>
+  </symbol>
+</svg>
+
+<div style="background:var(--desk);padding:0;{{ themeVars }}">
+<div style="width:1440px;height:900px;margin:0 auto;background:var(--paper);display:flex;flex-direction:column;overflow:hidden;border:1px solid rgba(0,0,0,.18);box-shadow:0 24px 70px rgba(0,0,0,.30);font-family:var(--helv);color:var(--ink);">
+
+  <!-- ============ TITLE BAR ============ -->
+  <div style="height:46px;flex:none;display:flex;align-items:center;gap:16px;padding:0 16px;border-bottom:1px solid var(--line);background:var(--paper2);">
+    <div style="display:flex;gap:8px;align-items:center;">
+      <span style="width:12px;height:12px;border-radius:50%;background:var(--paper3);border:1px solid var(--line2);"></span>
+      <span style="width:12px;height:12px;border-radius:50%;background:var(--paper3);border:1px solid var(--line2);"></span>
+      <span style="width:12px;height:12px;border-radius:50%;background:var(--paper3);border:1px solid var(--line2);"></span>
+    </div>
+    <div style="display:flex;gap:4px;align-items:center;color:var(--mute);">
+      <button title="New session" style="width:30px;height:30px;display:flex;align-items:center;justify-content:center;border:none;background:none;color:var(--mute);cursor:pointer;" style-hover="color:var(--ink);"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><path d="M8 3v10M3 8h10"/></svg></button>
+      <button title="Home" style="width:30px;height:30px;display:flex;align-items:center;justify-content:center;border:none;background:none;color:var(--mute);cursor:pointer;" style-hover="color:var(--ink);"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><path d="M2.5 7.5 8 3l5.5 4.5M4 6.5V13h8V6.5"/></svg></button>
+      <button title="Toggle sidebar" style="width:30px;height:30px;display:flex;align-items:center;justify-content:center;border:none;background:none;color:var(--mute);cursor:pointer;" style-hover="color:var(--ink);"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><rect x="2.5" y="3" width="11" height="10"/><path d="M6.5 3v10"/></svg></button>
+    </div>
+    <div style="display:flex;align-items:center;gap:9px;margin-left:4px;">
+      <svg viewBox="0 0 64 64" style="width:18px;height:18px;color:var(--ink);overflow:visible;"><use href="#dt"/></svg>
+      <span style="font-weight:500;font-size:16px;letter-spacing:-.01em;">atelier</span>
+    </div>
+    <div style="margin-left:auto;display:flex;align-items:center;gap:12px;font-family:var(--mono);font-size:11px;color:var(--faint);">
+      <button onClick="{{ toggleTheme }}" title="Toggle theme" style="width:28px;height:28px;display:flex;align-items:center;justify-content:center;border:none;background:none;color:var(--mute);cursor:pointer;" style-hover="color:var(--ink);">
+        <sc-if value="{{ isLight }}" hint-placeholder-val="{{ true }}"><svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3"><path d="M13 9.5A5.5 5.5 0 0 1 6.5 3a5.5 5.5 0 1 0 6.5 6.5z"/></svg></sc-if>
+        <sc-if value="{{ isDark }}" hint-placeholder-val="{{ false }}"><svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3"><circle cx="8" cy="8" r="3.2"/><path d="M8 1v1.5M8 13.5V15M15 8h-1.5M2.5 8H1M12.7 3.3l-1 1M4.3 11.7l-1 1M12.7 12.7l-1-1M4.3 4.3l-1-1"/></svg></sc-if>
+      </button>
+      <span>workshop</span>
+      <button style="width:28px;height:28px;display:flex;align-items:center;justify-content:center;border:none;background:none;color:var(--mute);cursor:pointer;" style-hover="color:var(--ink);"><svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><path d="M5 3l5 5-5 5"/></svg></button>
+    </div>
+  </div>
+
+  <!-- ============ BODY ============ -->
+  <div style="flex:1;display:flex;min-height:0;">
+
+    <!-- ---------- LEFT RAIL ---------- -->
+    <div style="width:264px;flex:none;border-right:1px solid var(--line);background:var(--paper2);display:flex;flex-direction:column;min-height:0;">
+      <div style="padding:14px 14px 10px;">
+        <div style="display:flex;align-items:center;gap:8px;border:1px solid var(--line2);background:var(--card);padding:8px 11px;">
+          <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="var(--faint)" stroke-width="1.4"><circle cx="7" cy="7" r="4.5"/><path d="M10.5 10.5 14 14"/></svg>
+          <span style="font-family:var(--mono);font-size:11.5px;color:var(--faint);">Search projects &amp; sessions</span>
+        </div>
+      </div>
+      <div style="padding:2px 14px 6px;font-family:var(--mono);font-size:10px;letter-spacing:.12em;text-transform:uppercase;color:var(--faint);">projects</div>
+      <div style="flex:1;overflow-y:auto;padding:0 8px 8px;">
+        <sc-for list="{{ projects }}" as="p" hint-placeholder-count="9">
+          <button onClick="{{ p.select }}" style="{{ p.rowStyle }}">
+            <span style="{{ p.dotStyle }}"></span>
+            <span style="flex:1;text-align:left;font-size:13.5px;letter-spacing:-.01em;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;{{ p.nameWeight }}">{{ p.name }}</span>
+            <span style="font-family:var(--mono);font-size:10.5px;color:var(--faint);">{{ p.size }}</span>
+          </button>
+        </sc-for>
+      </div>
+
+      <!-- workbench feature rail (promoted) -->
+      <div style="border-top:1px solid var(--line);padding:12px 14px 14px;background:var(--paper3);">
+        <div style="font-family:var(--mono);font-size:10px;letter-spacing:.12em;text-transform:uppercase;color:var(--faint);margin-bottom:10px;">workbench</div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:1px;background:var(--line);border:1px solid var(--line);">
+          <sc-for list="{{ bench }}" as="b" hint-placeholder-count="6">
+            <button onClick="{{ b.click }}" style="{{ b.style }}">
+              <span style="display:flex;align-items:center;justify-content:space-between;">
+                <span style="font-size:12.5px;font-weight:500;letter-spacing:-.01em;">{{ b.label }}</span>
+                <span style="font-family:var(--mono);font-size:10px;color:var(--faint);">{{ b.count }}</span>
+              </span>
+              <span style="font-family:var(--mono);font-size:9.5px;color:var(--faint);margin-top:3px;display:block;">{{ b.hint }}</span>
+            </button>
+          </sc-for>
+        </div>
+      </div>
+    </div>
+
+    <!-- ---------- MAIN COLUMN ---------- -->
+    <div style="flex:1;display:flex;flex-direction:column;min-width:0;min-height:0;">
+
+      <!-- session tabs -->
+      <div style="height:40px;flex:none;display:flex;align-items:stretch;border-bottom:1px solid var(--line);background:var(--paper2);padding:0 10px;">
+        <div style="display:flex;align-items:center;gap:9px;padding:0 16px;border-bottom:2px solid var(--ink);font-family:var(--mono);font-size:12px;">
+          <span style="width:7px;height:7px;border-radius:50%;background:var(--ink);display:inline-block;"></span>
+          auth-svc
+        </div>
+        <div style="display:flex;align-items:center;gap:9px;padding:0 16px;font-family:var(--mono);font-size:12px;color:var(--mute);" style-hover="color:var(--ink);">
+          <span style="width:7px;height:7px;border-radius:50%;border:1px solid var(--line2);display:inline-block;"></span>
+          web-refactor
+        </div>
+        <button style="display:flex;align-items:center;padding:0 12px;border:none;background:none;color:var(--faint);cursor:pointer;" style-hover="color:var(--ink);"><svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><path d="M8 3v10M3 8h10"/></svg></button>
+      </div>
+
+      <!-- session header -->
+      <div style="flex:none;padding:18px 26px 16px;border-bottom:1px solid var(--line);display:flex;align-items:center;gap:16px;">
+        <svg viewBox="0 0 64 64" style="width:30px;height:30px;color:var(--ink);overflow:visible;flex:none;"><use href="#dt"/></svg>
+        <div style="min-width:0;">
+          <div style="display:flex;align-items:center;gap:9px;">
+            <span style="font-weight:500;font-size:19px;letter-spacing:-.02em;">hubflo-workflow</span>
+            <span style="display:inline-flex;align-items:center;gap:5px;font-family:var(--mono);font-size:10px;letter-spacing:.08em;border:1px solid var(--line2);padding:2px 7px;color:var(--mute);"><span style="width:6px;height:6px;border-radius:50%;background:var(--ink);display:inline-block;"></span>LIVE</span>
+          </div>
+          <div style="font-family:var(--mono);font-size:11px;color:var(--faint);margin-top:3px;">~/dev/hubflo-workflow · main · claude-sonnet</div>
+        </div>
+        <div style="margin-left:auto;display:flex;align-items:center;gap:10px;">
+          <div style="display:flex;border:1px solid var(--line2);">
+            <button onClick="{{ setLoop }}" style="{{ tabLoopStyle }}">loop</button>
+            <button onClick="{{ setAgents }}" style="{{ tabAgentsStyle }}">agents</button>
+            <button onClick="{{ setMcp }}" style="{{ tabMcpStyle }}">mcp</button>
+          </div>
+          <div style="display:inline-flex;align-items:center;gap:7px;border:1px solid var(--line2);background:var(--card);padding:7px 12px;font-family:var(--mono);font-size:11.5px;">
+            <span style="width:7px;height:7px;border-radius:50%;background:var(--ink);display:inline-block;animation:runpulse 1.4s ease-in-out infinite;"></span>
+            Running
+            <svg width="9" height="9" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" style="margin-left:2px;"><path d="M4 6l4 4 4-4"/></svg>
+          </div>
+        </div>
+      </div>
+
+      <!-- transcript -->
+      <div style="flex:1;overflow-y:auto;padding:26px 30px 10px;min-height:0;">
+        <div style="font-family:var(--mono);font-size:13px;line-height:1.62;max-width:104ch;">
+          <div style="display:flex;gap:10px;margin-bottom:22px;color:var(--faint);">
+            <span style="color:var(--ink);">›</span>
+            <span style="color:var(--ink);">and these do not break the previous work we did?</span>
+          </div>
+
+          <div style="display:flex;gap:12px;">
+            <span style="width:7px;height:7px;border-radius:50%;background:var(--ink);display:inline-block;margin-top:6px;flex:none;"></span>
+            <div style="min-width:0;">
+              <p style="margin:0 0 16px;"><strong style="font-weight:600;">Short answer: no</strong> — they're all additive or off-by-default, so they don't touch the behavior we just shipped. Here's the honest per-item reasoning, including the two spots that need care.</p>
+
+              <div style="font-family:var(--helv);font-size:13px;font-weight:600;letter-spacing:.02em;color:var(--mute);text-transform:uppercase;margin:24px 0 12px;">Why each is safe</div>
+
+              <p style="margin:0 0 13px;"><strong style="font-weight:600;">Gap 1 (date on folder events)</strong> — purely <em>adds</em> two fields (<code style="background:var(--paper3);padding:1px 5px;">detected_at</code>, <code style="background:var(--paper3);padding:1px 5px;">name_date</code>) to the Dropbox event. It doesn't change any existing field, and it doesn't touch the cursor/state logic the flood fix <span style="color:var(--mute);">(#652)</span> cares about.</p>
+              <p style="margin:0 0 13px;"><strong style="font-weight:600;">Gap 2 (today + date operators)</strong> — adds a transform op and new condition operators alongside the existing ones. Old conditions evaluate identically; the existing <code style="background:var(--paper3);padding:1px 5px;">date_add</code> "now" behavior stays as-is.</p>
+              <p style="margin:0 0 13px;"><strong style="font-weight:600;">Gap 3 (find-or-create Workspace)</strong> — gated behind a new "create if not found" toggle that's <strong style="font-weight:600;">off by default</strong>. With it off, Find Workspace behaves exactly as today.</p>
+              <p style="margin:0 0 20px;"><strong style="font-weight:600;">Gap 4 (re-testable create steps)</strong> — reroutes the one specific "a shared link already exists" failure. Every other failure still surfaces exactly as it does now.</p>
+
+              <div style="font-family:var(--helv);font-size:13px;font-weight:600;letter-spacing:.02em;color:var(--mute);text-transform:uppercase;margin:24px 0 12px;">The two spots that need care</div>
+              <p style="margin:0 0 8px;">1. Gap 1 changes <code style="background:var(--paper3);padding:1px 5px;">folderEventsFromEntries</code>'s output, so the seeded trigger's <code style="background:var(--paper3);padding:1px 5px;">output_fields</code> and <code style="background:var(--paper3);padding:1px 5px;">sample_data</code> must update together.</p>
+              <p style="margin:0 0 20px;">2. Gap 2's operators touch conditions, used in two places — trigger filtering and the Condition step. Both call sites stay in sync.</p>
+
+              <div style="display:inline-flex;align-items:center;gap:8px;color:var(--faint);font-size:11.5px;border-top:1px solid var(--line);padding-top:12px;">
+                <svg width="11" height="11" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><path d="M8 4v4l3 2"/><circle cx="8" cy="8" r="6.5"/></svg>
+                Churned for 1m 11s
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- composer -->
+      <div style="flex:none;padding:14px 26px 16px;border-top:1px solid var(--line);">
+        <div style="border:1px solid var(--line2);background:var(--card);display:flex;align-items:center;gap:12px;padding:13px 15px;">
+          <span style="font-family:var(--mono);font-size:14px;color:var(--mute);">›</span>
+          <span style="flex:1;font-family:var(--mono);font-size:13px;color:var(--faint);">Ask, or set a goal to run a loop…</span>
+          <span style="width:8px;height:16px;background:var(--ink);display:inline-block;animation:blink 1.1s steps(1) infinite;"></span>
+          <button style="font-family:var(--mono);font-size:11px;border:1px solid var(--line2);background:var(--paper2);padding:6px 11px;cursor:pointer;color:var(--ink);" style-hover="background:var(--paper3);">⏎ send</button>
+        </div>
+        <div style="display:flex;align-items:center;gap:18px;margin-top:9px;font-family:var(--mono);font-size:10.5px;color:var(--faint);">
+          <span>bypass permissions on · shift+tab to cycle</span>
+          <span>ctrl+t tasks</span>
+          <span style="margin-left:auto;">claude-sonnet · 38k tokens</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- ---------- RIGHT DOCK ---------- -->
+    <div style="width:360px;flex:none;border-left:1px solid var(--line);background:var(--paper2);display:flex;flex-direction:column;min-height:0;">
+
+      <!-- LOOP -->
+      <sc-if value="{{ isLoop }}" hint-placeholder-val="{{ true }}">
+      <div style="flex:1;display:flex;flex-direction:column;min-height:0;">
+        <div style="flex:none;padding:16px 18px;border-bottom:1px solid var(--line);display:flex;align-items:center;justify-content:space-between;">
+          <div style="font-weight:500;font-size:15px;letter-spacing:-.01em;">Loop runner</div>
+          <div style="display:inline-flex;align-items:center;gap:6px;font-family:var(--mono);font-size:10.5px;color:var(--mute);">
+            <span style="width:7px;height:7px;border-radius:50%;background:var(--ink);display:inline-block;animation:runpulse 1.4s ease-in-out infinite;"></span>running
+          </div>
+        </div>
+        <div style="flex:1;overflow-y:auto;padding:18px;">
+          <div style="font-family:var(--mono);font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:var(--faint);margin-bottom:9px;">goal</div>
+          <div style="border:1px solid var(--line2);background:var(--card);padding:13px 14px;font-family:var(--mono);font-size:12px;line-height:1.6;margin-bottom:18px;">all tests in <span style="background:var(--paper3);padding:1px 4px;">tests/unit</span> pass · no files outside <span style="background:var(--paper3);padding:1px 4px;">src/</span> · lint clean</div>
+
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:20px;">
+            <div style="border:1px solid var(--line);padding:10px 12px;">
+              <div style="font-family:var(--mono);font-size:9.5px;letter-spacing:.08em;text-transform:uppercase;color:var(--faint);">verifier</div>
+              <div style="font-family:var(--mono);font-size:12.5px;margin-top:4px;">haiku</div>
+            </div>
+            <div style="border:1px solid var(--line);padding:10px 12px;">
+              <div style="font-family:var(--mono);font-size:9.5px;letter-spacing:.08em;text-transform:uppercase;color:var(--faint);">budget</div>
+              <div style="font-family:var(--mono);font-size:12.5px;margin-top:4px;">4 / 25 turns</div>
+            </div>
+          </div>
+
+          <div style="font-family:var(--mono);font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:var(--faint);margin-bottom:12px;">the loop</div>
+          <div style="display:flex;flex-direction:column;font-family:var(--mono);font-size:12px;margin-bottom:22px;">
+            <div style="border:1px solid var(--line2);background:var(--card);padding:11px 13px;display:flex;align-items:center;gap:11px;"><span style="width:8px;height:8px;border-radius:50%;background:var(--ink);display:inline-block;animation:loopstep 4s linear infinite;animation-delay:0s;"></span><span style="flex:1;">goal</span><span style="color:var(--faint);">define done</span></div>
+            <div style="text-align:center;color:var(--faint);padding:4px 0;">↓</div>
+            <div style="border:1px solid var(--line2);background:var(--card);padding:11px 13px;display:flex;align-items:center;gap:11px;"><span style="width:8px;height:8px;border-radius:50%;background:var(--ink);display:inline-block;animation:loopstep 4s linear infinite;animation-delay:1s;"></span><span style="flex:1;">work</span><span style="color:var(--faint);">doer · 1 turn</span></div>
+            <div style="text-align:center;color:var(--faint);padding:4px 0;">↓</div>
+            <div style="border:1px solid var(--line2);background:var(--card);padding:11px 13px;display:flex;align-items:center;gap:11px;"><span style="width:8px;height:8px;border-radius:50%;background:var(--ink);display:inline-block;animation:loopstep 4s linear infinite;animation-delay:2s;"></span><span style="flex:1;">check</span><span style="color:var(--faint);">verifier</span></div>
+            <div style="display:flex;align-items:center;gap:8px;padding:7px 0 5px;color:var(--faint);font-size:10px;"><span style="flex:1;border-top:1px dashed var(--line2);"></span><span>fail ↻ within budget</span><span style="flex:1;border-top:1px dashed var(--line2);"></span></div>
+            <div style="text-align:center;color:var(--faint);padding:2px 0;">↓ pass</div>
+            <div style="border:2px solid var(--ink);background:var(--ink);color:var(--paper);padding:11px 13px;display:flex;align-items:center;gap:11px;"><span style="width:8px;height:8px;border-radius:50%;background:var(--paper);display:inline-block;animation:loopstep 4s linear infinite;animation-delay:3s;"></span><span style="flex:1;font-weight:500;">done</span><span>✓ verified</span></div>
+          </div>
+
+          <div style="font-family:var(--mono);font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:var(--faint);margin-bottom:10px;">turns</div>
+          <div style="font-family:var(--mono);font-size:11.5px;">
+            <div style="display:flex;gap:10px;padding:7px 0;border-bottom:1px solid var(--line);"><span style="color:var(--faint);">01</span><span style="flex:1;">write failing test for null cursor</span><span style="color:var(--mute);">✗ fail</span></div>
+            <div style="display:flex;gap:10px;padding:7px 0;border-bottom:1px solid var(--line);"><span style="color:var(--faint);">02</span><span style="flex:1;">patch re-baseline guard</span><span style="color:var(--mute);">✗ fail</span></div>
+            <div style="display:flex;gap:10px;padding:7px 0;border-bottom:1px solid var(--line);"><span style="color:var(--faint);">03</span><span style="flex:1;">add operator call site</span><span style="color:var(--mute);">✗ fail</span></div>
+            <div style="display:flex;gap:10px;padding:7px 0;"><span style="color:var(--ink);">04</span><span style="flex:1;color:var(--ink);">run full suite + lint</span><span style="display:inline-flex;align-items:center;gap:5px;"><span style="width:6px;height:6px;border-radius:50%;background:var(--ink);display:inline-block;animation:runpulse 1.4s ease-in-out infinite;"></span>running</span></div>
+          </div>
+        </div>
+        <div style="flex:none;padding:14px 18px;border-top:1px solid var(--line);display:flex;gap:10px;">
+          <button style="flex:1;font-family:var(--mono);font-size:12px;border:1px solid var(--line2);background:var(--card);padding:10px;cursor:pointer;color:var(--ink);" style-hover="background:var(--paper3);">pause</button>
+          <button style="flex:1;font-family:var(--mono);font-size:12px;border:1px solid var(--ink);background:var(--ink);color:var(--paper);padding:10px;cursor:pointer;" style-hover="background:#000;">stop loop</button>
+        </div>
+      </div>
+      </sc-if>
+
+      <!-- AGENTS -->
+      <sc-if value="{{ isAgents }}" hint-placeholder-val="{{ false }}">
+      <div style="flex:1;display:flex;flex-direction:column;min-height:0;">
+        <div style="flex:none;padding:16px 18px;border-bottom:1px solid var(--line);display:flex;align-items:center;justify-content:space-between;">
+          <div style="font-weight:500;font-size:15px;letter-spacing:-.01em;">Agents</div>
+          <button style="font-family:var(--mono);font-size:10.5px;border:1px solid var(--line2);background:var(--card);padding:5px 9px;cursor:pointer;color:var(--ink);" style-hover="background:var(--paper3);">+ new</button>
+        </div>
+        <div style="flex:1;overflow-y:auto;padding:14px 18px;">
+          <div style="font-family:var(--mono);font-size:10px;color:var(--faint);margin-bottom:12px;">main session → delegates to ↓</div>
+          <div style="display:flex;flex-direction:column;gap:10px;">
+            <div style="border:1px solid var(--line2);background:var(--card);padding:13px 14px;">
+              <div style="display:flex;align-items:center;justify-content:space-between;"><span style="font-weight:500;font-size:14px;letter-spacing:-.01em;">reviewer</span><span style="font-family:var(--mono);font-size:10px;color:var(--mute);">isolated</span></div>
+              <div style="font-family:var(--mono);font-size:11px;color:var(--faint);line-height:1.6;margin-top:6px;">opus · read · grep · git. Blocks on standard violations.</div>
+            </div>
+            <div style="border:1px solid var(--line2);background:var(--card);padding:13px 14px;">
+              <div style="display:flex;align-items:center;justify-content:space-between;"><span style="font-weight:500;font-size:14px;letter-spacing:-.01em;">explorer</span><span style="font-family:var(--mono);font-size:10px;color:var(--mute);">isolated</span></div>
+              <div style="font-family:var(--mono);font-size:11px;color:var(--faint);line-height:1.6;margin-top:6px;">haiku · read · grep. Maps the codebase, returns a summary only.</div>
+            </div>
+            <div style="border:1px solid var(--line2);background:var(--card);padding:13px 14px;">
+              <div style="display:flex;align-items:center;justify-content:space-between;"><span style="font-weight:500;font-size:14px;letter-spacing:-.01em;">test-runner</span><span style="font-family:var(--mono);font-size:10px;color:var(--mute);">isolated</span></div>
+              <div style="font-family:var(--mono);font-size:11px;color:var(--faint);line-height:1.6;margin-top:6px;">sonnet · bash · read. Runs suites, reports red/green.</div>
+            </div>
+          </div>
+          <div style="font-family:var(--mono);font-size:10.5px;color:var(--faint);line-height:1.6;margin-top:16px;border-top:1px solid var(--line);padding-top:12px;">Each runs in its own context. Only the summary returns to your window — the exploration noise never lands here.</div>
+        </div>
+      </div>
+      </sc-if>
+
+      <!-- MCP -->
+      <sc-if value="{{ isMcp }}" hint-placeholder-val="{{ false }}">
+      <div style="flex:1;display:flex;flex-direction:column;min-height:0;">
+        <div style="flex:none;padding:16px 18px;border-bottom:1px solid var(--line);display:flex;align-items:center;justify-content:space-between;">
+          <div style="font-weight:500;font-size:15px;letter-spacing:-.01em;">MCP servers</div>
+          <button style="font-family:var(--mono);font-size:10.5px;border:1px solid var(--line2);background:var(--card);padding:5px 9px;cursor:pointer;color:var(--ink);" style-hover="background:var(--paper3);">+ add</button>
+        </div>
+        <div style="flex:1;overflow-y:auto;padding:8px 0;">
+          <div style="display:flex;align-items:center;gap:11px;padding:13px 18px;border-bottom:1px solid var(--line);"><span style="width:11px;height:11px;background:var(--ink);display:inline-block;"></span><div style="flex:1;"><div style="font-size:13.5px;font-weight:500;letter-spacing:-.01em;">filesystem</div><div style="font-family:var(--mono);font-size:10px;color:var(--faint);">npx · 9 tools</div></div><span style="font-family:var(--mono);font-size:11px;color:var(--mute);">on</span></div>
+          <div style="display:flex;align-items:center;gap:11px;padding:13px 18px;border-bottom:1px solid var(--line);"><span style="width:11px;height:11px;background:var(--ink);display:inline-block;"></span><div style="flex:1;"><div style="font-size:13.5px;font-weight:500;letter-spacing:-.01em;">github</div><div style="font-family:var(--mono);font-size:10px;color:var(--faint);">npx · 14 tools</div></div><span style="font-family:var(--mono);font-size:11px;color:var(--mute);">on</span></div>
+          <div style="display:flex;align-items:center;gap:11px;padding:13px 18px;border-bottom:1px solid var(--line);opacity:.55;"><span style="width:11px;height:11px;border:1px solid var(--line2);display:inline-block;"></span><div style="flex:1;"><div style="font-size:13.5px;font-weight:500;letter-spacing:-.01em;">postgres</div><div style="font-family:var(--mono);font-size:10px;color:var(--faint);">docker · 6 tools</div></div><span style="font-family:var(--mono);font-size:11px;color:var(--faint);">off</span></div>
+          <div style="display:flex;align-items:center;gap:11px;padding:13px 18px;border-bottom:1px solid var(--line);"><span style="width:11px;height:11px;background:var(--ink);display:inline-block;"></span><div style="flex:1;"><div style="font-size:13.5px;font-weight:500;letter-spacing:-.01em;">linear</div><div style="font-family:var(--mono);font-size:10px;color:var(--faint);">sse · 11 tools</div></div><span style="font-family:var(--mono);font-size:11px;color:var(--mute);">on</span></div>
+          <div style="padding:14px 18px;font-family:var(--mono);font-size:10.5px;color:var(--faint);line-height:1.6;">Toggling never rewrites unrelated keys in <span style="background:var(--paper3);padding:1px 4px;">~/.claude.json</span>.</div>
+        </div>
+      </div>
+      </sc-if>
+
+    </div>
+  </div>
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:1440,&quot;height&quot;:900}}">
+class Component extends DCLogic {
+  state = {
+    theme: 'light',
+    panel: 'loop',
+    active: 'hubflo-workflow',
+    projects: [
+      { name: 'hubflo-workflow', size: '12.9B', live: true },
+      { name: 'freyt365-v2', size: '594.5M', live: true },
+      { name: 'winpal', size: '911.0M' },
+      { name: 'munyamakosa', size: '18.8M' },
+      { name: 'talking-treasures', size: '44.0M' },
+      { name: 'fifa-wc26', size: '2.0B' },
+      { name: 'ai-integrate', size: '5.2B' },
+      { name: 'savemymusic', size: '618.8M' },
+      { name: 'raysuncapital', size: '120.1M' },
+      { name: 'zw-wp-research', size: '847.4M' },
+      { name: 'spotifything', size: '1.5B' }
+    ]
+  };
+
+  renderVals() {
+    const active = this.state.active;
+    const projects = this.state.projects.map((p) => {
+      const isActive = p.name === active;
+      return {
+        name: p.name,
+        size: p.size,
+        select: () => this.setState({ active: p.name }),
+        nameWeight: isActive ? 'font-weight:500;' : 'font-weight:400;',
+        rowStyle: 'width:100%;display:flex;align-items:center;gap:10px;padding:8px 11px;border:none;cursor:pointer;font-family:var(--helv);color:var(--ink);background:' +
+          (isActive ? 'var(--card)' : 'transparent') + ';' +
+          (isActive ? 'box-shadow:inset 2px 0 0 var(--ink);' : ''),
+        dotStyle: 'width:7px;height:7px;border-radius:50%;flex:none;display:inline-block;' +
+          (p.live ? 'background:var(--ink);' : 'border:1px solid var(--line2);')
+      };
+    });
+
+    const benchItems = [
+      { label: 'Plugins', count: '4', hint: 'installed' },
+      { label: 'Skills', count: '44', hint: 'available' },
+      { label: 'MCPs', count: '7', hint: 'connected', panel: 'mcp' },
+      { label: 'Hooks', count: '12', hint: 'active' },
+      { label: 'Usage', count: '—', hint: 'this month' },
+      { label: 'Market', count: '∞', hint: 'browse' }
+    ];
+    const bench = benchItems.map((b) => ({
+      label: b.label,
+      count: b.count,
+      hint: b.hint,
+      click: () => { if (b.panel) this.setState({ panel: b.panel }); },
+      style: 'text-align:left;border:none;cursor:pointer;background:var(--paper2);padding:11px 12px;font-family:var(--helv);color:var(--ink);'
+    }));
+
+    const tabStyle = (on) => 'font-family:var(--mono);font-size:11px;padding:7px 13px;border:none;cursor:pointer;letter-spacing:.02em;' +
+      (on ? 'background:var(--ink);color:var(--paper);' : 'background:var(--card);color:var(--mute);');
+
+    const dark = '--paper:#1c1d1f;--paper2:#242528;--paper3:#161719;--card:#2a2b2e;--ink:#e7e8e5;' +
+      '--line:rgba(231,232,229,.14);--line2:rgba(231,232,229,.26);--mute:rgba(231,232,229,.56);--faint:rgba(231,232,229,.40);--desk:#0e0f10;';
+
+    return {
+      projects, bench,
+      themeVars: this.state.theme === 'dark' ? dark : '',
+      isLight: this.state.theme === 'light',
+      isDark: this.state.theme === 'dark',
+      toggleTheme: () => this.setState((s) => ({ theme: s.theme === 'dark' ? 'light' : 'dark' })),
+      isLoop: this.state.panel === 'loop',
+      isAgents: this.state.panel === 'agents',
+      isMcp: this.state.panel === 'mcp',
+      setLoop: () => this.setState({ panel: 'loop' }),
+      setAgents: () => this.setState({ panel: 'agents' }),
+      setMcp: () => this.setState({ panel: 'mcp' }),
+      tabLoopStyle: tabStyle(this.state.panel === 'loop'),
+      tabAgentsStyle: tabStyle(this.state.panel === 'agents'),
+      tabMcpStyle: tabStyle(this.state.panel === 'mcp')
+    };
+  }
+}
+</script>
+</body>
+</html>
