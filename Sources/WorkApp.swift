@@ -150,9 +150,15 @@ struct WorkApp: App {
         // Atelier v2 preview window — DEBUG builds only. Lets us prototype the
         // Mode-B chat UI in parallel with the shipping v1.x window without
         // touching production. Tracked under epic #8 on the v2-redesign branch.
+        //
+        // Re-injects the same environment objects as the main WindowGroup;
+        // separate Scene = separate environment, so we wire them explicitly.
         #if DEBUG
         Window("Atelier v2 (preview)", id: "v2-preview") {
             V2RootView()
+                .environmentObject(store)
+                .environmentObject(updateState)
+                .environmentObject(terminals)
         }
         .windowResizability(.contentMinSize)
         .defaultSize(width: 1440, height: 900)

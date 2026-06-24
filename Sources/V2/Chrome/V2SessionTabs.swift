@@ -1,5 +1,5 @@
-// Session tabs strip (40px) — chip per running session with filled/outline dot,
-// 2px ink underline on the active tab, "+" new-tab button at the end.
+// Session tabs strip (40px) — one chip per live V2Tab from V2AppState,
+// "+" new-tab button (disabled until a project is selected).
 
 import SwiftUI
 import Inject
@@ -7,16 +7,20 @@ import Inject
 struct V2SessionTabs: View {
     @ObserveInjection private var inject
     @Environment(\.v2) private var v2
-    @Binding var activeSession: V2Session
+    @EnvironmentObject private var appState: V2AppState
 
     var body: some View {
         HStack(spacing: 0) {
-            ForEach(V2Mock.sessions) { session in
-                V2TabChip(session: session, isActive: session == activeSession) {
-                    activeSession = session
-                }
+            ForEach(appState.tabs) { tab in
+                V2TabChip(
+                    tab: tab,
+                    isActive: tab.id == appState.activeTabId,
+                    onActivate: { appState.activate(tabId: tab.id) },
+                    onClose: { appState.close(tabId: tab.id) }
+                )
             }
-            Button { } label: {
+
+            Button { appState.newTab() } label: {
                 Image(systemName: "plus")
                     .font(.system(size: 11, weight: .regular))
                     .foregroundColor(v2.faint)
@@ -24,6 +28,8 @@ struct V2SessionTabs: View {
                     .frame(maxHeight: .infinity)
             }
             .buttonStyle(.plain)
+            .disabled(appState.selectedProjectCwd == nil)
+            .help(appState.selectedProjectCwd == nil ? "Select a project first" : "New tab")
 
             Spacer()
         }
@@ -39,20 +45,27 @@ struct V2SessionTabs: View {
 
 private struct V2TabChip: View {
     @Environment(\.v2) private var v2
-    let session: V2Session
+    @ObservedObject var tab: V2Tab
     let isActive: Bool
-    let onTap: () -> Void
+    let onActivate: () -> Void
+    let onClose: () -> Void
+    @State private var hover = false
 
     var body: some View {
-        Button(action: onTap) {
+        Button(action: onActivate) {
             HStack(spacing: 9) {
-                Circle()
-                    .fill(session.live ? v2.ink : Color.clear)
-                    .overlay(Circle().stroke(session.live ? Color.clear : v2.line2, lineWidth: 1))
-                    .frame(width: 7, height: 7)
-                Text(session.name)
+                stateDot
+                Text(tab.displayName)
                     .font(.system(size: 12, design: .monospaced))
                     .foregroundColor(isActive ? v2.ink : v2.mute)
+                if hover {
+                    Button(action: onClose) {
+                        Image(systemName: "xmark")
+                            .font(.system(size: 8, weight: .medium))
+                            .foregroundColor(v2.faint)
+                    }
+                    .buttonStyle(.plain)
+                }
             }
             .padding(.horizontal, 16)
             .frame(maxHeight: .infinity)
@@ -63,5 +76,20 @@ private struct V2TabChip: View {
             }
         }
         .buttonStyle(.plain)
+        .onHover { hover = $0 }
+    }
+
+    @ViewBuilder
+    private var stateDot: some View {
+        switch tab.session.state {
+        case .working, .awaitingPermission:
+            V2PulseDot(size: 7, color: v2.ink)
+        case .terminated:
+            Circle().fill(v2.del).frame(width: 7, height: 7)
+        case .idle:
+            Circle().stroke(v2.line2, lineWidth: 1).frame(width: 7, height: 7)
+        default:
+            Circle().fill(v2.ink).frame(width: 7, height: 7)
+        }
     }
 }

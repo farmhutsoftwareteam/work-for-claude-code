@@ -1,22 +1,16 @@
-// V2 root — owns a StreamSession instance and feeds it to the live transcript,
-// composer, and permission card. Start CTA spawns `claude` in the user's home
-// directory until project routing lands in Phase 4.
-//
-// Hot reload: every view in V2/ uses @ObserveInjection so InjectionIII can
-// swap view bodies live without rebuilding.
+// V2 root — wires V2AppState (multi-tab StreamSession controller) into the
+// three-column layout. Real projects from Store, real session tabs, active
+// tab's StreamSession drives the transcript / composer / permission card.
 
 import SwiftUI
 import Inject
 
 struct V2RootView: View {
     @ObserveInjection private var inject
-    @StateObject private var session = StreamSession()
+    @EnvironmentObject private var store: Store
+    @StateObject private var appState = V2AppState()
     @State private var theme: V2ThemeChoice = .light
-    @State private var activeProject: V2Project = V2Mock.projects[0]
-    @State private var activeSession: V2Session = V2Mock.sessions[0]
     @State private var dockPanel: V2DockPanel = .loop
-    @State private var binaryURL: URL?
-    @State private var binaryVersion: SemVer?
 
     private var palette: V2Palette {
         theme == .dark ? V2Theme.dark : V2Theme.light
@@ -25,23 +19,18 @@ struct V2RootView: View {
     var body: some View {
         VStack(spacing: 0) {
             V2TitleBar(theme: $theme)
+
             HStack(spacing: 0) {
-                V2LeftRail(activeProject: $activeProject)
+                V2LeftRail()
                     .frame(width: 264)
 
                 VStack(spacing: 0) {
-                    V2SessionTabs(activeSession: $activeSession)
-                    V2SessionHeader(dockPanel: $dockPanel, activeProject: activeProject)
+                    V2SessionTabs()
+                    V2SessionHeader(dockPanel: $dockPanel)
 
-                    VStack(spacing: 0) {
-                        V2LiveTranscript(session: session)
-                        V2LivePermissionCard(session: session)
-                            .padding(.horizontal, 36)
-                            .padding(.bottom, session.pendingPermission == nil ? 0 : 16)
-                    }
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    mainBody
 
-                    sessionControlsOrComposer
+                    composerOrControls
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .background(palette.paper)
@@ -53,70 +42,130 @@ struct V2RootView: View {
         }
         .background(palette.paper)
         .environment(\.v2, palette)
+        .environmentObject(appState)
         .preferredColorScheme(theme == .dark ? .dark : .light)
-        .task { resolveBinary() }
+        .task {
+            appState.resolveBinary()
+            // Seed initial project selection from Store on first appear.
+            if appState.selectedProjectCwd == nil, let first = store.projects.first {
+                appState.selectProject(cwd: first.cwd, name: first.displayName)
+            }
+        }
         .enableInjection()
     }
 
-    // MARK: - Composer / start button
+    // MARK: - Body content
 
     @ViewBuilder
-    private var sessionControlsOrComposer: some View {
-        switch session.state {
-        case .idle, .terminated:
-            startCTA
-        default:
-            V2LiveComposer(session: session)
+    private var mainBody: some View {
+        if let tab = appState.activeTab {
+            VStack(spacing: 0) {
+                V2LiveTranscript(session: tab.session)
+                V2LivePermissionCard(session: tab.session)
+                    .padding(.horizontal, 36)
+                    .padding(.bottom, tab.session.pendingPermission == nil ? 0 : 16)
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+        } else {
+            emptyState
         }
     }
 
-    private var startCTA: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack(spacing: 12) {
-                Button(action: startSession) {
+    @ViewBuilder
+    private var composerOrControls: some View {
+        if let tab = appState.activeTab {
+            switch tab.session.state {
+            case .idle, .terminated:
+                startCTA(tab: tab)
+            default:
+                V2LiveComposer(session: tab.session)
+            }
+        }
+    }
+
+    // MARK: - Empty state
+
+    private var emptyState: some View {
+        VStack(spacing: 16) {
+            V2DovetailMark(size: 40).foregroundColor(palette.line2)
+            VStack(spacing: 6) {
+                Text("Pick a project on the left, then ⌘N for a new tab.")
+                    .font(.system(size: 13, design: .monospaced))
+                    .foregroundColor(palette.mute)
+                if let v = appState.claudeVersion {
+                    Text("claude v\(v) ready")
+                        .font(.system(size: 10.5, design: .monospaced))
+                        .foregroundColor(palette.faint)
+                } else if appState.claudeBinary == nil {
+                    Text("`claude` not found on PATH — install Claude Code")
+                        .font(.system(size: 10.5, design: .monospaced))
+                        .foregroundColor(palette.del)
+                }
+            }
+
+            if appState.selectedProjectCwd != nil {
+                Button { appState.newTab() } label: {
                     HStack(spacing: 9) {
-                        Image(systemName: "play.fill")
-                            .font(.system(size: 11))
-                        Text("Start a session")
+                        Image(systemName: "plus")
+                        Text("New tab in \(appState.selectedProjectName)")
+                    }
+                    .font(.system(size: 12, design: .monospaced))
+                    .foregroundColor(palette.paper)
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 10)
+                    .background(palette.ink)
+                }
+                .buttonStyle(.plain)
+                .keyboardShortcut("n", modifiers: .command)
+            }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(palette.paper)
+    }
+
+    // MARK: - Start CTA per tab
+
+    private func startCTA(tab: V2Tab) -> some View {
+        let canStart = appState.claudeBinary != nil
+            && (appState.claudeVersion ?? .init(major: 0, minor: 0, patch: 0)) >= ClaudeBinary.minimumSupported
+
+        return VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 12) {
+                Button { appState.startActiveSession() } label: {
+                    HStack(spacing: 9) {
+                        Image(systemName: "play.fill").font(.system(size: 11))
+                        Text("Start session in \(tab.displayName)")
                             .font(.system(size: 12, design: .monospaced))
                     }
                     .foregroundColor(palette.paper)
                     .padding(.horizontal, 16)
                     .padding(.vertical, 10)
-                    .background(binaryURL == nil ? palette.line2 : palette.ink)
+                    .background(canStart ? palette.ink : palette.line2)
                 }
                 .buttonStyle(.plain)
-                .disabled(binaryURL == nil)
+                .disabled(!canStart)
 
-                if let binaryURL {
-                    Text(binaryURL.path)
-                        .font(.system(size: 10.5, design: .monospaced))
-                        .foregroundColor(palette.faint)
-                        .lineLimit(1)
-                        .truncationMode(.middle)
-                }
-
-                if let version = binaryVersion {
-                    Text("v\(version.description)")
-                        .font(.system(size: 10.5, design: .monospaced))
-                        .foregroundColor(palette.faint)
-                }
+                Text(tab.cwd.path)
+                    .font(.system(size: 10.5, design: .monospaced))
+                    .foregroundColor(palette.faint)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
 
                 Spacer()
             }
 
-            if binaryURL == nil {
-                Text("Couldn't find `claude` on your PATH. Install Claude Code or set ~/.claude/local/claude.")
+            if case .terminated(let reason) = tab.session.state {
+                Text("Last session ended: \(reason)")
+                    .font(.system(size: 10.5, design: .monospaced))
+                    .foregroundColor(palette.faint)
+            } else if appState.claudeBinary == nil {
+                Text("Couldn't find `claude`. Install Claude Code or set ~/.claude/local/claude.")
                     .font(.system(size: 10.5, design: .monospaced))
                     .foregroundColor(palette.del)
-            } else if let version = binaryVersion, version < ClaudeBinary.minimumSupported {
+            } else if !canStart {
                 Text("Mode-B needs ≥ \(ClaudeBinary.minimumSupported.description). Update Claude Code.")
                     .font(.system(size: 10.5, design: .monospaced))
                     .foregroundColor(palette.del)
-            } else {
-                Text("Mode-B spawns the binary with structured stream-json — Phase 4 will route per-project.")
-                    .font(.system(size: 10.5, design: .monospaced))
-                    .foregroundColor(palette.faint)
             }
         }
         .padding(.horizontal, 26)
@@ -124,19 +173,6 @@ struct V2RootView: View {
         .overlay(alignment: .top) {
             Rectangle().fill(palette.line).frame(height: 1)
         }
-    }
-
-    private func resolveBinary() {
-        guard binaryURL == nil else { return }
-        let url = ClaudeBinary.locate()
-        binaryURL = url
-        if let url { binaryVersion = ClaudeBinary.version(at: url) }
-    }
-
-    private func startSession() {
-        guard let binaryURL else { return }
-        let cwd = FileManager.default.homeDirectoryForCurrentUser
-        session.start(cwd: cwd, claudeURL: binaryURL)
     }
 }
 
@@ -172,10 +208,3 @@ struct V2DovetailMark: View {
         .frame(width: size, height: size)
     }
 }
-
-#if DEBUG
-#Preview("V2 root — light") {
-    V2RootView()
-        .frame(width: 1440, height: 900)
-}
-#endif

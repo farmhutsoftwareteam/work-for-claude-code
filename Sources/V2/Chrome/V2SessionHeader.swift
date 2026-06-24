@@ -1,6 +1,7 @@
-// Rich session header — 30px dovetail, project name, LIVE badge, project path
-// subline, right cluster with dock switcher (loop/agents/mcp) and the
-// pulsing Running status pill.
+// Session header — bound to V2AppState's active tab. Shows project name +
+// LIVE badge driven by real session state, path subline with branch,
+// dock switcher (loop/agents/mcp), Running pill that reflects the live
+// lifecycle state.
 
 import SwiftUI
 import Inject
@@ -13,8 +14,8 @@ enum V2DockPanel: String, CaseIterable, Identifiable {
 struct V2SessionHeader: View {
     @ObserveInjection private var inject
     @Environment(\.v2) private var v2
+    @EnvironmentObject private var appState: V2AppState
     @Binding var dockPanel: V2DockPanel
-    let activeProject: V2Project
 
     var body: some View {
         HStack(alignment: .center, spacing: 16) {
@@ -23,14 +24,18 @@ struct V2SessionHeader: View {
 
             VStack(alignment: .leading, spacing: 3) {
                 HStack(spacing: 9) {
-                    Text(activeProject.name)
+                    Text(headerTitle)
                         .font(.system(size: 19, weight: .medium))
                         .kerning(-0.38)
-                    liveBadge
+                    if showLive {
+                        liveBadge
+                    }
                 }
-                Text("~/dev/\(activeProject.name) · main · claude-sonnet")
+                Text(pathSubline)
                     .font(.system(size: 11, design: .monospaced))
                     .foregroundColor(v2.faint)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
             }
 
             Spacer()
@@ -47,6 +52,26 @@ struct V2SessionHeader: View {
             Rectangle().fill(v2.line).frame(height: 1)
         }
         .enableInjection()
+    }
+
+    private var headerTitle: String {
+        appState.activeTab?.displayName ?? appState.selectedProjectName.ifEmpty("no project")
+    }
+
+    private var pathSubline: String {
+        let path = appState.activeTab?.cwd.path
+            ?? appState.selectedProjectCwd?.path
+            ?? "—"
+        let model = appState.activeSession?.model ?? "claude"
+        return "\(path) · \(model)"
+    }
+
+    private var showLive: Bool {
+        guard let s = appState.activeSession else { return false }
+        switch s.state {
+        case .idle, .terminated: return false
+        default: return true
+        }
     }
 
     private var liveBadge: some View {
@@ -84,8 +109,8 @@ struct V2SessionHeader: View {
 
     private var runningPill: some View {
         HStack(spacing: 7) {
-            V2PulseDot(size: 7, color: v2.ink)
-            Text("Running")
+            stateDot
+            Text(stateLabel)
                 .font(.system(size: 11.5, design: .monospaced))
             Image(systemName: "chevron.down")
                 .font(.system(size: 8, weight: .medium))
@@ -97,9 +122,40 @@ struct V2SessionHeader: View {
         .background(v2.card)
         .overlay(Rectangle().stroke(v2.line2, lineWidth: 1))
     }
+
+    @ViewBuilder
+    private var stateDot: some View {
+        if let s = appState.activeSession {
+            switch s.state {
+            case .working, .awaitingPermission:
+                V2PulseDot(size: 7, color: v2.ink)
+            case .terminated:
+                Circle().fill(v2.del).frame(width: 7, height: 7)
+            case .idle:
+                Circle().stroke(v2.line2, lineWidth: 1).frame(width: 7, height: 7)
+            default:
+                Circle().fill(v2.ink).frame(width: 7, height: 7)
+            }
+        } else {
+            Circle().stroke(v2.line2, lineWidth: 1).frame(width: 7, height: 7)
+        }
+    }
+
+    private var stateLabel: String {
+        guard let s = appState.activeSession else { return "No session" }
+        switch s.state {
+        case .idle: return "Idle"
+        case .spawning: return "Spawning"
+        case .initializing: return "Initializing"
+        case .working: return s.isRetrying ? "Retrying" : "Running"
+        case .awaitingPermission: return "Awaiting permission"
+        case .closing: return "Closing"
+        case .terminated: return "Ended"
+        }
+    }
 }
 
-// MARK: - Pulse dot used in multiple places
+// MARK: - Pulse dot (used across v2 surfaces)
 
 struct V2PulseDot: View {
     let size: CGFloat
@@ -117,4 +173,8 @@ struct V2PulseDot: View {
                 }
             }
     }
+}
+
+private extension String {
+    func ifEmpty(_ fallback: String) -> String { isEmpty ? fallback : self }
 }
