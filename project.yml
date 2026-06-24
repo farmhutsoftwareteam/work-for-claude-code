@@ -74,6 +74,11 @@ targets:
         # In Debug, both bundle ID and display name fork so the dev build is
         # visible side-by-side with production.
         CFBundleDisplayName: $(BUNDLE_DISPLAY_NAME)
+        # CFBundleName drives the macOS menu-bar app title (Apple menu →
+        # next to the logo). Defaults to PRODUCT_NAME ("Work") if unset, so
+        # the menu bar reads "Work" while the Dock + windows read
+        # "Atelier" — pin it here.
+        CFBundleName: $(BUNDLE_DISPLAY_NAME)
         CFBundleShortVersionString: $(MARKETING_VERSION)
         CFBundleVersion: $(CURRENT_PROJECT_VERSION)
         NSHumanReadableCopyright: ""
