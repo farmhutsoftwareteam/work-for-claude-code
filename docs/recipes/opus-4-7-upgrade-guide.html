@@ -247,12 +247,22 @@
         @keyframes menuRise { from { opacity: 0; transform: translateY(14px); } to { opacity: 1; transform: translateY(0); } }
 
         @media (max-width: 800px) {
-            .responsive-padding { padding-left: 24px !important; padding-right: 24px !important; }
-            .article-title { font-size: 36px !important; }
+            .responsive-padding { padding-left: 22px !important; padding-right: 22px !important; }
+            .article-title { font-size: 36px !important; line-height: 1.04 !important; }
             .article-subtitle { font-size: 18px !important; }
-            .cta-card { flex-direction: column !important; align-items: flex-start !important; }
+            main.responsive-padding { padding-top: 18px !important; padding-bottom: 64px !important; }
+            .cta-card { flex-direction: column !important; align-items: flex-start !important; padding: 26px !important; margin-top: 40px !important; gap: 18px !important; }
             .next-link { flex-direction: column !important; align-items: flex-start !important; gap: 8px !important; }
             .next-link > span:last-child { text-align: left !important; font-size: 17px !important; }
+            /* Article body: tighter type + padding so prose actually breathes. */
+            .article-body h1.article-title { max-width: none !important; }
+            .article-body p { font-size: 17px !important; line-height: 1.6 !important; }
+            .article-body h2 { font-size: 24px !important; margin-top: 36px !important; }
+            .article-body h3 { font-size: 19px !important; margin-top: 28px !important; }
+            .article-body blockquote { font-size: 20px !important; margin: 28px 0 !important; padding-left: 16px !important; max-width: none !important; }
+            .article-body pre { padding: 16px !important; font-size: 12.5px !important; }
+            .article-meta-row { flex-wrap: wrap !important; gap: 10px 14px !important; }
+            .article-meta-row > span:last-child { margin-left: 0 !important; }
             .nav-desktop { display: none !important; }
             .menu-toggle {
                 display: inline-flex !important;
@@ -338,7 +348,7 @@
             </div>
             <h1 class="article-title" style="font-family:var(--helv);font-weight:500;font-size:52px;line-height:1.02;letter-spacing:-.035em;margin:0 0 22px;max-width:20ch;">I used Opus 4.7 for 24 hours. Here&#39;s what I actually found.</h1>
             <p class="article-subtitle" style="font-family:var(--helv);font-size:21px;line-height:1.45;color:rgba(27,28,30,.78);margin:0 0 30px;max-width:46ch;">A day with Claude Opus 4.7. What felt different, what broke, and the four things my old code was silently depending on.</p>
-            <div style="display:flex;align-items:center;gap:16px;font-family:var(--mono);font-size:12px;color:var(--mute);border-top:1px solid var(--line);border-bottom:1px solid var(--line);padding:16px 0;margin-bottom:48px;">
+            <div class="article-meta-row" style="display:flex;align-items:center;gap:16px;font-family:var(--mono);font-size:12px;color:var(--mute);border-top:1px solid var(--line);border-bottom:1px solid var(--line);padding:16px 0;margin-bottom:48px;flex-wrap:wrap;">
                 <svg viewBox="0 0 64 64" style="width:20px;height:20px;color:var(--ink);overflow:visible;"><use href="#dt"/></svg>
                 <span style="color:var(--ink);">the atelier workshop</span>
                 <span style="margin-left:auto;">2026 · apr 17</span>

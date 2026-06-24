@@ -189,7 +189,38 @@
             h1 { font-size: 44px !important; line-height: 1.04 !important; }
             h2 { font-size: 32px !important; line-height: 1.06 !important; }
             .responsive-grid-2 { grid-template-columns: 1fr !important; gap: 36px !important; }
-            .responsive-padding { padding-left: 24px !important; padding-right: 24px !important; }
+            .responsive-padding { padding-left: 22px !important; padding-right: 22px !important; }
+
+            /* Trim outsized vertical padding on every section so the page
+               isn't 90% air on small screens. */
+            .hero-grid { padding-top: 56px !important; padding-bottom: 48px !important; }
+            section[data-screen-label] > .responsive-padding { padding-top: 56px !important; padding-bottom: 56px !important; }
+
+            /* Six-cell hero workshop mockup: 3 cols → 2 cols. Three was too
+               cramped for the mono labels at 360px. */
+            .mockup-grid { grid-template-columns: 1fr 1fr !important; }
+
+            /* "On the workbench" catalog: 2 cols → 1 col. Two columns at
+               narrow widths squeezed every card title. */
+            .catalog-grid { grid-template-columns: 1fr !important; }
+
+            /* Loops & harnesses dark spotlight: oversized h2 + heavy padding
+               override at this breakpoint. */
+            .loops-title { font-size: 44px !important; line-height: 1.02 !important; }
+            .loops-card { padding: 24px !important; }
+            .loops-prose { max-width: none !important; }
+
+            /* Agents diagram: 3 cols of mono chips → 1 col stacked. */
+            .agents-card { padding: 22px !important; }
+            .agents-row { grid-template-columns: 1fr !important; }
+
+            /* Download band: trim heavy vertical air. */
+            .download-band { padding-top: 64px !important; padding-bottom: 64px !important; }
+
+            /* Footer nav: stack the two column groups instead of forcing a
+               horizontal flex with a 48px gap. */
+            .footer-nav { gap: 24px !important; }
+
             .nav-desktop { display: none !important; }
             .menu-toggle {
                 display: inline-flex !important;
@@ -285,7 +316,7 @@
                     atelier - workshop
                     <span style="margin-left:auto;">6 sessions</span>
                 </div>
-                <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:1px;background:var(--line);">
+                <div class="mockup-grid" style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:1px;background:var(--line);">
                     <div style="background:var(--paper2);padding:14px;border-top:2px solid var(--ink);"><div style="font-family:var(--mono);font-size:10px;color:var(--ink);margin-bottom:9px;">01 ▸ auth-svc</div><div style="height:4px;background:var(--line2);width:90%;margin-bottom:6px;"></div><div style="height:4px;background:var(--line);width:70%;margin-bottom:6px;"></div><div style="height:4px;background:var(--line);width:80%;margin-bottom:6px;"></div><div style="display:flex;align-items:center;gap:4px;"><div style="height:4px;background:var(--line2);width:40%;"></div><span style="width:6px;height:11px;background:var(--ink);display:inline-block;animation:blink 1.1s steps(1) infinite;"></span></div></div>
                     <div style="background:var(--paper2);padding:14px;"><div style="font-family:var(--mono);font-size:10px;color:var(--mute);margin-bottom:9px;">02 ▸ web</div><div style="height:4px;background:var(--line);width:80%;margin-bottom:6px;"></div><div style="height:4px;background:var(--line);width:60%;margin-bottom:6px;"></div><div style="height:4px;background:var(--line);width:85%;"></div></div>
                     <div style="background:var(--paper2);padding:14px;"><div style="font-family:var(--mono);font-size:10px;color:var(--mute);margin-bottom:9px;">03 ▸ infra</div><div style="height:4px;background:var(--line);width:70%;margin-bottom:6px;"></div><div style="height:4px;background:var(--line);width:90%;margin-bottom:6px;"></div><div style="height:4px;background:var(--line);width:50%;"></div></div>
@@ -307,7 +338,7 @@
                     <h2 style="font-family:var(--helv);font-weight:500;font-size:34px;line-height:1.05;letter-spacing:-.025em;margin:0;">The whole<br>Claude&nbsp;Code stack.</h2>
                     <p style="font-family:var(--mono);font-size:12px;line-height:1.7;color:var(--mute);margin-top:18px;">Every primitive - sessions, agents, loops, harnesses, hooks, skills, MCP, plugins - in one real interface. No hidden state, no config you can't see.</p>
                 </div>
-                <div style="display:grid;grid-template-columns:1fr 1fr;gap:1px;background:var(--line);border:1px solid var(--line);">
+                <div class="catalog-grid" style="display:grid;grid-template-columns:1fr 1fr;gap:1px;background:var(--line);border:1px solid var(--line);">
                     <div style="background:var(--paper2);padding:22px 22px 24px;">
                         <div style="font-family:var(--mono);font-size:11px;color:var(--mute);margin-bottom:11px;">01 · sessions</div>
                         <h3 style="font-family:var(--helv);font-weight:500;font-size:18px;letter-spacing:-.01em;margin:0 0 6px;">Six parallel sessions</h3>
@@ -371,9 +402,9 @@
             </div>
             <div class="responsive-grid-2" style="display:grid;grid-template-columns:1.05fr .95fr;gap:76px;align-items:center;">
                 <div>
-                    <h2 style="font-family:var(--helv);font-weight:500;font-size:72px;line-height:.97;letter-spacing:-.04em;margin:0 0 30px;color:var(--paper);">Stop prompting.<br>Start running loops.</h2>
-                    <p style="font-family:var(--helv);font-size:20px;line-height:1.5;color:rgba(233,234,232,.82);margin:0 0 18px;max-width:42ch;">Give Claude a goal it can check, a verifier to grade the work, and a turn budget so it can't run away. Atelier builds the loop, watches every turn, and stops at the finish line.</p>
-                    <p style="font-family:var(--helv);font-size:20px;line-height:1.5;color:rgba(233,234,232,.82);margin:0 0 32px;max-width:42ch;">For longer work, wrap it in a harness - a plan&nbsp;→&nbsp;work&nbsp;→&nbsp;review cycle with a progress file and checkpoints, so a fresh context picks up exactly where the last left off.</p>
+                    <h2 class="loops-title" style="font-family:var(--helv);font-weight:500;font-size:72px;line-height:.97;letter-spacing:-.04em;margin:0 0 30px;color:var(--paper);">Stop prompting.<br>Start running loops.</h2>
+                    <p class="loops-prose" style="font-family:var(--helv);font-size:20px;line-height:1.5;color:rgba(233,234,232,.82);margin:0 0 18px;max-width:42ch;">Give Claude a goal it can check, a verifier to grade the work, and a turn budget so it can't run away. Atelier builds the loop, watches every turn, and stops at the finish line.</p>
+                    <p class="loops-prose" style="font-family:var(--helv);font-size:20px;line-height:1.5;color:rgba(233,234,232,.82);margin:0 0 32px;max-width:42ch;">For longer work, wrap it in a harness - a plan&nbsp;→&nbsp;work&nbsp;→&nbsp;review cycle with a progress file and checkpoints, so a fresh context picks up exactly where the last left off.</p>
                     <div style="display:flex;gap:9px;flex-wrap:wrap;font-family:var(--mono);font-size:11.5px;margin-bottom:36px;">
                         <span style="border:1px solid rgba(233,234,232,.32);padding:6px 11px;">/goal</span>
                         <span style="border:1px solid rgba(233,234,232,.32);padding:6px 11px;">verifier model</span>
@@ -387,7 +418,7 @@
                     </a>
                 </div>
 
-                <div style="border:1px solid rgba(233,234,232,.26);background:rgba(233,234,232,.04);padding:36px;">
+                <div class="loops-card" style="border:1px solid rgba(233,234,232,.26);background:rgba(233,234,232,.04);padding:36px;">
                     <div style="display:flex;justify-content:space-between;align-items:center;font-family:var(--mono);font-size:10px;letter-spacing:.12em;text-transform:uppercase;color:rgba(233,234,232,.5);margin-bottom:28px;">
                         <span>the loop</span>
                         <span style="display:flex;align-items:center;gap:7px;"><span style="width:7px;height:7px;border-radius:50%;background:var(--paper);display:inline-block;animation:loopedge 1.2s ease-in-out infinite;"></span>running</span>
@@ -426,10 +457,10 @@
     <!-- ============ SPOTLIGHT: agents ============ -->
     <section data-screen-label="Agents" style="border-top:1px solid var(--line);background:var(--paper2);">
         <div class="responsive-padding responsive-grid-2" style="max-width:1180px;margin:0 auto;padding:80px 40px;display:grid;grid-template-columns:1fr 1fr;gap:64px;align-items:center;">
-            <div style="border:1px solid var(--line2);background:var(--paper);padding:30px;order:0;">
+            <div class="agents-card" style="border:1px solid var(--line2);background:var(--paper);padding:30px;order:0;">
                 <div style="font-family:var(--mono);font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:var(--mute);margin-bottom:22px;">delegation</div>
                 <div style="border:2px solid var(--ink);background:var(--ink);color:var(--paper);padding:13px 15px;font-family:var(--mono);font-size:12px;display:flex;justify-content:space-between;margin-bottom:18px;"><span>main session</span><span style="color:rgba(233,234,232,.6);">your context</span></div>
-                <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;">
+                <div class="agents-row" style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;">
                     <div style="border:1px solid var(--line2);background:var(--paper2);padding:11px;font-family:var(--mono);font-size:10.5px;"><div style="margin-bottom:6px;">reviewer</div><div style="color:var(--mute);">isolated</div></div>
                     <div style="border:1px solid var(--line2);background:var(--paper2);padding:11px;font-family:var(--mono);font-size:10.5px;"><div style="margin-bottom:6px;">explorer</div><div style="color:var(--mute);">isolated</div></div>
                     <div style="border:1px solid var(--line2);background:var(--paper2);padding:11px;font-family:var(--mono);font-size:10.5px;"><div style="margin-bottom:6px;">tests</div><div style="color:var(--mute);">isolated</div></div>
@@ -469,7 +500,7 @@
 
     <!-- ============ DOWNLOAD BAND ============ -->
     <section id="download" data-screen-label="Download" style="background:var(--ink);color:var(--paper);">
-        <div class="responsive-padding" style="max-width:1180px;margin:0 auto;padding:84px 40px;text-align:center;">
+        <div class="responsive-padding download-band" style="max-width:1180px;margin:0 auto;padding:84px 40px;text-align:center;">
             <svg viewBox="0 0 64 64" style="width:46px;height:46px;color:var(--paper);overflow:visible;margin-bottom:26px;"><use href="#dt"/></svg>
             <h2 style="font-family:var(--helv);font-weight:500;font-size:46px;line-height:1.03;letter-spacing:-.03em;margin:0 0 18px;">Open the workshop.</h2>
             <p style="font-family:var(--helv);font-size:18px;color:rgba(233,234,232,.72);margin:0 auto 36px;max-width:38ch;">Free for macOS. Windows and Linux are on the bench.</p>
@@ -491,7 +522,7 @@
                     <div style="font-family:var(--mono);font-size:11px;color:var(--mute);">a workshop for claude code</div>
                 </div>
             </div>
-            <nav style="display:flex;gap:48px;font-family:var(--mono);font-size:12.5px;">
+            <nav class="footer-nav" style="display:flex;gap:48px;font-family:var(--mono);font-size:12.5px;flex-wrap:wrap;">
                 <div style="display:flex;flex-direction:column;gap:9px;">
                     <span style="color:var(--mute);text-transform:uppercase;letter-spacing:.1em;font-size:10px;">product</span>
                     <a href="#download" style="color:var(--ink);text-decoration:none;">download</a>

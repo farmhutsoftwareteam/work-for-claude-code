@@ -223,9 +223,14 @@ function renderPage(items) {
         @keyframes menuRise { from { opacity: 0; transform: translateY(14px); } to { opacity: 1; transform: translateY(0); } }
 
         @media (max-width: 800px) {
-            .responsive-padding { padding-left: 24px !important; padding-right: 24px !important; }
-            .release-article { grid-template-columns: 1fr !important; gap: 16px !important; padding: 28px 0 !important; }
+            .responsive-padding { padding-left: 22px !important; padding-right: 22px !important; }
+            .release-article { grid-template-columns: 1fr !important; gap: 14px !important; padding: 26px 0 !important; }
+            .release-body h3 { font-size: 19px !important; }
+            .release-body ul { padding-left: 18px !important; }
+            .release-body li { font-size: 15.5px !important; line-height: 1.55 !important; }
+            .release-body p { font-size: 15.5px !important; line-height: 1.6 !important; }
             h1 { font-size: 40px !important; }
+            main.responsive-padding { padding-top: 48px !important; padding-bottom: 64px !important; }
             .nav-desktop { display: none !important; }
             .menu-toggle {
                 display: inline-flex !important;
