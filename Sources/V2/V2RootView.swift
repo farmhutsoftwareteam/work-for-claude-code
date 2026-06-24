@@ -78,6 +78,13 @@ struct V2RootView: View {
         .task {
             appState.attach(terminals: terminals)
             appState.resolveBinary()
+            // v1's ContentView normally triggers Store.load on appear, but in
+            // DEBUG we miniaturize v1 immediately so its .task may not fire
+            // before we read store.projects. Kick off our own load — it's
+            // idempotent and dedups via Store's isLoading flag.
+            if store.projects.isEmpty {
+                await store.load()
+            }
             if appState.selectedProjectCwd == nil, let first = store.projects.first {
                 appState.selectProject(cwd: first.cwd, name: first.displayName)
             }
