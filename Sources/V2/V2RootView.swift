@@ -51,11 +51,16 @@ struct V2RootView: View {
 
             if appState.searchOpen {
                 V2SearchOverlay()
-                    .transition(.opacity.combined(with: .move(edge: .top)))
+                    .transition(
+                        .asymmetric(
+                            insertion: .opacity.combined(with: .scale(scale: 0.98, anchor: .top)),
+                            removal: .opacity
+                        )
+                    )
                     .zIndex(60)
             }
         }
-        .animation(.easeOut(duration: 0.15), value: appState.searchOpen)
+        .animation(.spring(response: 0.28, dampingFraction: 0.86), value: appState.searchOpen)
         .background(palette.paper)
         .environment(\.v2, palette)
         .environmentObject(appState)

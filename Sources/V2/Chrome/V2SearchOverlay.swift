@@ -16,8 +16,15 @@ struct V2SearchOverlay: View {
 
     var body: some View {
         ZStack {
-            Color.black.opacity(0.46)
+            // Subtle vibrancy backdrop — the .ultraThinMaterial lets the
+            // chrome behind read through while pushing it visually back. A
+            // thin ink wash on top keeps the modal legible in light mode
+            // without going full opaque.
+            Rectangle()
+                .fill(.ultraThinMaterial)
                 .ignoresSafeArea()
+                .overlay(Color.black.opacity(0.06).ignoresSafeArea())
+                .contentShape(Rectangle())
                 .onTapGesture { close() }
 
             VStack(spacing: 0) {
@@ -27,12 +34,17 @@ struct V2SearchOverlay: View {
                 Divider().background(v2.line)
                 footer
             }
-            .frame(width: 580)
-            .frame(maxHeight: 520)
-            .background(v2.paper2)
-            .overlay(Rectangle().stroke(v2.line2, lineWidth: 1))
-            .shadow(color: .black.opacity(0.22), radius: 24, x: 0, y: 16)
-            .padding(.top, 96)
+            .frame(width: 560)
+            .frame(maxHeight: 480)
+            .background(.regularMaterial)
+            .overlay(
+                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                    .stroke(v2.line2, lineWidth: 0.5)
+            )
+            .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+            .shadow(color: .black.opacity(0.32), radius: 36, x: 0, y: 18)
+            .shadow(color: .black.opacity(0.10), radius: 2, x: 0, y: 1)
+            .padding(.top, 110)
             .frame(maxHeight: .infinity, alignment: .top)
         }
         .onAppear {
