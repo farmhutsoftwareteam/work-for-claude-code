@@ -1,0 +1,139 @@
+// Typed wrapper around the subprocess stdin FileHandle. Exposes
+// sendUserText / respondToPermission / interrupt / setPermissionMode /
+// setModel instead of free-form NDJSON writes.
+//
+// Each method writes one NDJSON line (envelope + "\n") to the binary's stdin.
+// All writes are serialized via the actor so we can't interleave partial
+// envelopes from two callers.
+
+import Foundation
+import OSLog
+
+private let log = Logger(subsystem: "com.munyamakosa.work", category: "stdin")
+
+actor StreamInputWriter {
+    private let fileHandle: FileHandle
+    private let encoder: JSONEncoder
+    private var requestCounter: Int = 0
+    private var closed = false
+
+    init(fileHandle: FileHandle) {
+        self.fileHandle = fileHandle
+        let enc = JSONEncoder()
+        enc.outputFormatting = [.withoutEscapingSlashes]
+        self.encoder = enc
+    }
+
+    // MARK: - User turns
+
+    func sendUserText(_ text: String) throws {
+        try writeLine(UserEnvelope(message: .init(role: "user", content: text)))
+    }
+
+    // MARK: - Permissions
+
+    enum Behavior: String { case allow, deny }
+
+    func respondToPermission(requestId: String, behavior: Behavior, message: String? = nil) throws {
+        try writeLine(ControlResponseEnvelope(
+            response: .init(
+                subtype: "success",
+                requestId: requestId,
+                response: .init(behavior: behavior.rawValue, message: message)
+            )
+        ))
+    }
+
+    // MARK: - Control requests
+
+    func interrupt() throws {
+        try writeLine(ControlRequestEnvelope(
+            requestId: nextRequestId(prefix: "interrupt"),
+            request: .init(subtype: "interrupt")
+        ))
+    }
+
+    func setPermissionMode(_ mode: String) throws {
+        try writeLine(ControlRequestEnvelope(
+            requestId: nextRequestId(prefix: "perm_mode"),
+            request: .init(subtype: "set_permission_mode", mode: mode)
+        ))
+    }
+
+    func setModel(_ model: String) throws {
+        try writeLine(ControlRequestEnvelope(
+            requestId: nextRequestId(prefix: "model"),
+            request: .init(subtype: "set_model", model: model)
+        ))
+    }
+
+    // MARK: - Lifecycle
+
+    func close() throws {
+        guard !closed else { return }
+        closed = true
+        try fileHandle.close()
+    }
+
+    // MARK: - Internals
+
+    private func nextRequestId(prefix: String) -> String {
+        requestCounter += 1
+        return "\(prefix)_\(requestCounter)"
+    }
+
+    private func writeLine<T: Encodable>(_ value: T) throws {
+        guard !closed else { throw WriteError.closed }
+        let data = try encoder.encode(value)
+        try fileHandle.write(contentsOf: data)
+        try fileHandle.write(contentsOf: Data([0x0A]))
+    }
+
+    enum WriteError: Error { case closed }
+
+    // MARK: - Envelopes
+
+    private struct UserEnvelope: Encodable {
+        let type = "user"
+        let message: UserMessage
+    }
+    private struct UserMessage: Encodable {
+        let role: String
+        let content: String
+    }
+    private struct ControlRequestEnvelope: Encodable {
+        let type = "control_request"
+        let requestId: String
+        let request: ControlRequestBody
+
+        enum CodingKeys: String, CodingKey {
+            case type
+            case requestId = "request_id"
+            case request
+        }
+    }
+    private struct ControlRequestBody: Encodable {
+        let subtype: String
+        var mode: String? = nil
+        var model: String? = nil
+    }
+    private struct ControlResponseEnvelope: Encodable {
+        let type = "control_response"
+        let response: ControlResponseBody
+    }
+    private struct ControlResponseBody: Encodable {
+        let subtype: String
+        let requestId: String
+        let response: PermissionResponse
+
+        enum CodingKeys: String, CodingKey {
+            case subtype
+            case requestId = "request_id"
+            case response
+        }
+    }
+    private struct PermissionResponse: Encodable {
+        let behavior: String
+        let message: String?
+    }
+}
