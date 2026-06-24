@@ -1,9 +1,9 @@
-// V2 preview window root. Three-column layout — left rail / main column / right dock.
-// Commit 1: placeholders. Each region gets its real content as we land sub-issues.
+// V2 root — the entire app window composed from real components.
+// Mock data via V2MockData drives every region until Phase 4 wires the
+// real StreamSession engine.
 //
-// Hot reload: every view in V2/ uses @ObserveInjection so InjectionIII can swap
-// the SwiftUI body live without rebuilding. Install InjectionIII from
-// https://github.com/krzysztofzablocki/Inject for the live-edit loop.
+// Hot reload: every view uses @ObserveInjection + .enableInjection() so
+// InjectionIII can swap view bodies live without rebuilding.
 
 import SwiftUI
 import Inject
@@ -11,6 +11,9 @@ import Inject
 struct V2RootView: View {
     @ObserveInjection private var inject
     @State private var theme: V2ThemeChoice = .light
+    @State private var activeProject: V2Project = V2Mock.projects[0]
+    @State private var activeSession: V2Session = V2Mock.sessions[0]
+    @State private var dockPanel: V2DockPanel = .loop
 
     private var palette: V2Palette {
         theme == .dark ? V2Theme.dark : V2Theme.light
@@ -19,7 +22,23 @@ struct V2RootView: View {
     var body: some View {
         VStack(spacing: 0) {
             V2TitleBar(theme: $theme)
-            V2BodyLayout()
+            HStack(spacing: 0) {
+                V2LeftRail(activeProject: $activeProject)
+                    .frame(width: 264)
+
+                VStack(spacing: 0) {
+                    V2SessionTabs(activeSession: $activeSession)
+                    V2SessionHeader(dockPanel: $dockPanel, activeProject: activeProject)
+                    V2TranscriptView()
+                    V2Composer()
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .background(palette.paper)
+
+                V2RightDock(panel: $dockPanel)
+                    .frame(width: 360)
+            }
+            .frame(maxHeight: .infinity)
         }
         .background(palette.paper)
         .environment(\.v2, palette)
@@ -29,141 +48,6 @@ struct V2RootView: View {
 }
 
 enum V2ThemeChoice { case light, dark }
-
-// MARK: - Title bar (46px)
-
-private struct V2TitleBar: View {
-    @ObserveInjection private var inject
-    @Binding var theme: V2ThemeChoice
-    @Environment(\.v2) private var v2
-
-    var body: some View {
-        HStack(spacing: 16) {
-            // macOS traffic lights live in the system chrome; we leave space for them.
-            Spacer().frame(width: 70)
-
-            // Brand badge.
-            HStack(spacing: 9) {
-                V2DovetailMark(size: 18)
-                Text("atelier")
-                    .font(.system(size: 16, weight: .medium))
-                    .kerning(-0.16)
-                Text("preview")
-                    .font(.system(size: 11, design: .monospaced))
-                    .foregroundColor(v2.faint)
-                    .padding(.leading, 6)
-            }
-            .foregroundColor(v2.ink)
-
-            Spacer()
-
-            // Right cluster — theme toggle + workspace label.
-            HStack(spacing: 12) {
-                Button {
-                    theme = theme == .dark ? .light : .dark
-                } label: {
-                    Image(systemName: theme == .dark ? "sun.max" : "moon")
-                        .font(.system(size: 13))
-                        .foregroundColor(v2.mute)
-                        .frame(width: 28, height: 28)
-                }
-                .buttonStyle(.plain)
-                .help("Toggle theme")
-
-                Text("workshop")
-                    .font(.system(size: 11, design: .monospaced))
-                    .foregroundColor(v2.faint)
-            }
-        }
-        .padding(.horizontal, 16)
-        .frame(height: 46)
-        .background(v2.paper2)
-        .overlay(alignment: .bottom) {
-            Rectangle().fill(v2.line).frame(height: 1)
-        }
-        .enableInjection()
-    }
-}
-
-// MARK: - Body layout (three columns)
-
-private struct V2BodyLayout: View {
-    @ObserveInjection private var inject
-
-    var body: some View {
-        HStack(spacing: 0) {
-            V2LeftRailPlaceholder()
-                .frame(width: 264)
-            V2MainColumnPlaceholder()
-                .frame(maxWidth: .infinity)
-            V2RightDockPlaceholder()
-                .frame(width: 360)
-        }
-        .frame(maxHeight: .infinity)
-        .enableInjection()
-    }
-}
-
-// MARK: - Region placeholders
-
-private struct V2LeftRailPlaceholder: View {
-    @ObserveInjection private var inject
-    @Environment(\.v2) private var v2
-    var body: some View {
-        V2RegionPlaceholder(title: "LEFT RAIL", subtitle: "search · projects · workbench tiles", side: .trailing)
-            .background(v2.paper2)
-            .enableInjection()
-    }
-}
-
-private struct V2MainColumnPlaceholder: View {
-    @ObserveInjection private var inject
-    @Environment(\.v2) private var v2
-    var body: some View {
-        V2RegionPlaceholder(title: "MAIN COLUMN", subtitle: "tabs · session header · transcript · composer", side: .none)
-            .background(v2.paper)
-            .enableInjection()
-    }
-}
-
-private struct V2RightDockPlaceholder: View {
-    @ObserveInjection private var inject
-    @Environment(\.v2) private var v2
-    var body: some View {
-        V2RegionPlaceholder(title: "RIGHT DOCK", subtitle: "loop · agents · mcp panels", side: .leading)
-            .background(v2.paper2)
-            .enableInjection()
-    }
-}
-
-private struct V2RegionPlaceholder: View {
-    @Environment(\.v2) private var v2
-    let title: String
-    let subtitle: String
-    let side: PlaceholderBorderSide
-
-    enum PlaceholderBorderSide { case leading, trailing, none }
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text(title)
-                .font(.system(size: 10, weight: .medium, design: .monospaced))
-                .kerning(1.2)
-                .foregroundColor(v2.faint)
-            Text(subtitle)
-                .font(.system(size: 11, design: .monospaced))
-                .foregroundColor(v2.mute)
-            Spacer()
-        }
-        .padding(14)
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-        .overlay(alignment: side == .leading ? .leading : (side == .trailing ? .trailing : .top)) {
-            if side != .none {
-                Rectangle().fill(v2.line).frame(width: 1)
-            }
-        }
-    }
-}
 
 // MARK: - Dovetail mark (the brand glyph)
 
@@ -175,14 +59,11 @@ struct V2DovetailMark: View {
             let s = canvasSize.width
             let stroke = StrokeStyle(lineWidth: s * 0.094, lineCap: .square, lineJoin: .miter)
 
-            // Outer square — rect(7,7,50,50) in a 64×64 viewBox = inset 0.109 from edge,
-            // side length 0.781.
             let inset = s * 0.109
             let side = s * 0.781
             let rect = Path(CGRect(x: inset, y: inset, width: side, height: side))
             context.stroke(rect, with: .color(.primary), style: stroke)
 
-            // Inner dovetail path: M32 7 L32 24 L46 28 L46 36 L32 40 L32 57
             func pt(_ x: CGFloat, _ y: CGFloat) -> CGPoint {
                 CGPoint(x: (x / 64) * s, y: (y / 64) * s)
             }
@@ -203,9 +84,5 @@ struct V2DovetailMark: View {
 #Preview("V2 root — light") {
     V2RootView()
         .frame(width: 1440, height: 900)
-}
-
-#Preview("Dovetail mark") {
-    V2DovetailMark(size: 64).padding(40)
 }
 #endif

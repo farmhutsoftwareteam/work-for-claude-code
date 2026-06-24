@@ -46,18 +46,34 @@ targets:
       - package: Inject
         product: Inject
     settings:
-      PRODUCT_BUNDLE_IDENTIFIER: com.munyamakosa.work
-      CODE_SIGN_ENTITLEMENTS: Work.entitlements
-      ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+      base:
+        CODE_SIGN_ENTITLEMENTS: Work.entitlements
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        # Default display name. Per-config overrides below.
+        BUNDLE_DISPLAY_NAME: Atelier
+      configs:
+        # Debug builds get a SIBLING bundle ID + a distinct display name so
+        # they coexist with the user's production Atelier in /Applications.
+        # Without this, macOS treats both binaries as the same app and
+        # launching the dev build replaces the production app the user is
+        # actively running for daily work.
+        Debug:
+          PRODUCT_BUNDLE_IDENTIFIER: com.munyamakosa.work.dev
+          BUNDLE_DISPLAY_NAME: Atelier Dev
+        Release:
+          PRODUCT_BUNDLE_IDENTIFIER: com.munyamakosa.work
+          BUNDLE_DISPLAY_NAME: Atelier
     info:
       path: Sources/Info.plist
       properties:
         # Display name is the brand surface — what macOS shows in the Dock,
         # menu bar, Apple menu, Force Quit, and every system alert. The bundle
         # identifier and the on-disk .app filename intentionally stay "Work" /
-        # com.munyamakosa.work so existing 1.3.x users get the rebrand
-        # seamlessly via Sparkle (Sparkle keys on bundle ID, not name).
-        CFBundleDisplayName: Atelier
+        # com.munyamakosa.work in Release so existing 1.3.x users get the
+        # rebrand seamlessly via Sparkle (Sparkle keys on bundle ID, not name).
+        # In Debug, both bundle ID and display name fork so the dev build is
+        # visible side-by-side with production.
+        CFBundleDisplayName: $(BUNDLE_DISPLAY_NAME)
         CFBundleShortVersionString: $(MARKETING_VERSION)
         CFBundleVersion: $(CURRENT_PROJECT_VERSION)
         NSHumanReadableCopyright: ""

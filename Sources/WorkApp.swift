@@ -58,6 +58,7 @@ struct WorkApp: App {
                 .environmentObject(store)
                 .environmentObject(updateState)
                 .environmentObject(terminals)
+                .modifier(V2AutoOpenInDebug())
                 .onAppear {
                     AppDelegate.sharedTerminals = terminals
                     checkTerminalPermission()
