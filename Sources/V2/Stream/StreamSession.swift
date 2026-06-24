@@ -107,6 +107,14 @@ final class StreamSession: ObservableObject {
             "--verbose"
         ]
         process.currentDirectoryURL = cwd
+        // Critical: GUI-launched apps inherit launchd's stripped PATH which
+        // doesn't include ~/.local/bin, Homebrew, node managers, etc. The v1
+        // TerminalsController solves this with enrichedEnvironment(); we
+        // mirror that logic here without the SwiftTerm dependency. Without
+        // this, claude either can't find its own node runtime or fails to
+        // initialize silently — and the session sits on .initializing
+        // forever because no system/init is ever emitted.
+        process.environment = Self.enrichedEnvironment()
 
         let stdinPipe = Pipe()
         let stdoutPipe = Pipe()
@@ -176,14 +184,21 @@ final class StreamSession: ObservableObject {
             }
         }
 
-        // Drain stderr — log only; we don't surface this in the UI yet.
+        // Drain stderr — log + tee to /tmp so we can diagnose silent
+        // spawn failures. If claude is printing 'command not found: node'
+        // or similar bootstrap errors, this is where they show up.
+        let stderrDebug = "/tmp/atelier-v2-stream-debug.stderr.log"
+        try? Data().write(to: URL(fileURLWithPath: stderrDebug))
+        let stderrDebugHandle = (try? FileHandle(forWritingTo: URL(fileURLWithPath: stderrDebug))) ?? FileHandle.nullDevice
         let stderrHandle = stderrPipe.fileHandleForReading
         stderrHandle.readabilityHandler = { handle in
             let chunk = handle.availableData
             guard !chunk.isEmpty else {
                 handle.readabilityHandler = nil
+                try? stderrDebugHandle.close()
                 return
             }
+            try? stderrDebugHandle.write(contentsOf: chunk)
             if let line = String(data: chunk, encoding: .utf8)?
                 .trimmingCharacters(in: .whitespacesAndNewlines),
                !line.isEmpty {
@@ -202,6 +217,59 @@ final class StreamSession: ObservableObject {
         log.info("StreamSession ndjson stream ended")
         if state == .working || state == .initializing {
             state = .terminated(reason: "stream closed")
+        }
+    }
+
+    // MARK: - Enriched environment
+
+    /// PATH-enriched environment for the spawned `claude` process. GUI-
+    /// launched apps inherit launchd's stripped PATH which doesn't include
+    /// the usual dev-tool install locations. Adding them is what makes
+    /// `~/.local/bin/claude` actually find its dependencies. Mirrors v1's
+    /// TerminalsController.enrichedEnvironment but without the SwiftTerm
+    /// dependency (we read ProcessInfo directly).
+    private static func enrichedEnvironment() -> [String: String] {
+        var env = ProcessInfo.processInfo.environment
+        let home = NSHomeDirectory()
+        let candidates = [
+            "\(home)/.local/bin",          // Anthropic native claude install
+            "\(home)/.claude/local",       // alt native install location
+            "\(home)/.cargo/bin",          // uv / uvx
+            "\(home)/.volta/bin",          // volta node manager
+            "\(home)/.nvm/versions/node/current/bin",
+            "/opt/homebrew/bin",
+            "/opt/homebrew/sbin",
+            "/usr/local/bin",
+            "/usr/local/sbin"
+        ]
+        let fm = FileManager.default
+        let basePath = env["PATH"] ?? "/usr/bin:/bin:/usr/sbin:/sbin"
+        let existing = Set(basePath.split(separator: ":").map(String.init))
+        let additions = candidates.filter { fm.fileExists(atPath: $0) && !existing.contains($0) }
+        if !additions.isEmpty {
+            env["PATH"] = additions.joined(separator: ":") + ":" + basePath
+        }
+        // Sane defaults for HOME + USER if they're missing — happens in
+        // launchd contexts.
+        if env["HOME"] == nil { env["HOME"] = home }
+        if env["USER"] == nil { env["USER"] = NSUserName() }
+        // TERM helps tools that check stdout-is-a-tty heuristics.
+        env["TERM"] = "xterm-256color"
+        return env
+    }
+
+    // MARK: - Public model control
+
+    /// Tell claude to use a different model for subsequent turns. Goes
+    /// through the control protocol on stdin — see StreamInputWriter.
+    func setModel(_ model: String) {
+        Task {
+            do {
+                try await inputWriter?.setModel(model)
+                self.model = model
+            } catch {
+                log.error("setModel failed: \(error.localizedDescription, privacy: .public)")
+            }
         }
     }
 
@@ -238,6 +306,12 @@ final class StreamSession: ObservableObject {
     /// Send a `control_request` to interrupt the current turn.
     func interrupt() {
         Task { try? await inputWriter?.interrupt() }
+    }
+
+    /// Set the permission mode directly (used by the runningPill menu).
+    func setPermissionMode(_ mode: String) {
+        permissionMode = mode
+        Task { try? await inputWriter?.setPermissionMode(mode) }
     }
 
     /// Cycle through Claude's permission modes.

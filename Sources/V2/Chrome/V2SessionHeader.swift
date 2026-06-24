@@ -144,21 +144,87 @@ struct V2SessionHeader: View {
     }
 
     private var runningPill: some View {
-        HStack(spacing: 7) {
-            stateDot
-            Text(stateLabel)
-                .font(.system(size: 11.5, design: .monospaced))
-                .fixedSize(horizontal: true, vertical: false)
-            Image(systemName: "chevron.down")
-                .font(.system(size: 8, weight: .medium))
-                .padding(.leading, 2)
+        Menu {
+            modelMenuSection
+            permissionMenuSection
+            Divider()
+            Button("Restart session") { restartActiveSession() }
+                .disabled(appState.activeSession == nil)
+            Button("Switch to terminal (Mode A)") { appState.flipActiveMode() }
+                .disabled(appState.activeTab == nil)
+        } label: {
+            HStack(spacing: 7) {
+                stateDot
+                Text(stateLabel)
+                    .font(.system(size: 11.5, design: .monospaced))
+                    .fixedSize(horizontal: true, vertical: false)
+                Image(systemName: "chevron.down")
+                    .font(.system(size: 8, weight: .medium))
+                    .padding(.leading, 2)
+            }
+            .foregroundColor(v2.ink)
+            .fixedSize(horizontal: true, vertical: false)
+            .padding(.horizontal, 12)
+            .padding(.vertical, 7)
+            .background(v2.card)
+            .overlay(Rectangle().stroke(v2.line2, lineWidth: 1))
         }
-        .foregroundColor(v2.ink)
+        .menuStyle(.borderlessButton)
+        .menuIndicator(.hidden)
         .fixedSize(horizontal: true, vertical: false)
-        .padding(.horizontal, 12)
-        .padding(.vertical, 7)
-        .background(v2.card)
-        .overlay(Rectangle().stroke(v2.line2, lineWidth: 1))
+    }
+
+    @ViewBuilder
+    private var modelMenuSection: some View {
+        Section("Model") {
+            ForEach(V2Model.allCases) { model in
+                Button {
+                    appState.activeSession?.setModel(model.rawValue)
+                } label: {
+                    HStack {
+                        Text(model.label)
+                        if appState.activeSession?.model == model.rawValue
+                            || appState.activeSession?.model.contains(model.rawValue) == true {
+                            Image(systemName: "checkmark")
+                        }
+                    }
+                }
+                .disabled(appState.activeSession == nil)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var permissionMenuSection: some View {
+        Section("Permission mode") {
+            ForEach(V2PermissionMode.allCases) { mode in
+                Button {
+                    appState.activeSession?.setPermissionMode(mode.rawValue)
+                } label: {
+                    HStack {
+                        Text(mode.label)
+                        if appState.activeSession?.permissionMode == mode.rawValue {
+                            Image(systemName: "checkmark")
+                        }
+                    }
+                }
+                .disabled(appState.activeSession == nil)
+            }
+        }
+    }
+
+    private func restartActiveSession() {
+        guard let tab = appState.activeTab,
+              let session = tab.streamSession,
+              let binary = appState.claudeBinary else { return }
+        session.stop()
+        // Brief delay to let the previous process clean up. The new
+        // StreamSession is built fresh by V2AppState.attachLoop pattern —
+        // here we just call session.start again on the existing one.
+        let cwd = URL(fileURLWithPath: tab.projectCwd)
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
+            session.start(cwd: cwd, claudeURL: binary)
+        }
     }
 
     @ViewBuilder
@@ -234,4 +300,32 @@ struct V2PulseDot: View {
 
 private extension String {
     func ifEmpty(_ fallback: String) -> String { isEmpty ? fallback : self }
+}
+
+// MARK: - Model + permission catalogs (used by the running pill menu)
+
+enum V2Model: String, CaseIterable, Identifiable {
+    case opus, sonnet, haiku
+    var id: String { rawValue }
+    var label: String { rawValue.capitalized }
+}
+
+enum V2PermissionMode: String, CaseIterable, Identifiable {
+    case `default`
+    case acceptEdits
+    case plan
+    case dontAsk
+    case bypassPermissions
+    case auto
+    var id: String { rawValue }
+    var label: String {
+        switch self {
+        case .default:           return "default (ask each time)"
+        case .acceptEdits:       return "accept edits"
+        case .plan:              return "plan mode"
+        case .dontAsk:           return "don't ask"
+        case .bypassPermissions: return "bypass permissions"
+        case .auto:              return "auto"
+        }
+    }
 }
