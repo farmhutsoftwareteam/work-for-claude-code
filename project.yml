@@ -86,7 +86,32 @@ targets:
         # Silently download updates in the background; user approves install via the badge.
         SUAutomaticallyUpdate: true
     scheme:
-      testTargets: []
+      testTargets:
+        - WorkTests
+
+  # Conformance suite (issue #28). Replays captured NDJSON fixtures through
+  # the StreamEvent decoder and asserts the parser handles every event shape
+  # we've seen from claude. Fixture privacy + capture process documented in
+  # conformance/README.md.
+  WorkTests:
+    type: bundle.unit-test
+    platform: macOS
+    sources:
+      - Tests/WorkTests
+      - path: conformance/fixtures
+        type: folder
+    dependencies:
+      - target: Work
+    settings:
+      # Override the top-level PRODUCT_NAME=Work so WorkTests doesn't clobber
+      # the Work.swiftmodule outputs. Without this, both targets produce a
+      # Work.swiftmodule and the build fails with "Multiple commands produce".
+      PRODUCT_NAME: WorkTests
+      PRODUCT_MODULE_NAME: WorkTests
+      GENERATE_INFOPLIST_FILE: YES
+      INFOPLIST_KEY_NSHumanReadableCopyright: ""
+      # Match the host app's signing — without this the dynamic loader
+      # rejects the test bundle with "different Team IDs".
 
   # Phase 0 protocol spike (issue #9). Standalone CLI; not part of the shipped
   # app. Run from Xcode (AtelierSpike scheme) to spawn the user's `claude`
