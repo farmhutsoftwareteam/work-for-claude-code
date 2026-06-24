@@ -405,9 +405,19 @@ final class StreamSession: ObservableObject {
             }
         case .controlRequest(let req):
             handleControlRequest(req)
-        case .controlResponse:
-            // Replies to our outgoing control requests — fine to ignore for now.
-            break
+        case .controlResponse(let cr):
+            // Replies to our outgoing control requests. The only one we
+            // currently act on is the reply to our `initialize` handshake —
+            // its arrival proves claude is alive and accepting input even
+            // before system/init lands, so we can drop out of .initializing
+            // immediately and unblock the composer. The full session details
+            // (model, cwd, tools, mcp_servers) will follow shortly in
+            // system/init.
+            if cr.response.requestId.hasPrefix("init_"),
+               cr.response.subtype == "success",
+               state == .spawning || state == .initializing {
+                state = .ready
+            }
         case .unknown(let t):
             log.notice("unknown event type: \(t, privacy: .public)")
         }
@@ -422,7 +432,14 @@ final class StreamSession: ObservableObject {
             if let servers = sys.mcpServers { mcpServers = servers }
             if let t = sys.tools { tools = t }
             if let c = sys.cwd { cwd = c }
-            state = .working
+            // Semantic correctness: after init, claude is idle waiting for
+            // the first user message — that's .ready, not .working. Going
+            // straight to .working makes the composer render a Stop button
+            // when nothing's actually running. The transition to .working
+            // happens in send() when the user sends their first text.
+            if state == .spawning || state == .initializing || state == .working {
+                state = .ready
+            }
         case "api_retry":
             isRetrying = true
             lastRetry = RetryInfo(

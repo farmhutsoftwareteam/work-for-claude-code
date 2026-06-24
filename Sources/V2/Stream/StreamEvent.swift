@@ -235,7 +235,21 @@ struct ControlResponse: Decodable, Sendable {
 struct ControlResponseBody: Decodable, Sendable {
     let subtype: String  // "success" | "error"
     let requestId: String
-    let response: PermissionDecision?
+    // The inner shape varies by which request we're replying to:
+    //   - permission_request_response → PermissionDecision (behavior/message)
+    //   - initialize                  → {commands, agents, skills, plugins, …}
+    //   - interrupt / set_model / …   → null or empty object
+    // Keep it as opaque JSON so the parser tolerates every case; callers that
+    // need permission fields can pull them out via .dig().
+    let response: JSONValue?
+
+    var permission: PermissionDecision? {
+        guard let response, case .object(let dict) = response,
+              case .string(let behavior) = dict["behavior"] ?? .null else { return nil }
+        var msg: String? = nil
+        if case .string(let s) = dict["message"] ?? .null { msg = s }
+        return PermissionDecision(behavior: behavior, updatedInput: dict["updated_input"], message: msg)
+    }
 
     enum CodingKeys: String, CodingKey {
         case subtype, response

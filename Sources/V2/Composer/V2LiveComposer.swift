@@ -21,6 +21,18 @@ struct V2LiveComposer: View {
         .overlay(alignment: .top) {
             Rectangle().fill(v2.line).frame(height: 1)
         }
+        .onAppear { inputFocused = true }
+        // Focus the field as soon as the session becomes typeable — the
+        // composer is rendered immediately after spawn (.spawning /
+        // .initializing) but only really inviting once we're in .ready /
+        // .working. Re-focus on each transition so the user can hammer ⏎
+        // without clicking.
+        .onChange(of: session.state) { _, newState in
+            switch newState {
+            case .ready, .working: inputFocused = true
+            default: break
+            }
+        }
         .enableInjection()
     }
 
