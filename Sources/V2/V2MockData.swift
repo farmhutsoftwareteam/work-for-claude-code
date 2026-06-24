@@ -40,14 +40,6 @@ struct V2McpServer: Identifiable {
     let on: Bool
 }
 
-// MARK: - Agents (right dock)
-
-struct V2Agent: Identifiable {
-    let id = UUID()
-    let name: String
-    let summary: String
-}
-
 // MARK: - Loop runner (right dock)
 
 struct V2LoopTurn: Identifiable {
@@ -99,11 +91,6 @@ enum V2Mock {
         .init(name: "linear",     transport: "sse",    toolCount: 11, on: true)
     ]
 
-    static let agents: [V2Agent] = [
-        .init(name: "reviewer",    summary: "opus · read · grep · git. Blocks on standard violations."),
-        .init(name: "explorer",    summary: "haiku · read · grep. Maps the codebase, returns a summary only."),
-        .init(name: "test-runner", summary: "sonnet · bash · read. Runs suites, reports red/green.")
-    ]
 
     static let loopTurns: [V2LoopTurn] = [
         .init(number: "01", title: "write failing test for null cursor", state: .fail),

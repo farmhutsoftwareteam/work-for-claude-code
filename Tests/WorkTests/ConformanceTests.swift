@@ -252,6 +252,102 @@ final class ConformanceTests: XCTestCase {
         XCTAssertTrue(url.path.contains("com.munyamakosa.work/harnesses/\(id.uuidString)"))
     }
 
+    // MARK: - Agent loader (V2AgentLoader)
+
+    func test_agentLoader_splitsFrontmatterFromBody() {
+        let raw = """
+        ---
+        name: reviewer
+        description: Hunts standard violations
+        ---
+
+        You are a code reviewer.
+        """
+        let (fm, body) = V2AgentLoader.splitFrontmatter(raw)
+        XCTAssertNotNil(fm)
+        XCTAssertTrue(fm?.contains("name: reviewer") ?? false)
+        XCTAssertTrue(body.contains("You are a code reviewer."))
+    }
+
+    func test_agentLoader_returnsNilFrontmatterWhenAbsent() {
+        let raw = "No frontmatter here, just a body."
+        let (fm, body) = V2AgentLoader.splitFrontmatter(raw)
+        XCTAssertNil(fm)
+        XCTAssertEqual(body, raw)
+    }
+
+    func test_agentLoader_parsesScalarAndListFields() {
+        let yaml = """
+        name: reviewer
+        description: A reviewer
+        model: opus
+        tools: [Read, Grep, Bash]
+        color: red
+        """
+        let parsed = V2AgentLoader.parseFrontmatter(yaml)
+        XCTAssertEqual(parsed["name"]?.first, "reviewer")
+        XCTAssertEqual(parsed["description"]?.first, "A reviewer")
+        XCTAssertEqual(parsed["model"]?.first, "opus")
+        XCTAssertEqual(parsed["tools"], ["Read", "Grep", "Bash"])
+        XCTAssertEqual(parsed["color"]?.first, "red")
+    }
+
+    func test_agentLoader_parseUnquotesSingleAndDoubleQuoted() {
+        let yaml = """
+        a: "quoted value"
+        b: 'also quoted'
+        c: bare value
+        """
+        let parsed = V2AgentLoader.parseFrontmatter(yaml)
+        XCTAssertEqual(parsed["a"]?.first, "quoted value")
+        XCTAssertEqual(parsed["b"]?.first, "also quoted")
+        XCTAssertEqual(parsed["c"]?.first, "bare value")
+    }
+
+    func test_agentLoader_parseAcceptsAliasFields() {
+        // Some agent files use `allowed-tools` (older skill convention).
+        let raw = """
+        ---
+        name: explorer
+        description: maps code
+        allowed-tools: [Read, Grep]
+        ---
+        body
+        """
+        let url = URL(fileURLWithPath: "/tmp/explorer.md")
+        let agent = V2AgentLoader.parse(content: raw, fileURL: url, scope: .user)
+        XCTAssertNotNil(agent)
+        XCTAssertEqual(agent?.tools, ["Read", "Grep"])
+        XCTAssertEqual(agent?.slug, "explorer")
+        XCTAssertEqual(agent?.name, "explorer")
+    }
+
+    func test_agentLoader_rejectsFilesMissingNameField() {
+        let raw = """
+        ---
+        description: orphaned
+        ---
+        body
+        """
+        let url = URL(fileURLWithPath: "/tmp/foo.md")
+        XCTAssertNil(V2AgentLoader.parse(content: raw, fileURL: url, scope: .user))
+    }
+
+    func test_agentLoader_summaryLineMatchesDesignFormat() {
+        let raw = """
+        ---
+        name: reviewer
+        description: Catches bugs
+        model: opus
+        tools: [Read, Grep, Bash]
+        ---
+        prompt
+        """
+        let url = URL(fileURLWithPath: "/tmp/reviewer.md")
+        let agent = V2AgentLoader.parse(content: raw, fileURL: url, scope: .user)
+        XCTAssertEqual(agent?.summaryLine, "opus · Read · Grep · Bash. Catches bugs")
+    }
+
     func test_semVerOrdering() {
         XCTAssertLessThan(
             SemVer(major: 2, minor: 1, patch: 127),
