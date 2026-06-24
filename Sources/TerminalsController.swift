@@ -180,6 +180,12 @@ final class TerminalsController: ObservableObject {
         tabs[idx].loop = loop
     }
 
+    /// Attach or detach a HarnessOrchestrator on a Mode-B tab.
+    func setHarness(_ harness: HarnessOrchestrator?, on tabId: UUID) {
+        guard let idx = tabs.firstIndex(where: { $0.id == tabId }) else { return }
+        tabs[idx].harness = harness
+    }
+
     /// Flip a tab between Mode-A (SwiftTerm) and Mode-B (StreamSession).
     /// Terminates the outgoing surface's process; the incoming surface is
     /// spawned fresh (PTY for A, idle StreamSession for B). Idempotent on
@@ -366,6 +372,7 @@ final class TerminalsController: ObservableObject {
         // its verifier task doesn't outlive the tab.
         if tab.surface == .modeB {
             tab.loop?.stop()
+            tab.harness?.stop()
             tab.streamSession?.stop()
         }
 

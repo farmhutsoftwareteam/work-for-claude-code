@@ -42,6 +42,11 @@ struct TerminalTab: Identifiable {
     /// state and the user dismisses it.
     var loop: LoopOrchestrator?
 
+    /// Active harness orchestrator on this tab (issue #25). Independent of
+    /// `streamSession` — the harness spawns its own per-phase claude -p
+    /// processes and persists state to disk.
+    var harness: HarnessOrchestrator?
+
     enum ProcessState: Equatable {
         case running
         case exited(code: Int32?)
@@ -63,7 +68,8 @@ struct TerminalTab: Identifiable {
         skipPermissions: Bool = false,
         surface: Surface = .modeA,
         streamSession: StreamSession? = nil,
-        loop: LoopOrchestrator? = nil
+        loop: LoopOrchestrator? = nil,
+        harness: HarnessOrchestrator? = nil
     ) {
         self.id = id
         self.sessionId = sessionId
@@ -75,6 +81,7 @@ struct TerminalTab: Identifiable {
         self.surface = surface
         self.streamSession = streamSession
         self.loop = loop
+        self.harness = harness
     }
 
     /// True while the underlying process is alive. For Mode-A that means the

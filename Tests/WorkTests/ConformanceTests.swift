@@ -228,6 +228,30 @@ final class ConformanceTests: XCTestCase {
         XCTAssertTrue(v.isPass)
     }
 
+    // MARK: - Harness verifier output parsing
+
+    func test_harnessVerifier_parsesPlainPass() {
+        let v = HarnessOrchestrator.parseVerdict(raw: "PASS\n\nDone.")
+        XCTAssertTrue(v.isPass)
+    }
+
+    func test_harnessVerifier_parsesFailWithReason() {
+        let v = HarnessOrchestrator.parseVerdict(raw: "FAIL: tests still red")
+        XCTAssertFalse(v.isPass)
+        XCTAssertEqual(v.summary, "tests still red")
+    }
+
+    func test_harnessVerifier_defaultsToFailOnAmbiguous() {
+        let v = HarnessOrchestrator.parseVerdict(raw: "I think we're getting somewhere")
+        XCTAssertFalse(v.isPass)
+    }
+
+    func test_harnessStorageRoot_isUnderApplicationSupport() {
+        let id = UUID()
+        let url = HarnessOrchestrator.storageRoot(forId: id)
+        XCTAssertTrue(url.path.contains("com.munyamakosa.work/harnesses/\(id.uuidString)"))
+    }
+
     func test_semVerOrdering() {
         XCTAssertLessThan(
             SemVer(major: 2, minor: 1, patch: 127),

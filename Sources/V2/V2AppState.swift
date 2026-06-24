@@ -154,6 +154,21 @@ final class V2AppState: ObservableObject {
         objectWillChange.send()
     }
 
+    func attachHarness(_ harness: HarnessOrchestrator?, toTab tabId: UUID) {
+        guard let terminals,
+              let existing = terminals.tabs.first(where: { $0.id == tabId }) else { return }
+        existing.harness?.stop()
+        terminals.setHarness(harness, on: tabId)
+
+        if let harness {
+            harness.objectWillChange
+                .receive(on: RunLoop.main)
+                .sink { [weak self] _ in self?.objectWillChange.send() }
+                .store(in: &cancellables)
+        }
+        objectWillChange.send()
+    }
+
     // MARK: - Binary resolution
 
     func resolveBinary() {

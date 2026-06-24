@@ -1,0 +1,303 @@
+// HarnessOrchestrator — the long-form orchestration primitive (#25).
+//
+// Where LoopOrchestrator runs a tight doer-verifier cycle inside one
+// long-lived StreamSession, a Harness runs THREE phases across FRESH
+// `claude -p` processes:
+//
+//   1. PLAN     — generate a structured plan.md from the goal.
+//   2. WORK_N   — execute the next chunk of the plan; append to progress.md.
+//   3. REVIEW_N — check if the goal is met (PASS/FAIL); on FAIL, loop back
+//                 to WORK_N+1 with the updated progress.
+//
+// Why fresh processes per phase: each work iteration starts from zero
+// context. The progress.md file is the only state that crosses iterations —
+// which means the harness survives Claude Code context limits on long jobs.
+//
+// On-disk layout:
+//   ~/Library/Application Support/com.munyamakosa.work/harnesses/<uuid>/
+//     ├── plan.md       (written once by the plan phase)
+//     ├── progress.md   (appended by each work iteration)
+//     └── reviews/<n>.md (saved verifier output per review)
+
+import Foundation
+import OSLog
+
+private let log = Logger(subsystem: "com.munyamakosa.work", category: "harness")
+
+// MARK: - Config + iterations
+
+struct HarnessConfig: Equatable {
+    var goal: String
+    /// Hard cap on work-review iterations. Each iteration may include many
+    /// tool calls inside the spawned claude -p run; the cap bounds the
+    /// number of *iterations*, not the per-iteration turn count.
+    var maxIterations: Int
+    /// Pass `--dangerously-skip-permissions` to the work-phase spawn so the
+    /// agent doesn't pause on tool prompts. Plan + review phases are
+    /// read-only and never use this flag.
+    var skipPermissions: Bool
+
+    static let defaults = HarnessConfig(
+        goal: "",
+        maxIterations: 5,
+        skipPermissions: false
+    )
+}
+
+struct HarnessIteration: Identifiable, Equatable {
+    let id = UUID()
+    let number: Int
+    var workSummary: String = ""
+    var reviewVerdict: String = ""
+    var passed: Bool? = nil
+}
+
+// MARK: - Orchestrator
+
+@MainActor
+final class HarnessOrchestrator: ObservableObject {
+
+    enum Phase: Equatable {
+        case idle
+        case planning
+        case working(iteration: Int)
+        case reviewing(iteration: Int)
+        case completed
+        case failed(reason: String)
+        case stopped
+    }
+
+    @Published private(set) var phase: Phase = .idle
+    @Published private(set) var plan: String = ""
+    @Published private(set) var progress: String = ""
+    @Published private(set) var iterations: [HarnessIteration] = []
+
+    let id = UUID()
+    let config: HarnessConfig
+    let cwd: URL
+    let claudeURL: URL
+    let storageRoot: URL
+
+    private var currentTask: Task<Void, Never>?
+
+    var planURL: URL { storageRoot.appendingPathComponent("plan.md") }
+    var progressURL: URL { storageRoot.appendingPathComponent("progress.md") }
+    func reviewURL(_ n: Int) -> URL {
+        storageRoot.appendingPathComponent("reviews/\(n).md")
+    }
+
+    // MARK: - Init
+
+    init(config: HarnessConfig, cwd: URL, claudeURL: URL) {
+        self.config = config
+        self.cwd = cwd
+        self.claudeURL = claudeURL
+        self.storageRoot = HarnessOrchestrator.storageRoot(forId: id)
+    }
+
+    nonisolated static func storageRoot(forId id: UUID) -> URL {
+        let appSupport = FileManager.default.urls(
+            for: .applicationSupportDirectory,
+            in: .userDomainMask
+        ).first ?? URL(fileURLWithPath: NSTemporaryDirectory())
+        return appSupport
+            .appendingPathComponent("com.munyamakosa.work")
+            .appendingPathComponent("harnesses")
+            .appendingPathComponent(id.uuidString)
+    }
+
+    // MARK: - Lifecycle
+
+    func start() {
+        guard phase == .idle else { return }
+        prepareStorage()
+        phase = .planning
+
+        currentTask = Task { [weak self] in
+            guard let self else { return }
+            await self.runPlanPhase()
+            guard self.phase != .stopped else { return }
+
+            for n in 1...self.config.maxIterations {
+                if Task.isCancelled || self.phase == .stopped { return }
+                self.phase = .working(iteration: n)
+                self.iterations.append(HarnessIteration(number: n))
+                await self.runWorkPhase(n: n)
+                if Task.isCancelled || self.phase == .stopped { return }
+
+                self.phase = .reviewing(iteration: n)
+                let passed = await self.runReviewPhase(n: n)
+                if Task.isCancelled || self.phase == .stopped { return }
+
+                if passed {
+                    self.phase = .completed
+                    return
+                }
+                if n == self.config.maxIterations {
+                    self.phase = .failed(reason: "iteration cap reached without pass")
+                    return
+                }
+            }
+        }
+    }
+
+    func stop() {
+        currentTask?.cancel()
+        currentTask = nil
+        if phase != .completed,
+           case .failed = phase {} else {
+            phase = .stopped
+        }
+    }
+
+    // MARK: - Phases
+
+    private func runPlanPhase() async {
+        let prompt = """
+        You are planning autonomous work on the project at \(cwd.path).
+
+        Goal:
+        \(config.goal)
+
+        Write a Markdown plan with concrete, ordered steps. Each step should be one bullet, naming files / commands / outcomes. End with a 'Definition of done' section that the work phase can self-check against. No prose preamble — start with the heading.
+        """
+
+        let result = await runOneShot(prompt: prompt, skipPermissions: false)
+        plan = result
+        try? plan.write(to: planURL, atomically: true, encoding: .utf8)
+    }
+
+    private func runWorkPhase(n: Int) async {
+        let priorProgress = progress.isEmpty ? "(none yet)" : progress
+        let prompt = """
+        You are executing iteration \(n) of an autonomous harness on the project at \(cwd.path).
+
+        Goal:
+        \(config.goal)
+
+        Plan (do not deviate; pick up where progress.md left off):
+        \(plan)
+
+        Progress so far:
+        \(priorProgress)
+
+        Do the next chunk of work. Make file edits, run commands, do whatever the plan calls for. When you're done with this iteration, output a 'Progress update' Markdown section describing exactly what changed in this iteration — files touched, commands run, what's now true. Be terse, factual, and append-friendly (it will be concatenated into progress.md).
+        """
+
+        let result = await runOneShot(prompt: prompt, skipPermissions: config.skipPermissions)
+
+        // Update in-memory + disk
+        let appended = progress.isEmpty
+            ? result
+            : "\(progress)\n\n---\n\n\(result)"
+        progress = appended
+        try? progress.write(to: progressURL, atomically: true, encoding: .utf8)
+
+        if let idx = iterations.firstIndex(where: { $0.number == n }) {
+            iterations[idx].workSummary = result.prefix(800).description
+        }
+    }
+
+    private func runReviewPhase(n: Int) async -> Bool {
+        let prompt = """
+        You are reviewing iteration \(n) of an autonomous harness.
+
+        Original goal:
+        \(config.goal)
+
+        Plan:
+        \(plan)
+
+        Cumulative progress.md so far:
+        \(progress)
+
+        Has the goal been fully met by the current progress? Respond with the FIRST LINE being exactly one of:
+          PASS
+          FAIL: <one-line critique pointing at what's missing>
+        Optionally include a short paragraph of reasoning below.
+        """
+
+        let raw = await runOneShot(prompt: prompt, skipPermissions: false)
+        try? raw.write(to: reviewURL(n), atomically: true, encoding: .utf8)
+
+        let verdict = parseVerdict(raw: raw)
+        if let idx = iterations.firstIndex(where: { $0.number == n }) {
+            iterations[idx].reviewVerdict = verdict.summary
+            iterations[idx].passed = verdict.isPass
+        }
+        return verdict.isPass
+    }
+
+    // MARK: - Helpers
+
+    private func prepareStorage() {
+        let fm = FileManager.default
+        try? fm.createDirectory(at: storageRoot, withIntermediateDirectories: true)
+        try? fm.createDirectory(
+            at: storageRoot.appendingPathComponent("reviews"),
+            withIntermediateDirectories: true
+        )
+    }
+
+    /// Spawn `claude -p` with the prompt, capture stdout text, wait for exit.
+    /// Returns "" if the spawn or wait fails — phases tolerate empty output
+    /// (it just produces nothing for the iteration; the user can stop or
+    /// the next iteration will see no progress and likely fail review).
+    private func runOneShot(prompt: String, skipPermissions: Bool) async -> String {
+        let claudeURL = self.claudeURL
+        let cwd = self.cwd
+        return await Task.detached(priority: .userInitiated) {
+            var args = ["-p", prompt, "--output-format", "text"]
+            if skipPermissions {
+                args.append("--dangerously-skip-permissions")
+            }
+
+            let process = Process()
+            process.executableURL = claudeURL
+            process.arguments = args
+            process.currentDirectoryURL = cwd
+
+            let stdout = Pipe()
+            let stderr = Pipe()
+            process.standardOutput = stdout
+            process.standardError = stderr
+
+            do {
+                try process.run()
+            } catch {
+                log.error("harness phase spawn failed: \(error.localizedDescription, privacy: .public)")
+                return ""
+            }
+            process.waitUntilExit()
+            let data = stdout.fileHandleForReading.readDataToEndOfFile()
+            return String(data: data, encoding: .utf8) ?? ""
+        }.value
+    }
+
+    nonisolated static func parseVerdict(raw: String) -> (isPass: Bool, summary: String) {
+        let firstLine = raw
+            .split(whereSeparator: \.isNewline)
+            .first(where: { !$0.trimmingCharacters(in: .whitespaces).isEmpty })
+            .map(String.init) ?? ""
+        let normalized = firstLine.trimmingCharacters(in: .whitespacesAndNewlines)
+        let upper = normalized.uppercased()
+
+        if upper.hasPrefix("PASS") {
+            let after = normalized
+                .dropFirst(4)
+                .trimmingCharacters(in: CharacterSet(charactersIn: ":—-– .").union(.whitespaces))
+            return (true, after.isEmpty ? "passed" : String(after))
+        }
+        if upper.hasPrefix("FAIL") {
+            let after = normalized
+                .dropFirst(4)
+                .trimmingCharacters(in: CharacterSet(charactersIn: ":—-– .").union(.whitespaces))
+            return (false, after.isEmpty ? "no reason given" : String(after))
+        }
+        return (false, "review didn't start with PASS or FAIL: \(normalized.prefix(160))")
+    }
+
+    private func parseVerdict(raw: String) -> (isPass: Bool, summary: String) {
+        HarnessOrchestrator.parseVerdict(raw: raw)
+    }
+}

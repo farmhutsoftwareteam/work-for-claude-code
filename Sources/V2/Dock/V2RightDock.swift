@@ -12,9 +12,10 @@ struct V2RightDock: View {
     var body: some View {
         Group {
             switch panel {
-            case .loop:   V2LoopPanel()
-            case .agents: V2AgentsPanel()
-            case .mcp:    V2McpPanel()
+            case .loop:    V2LoopPanel()
+            case .harness: V2HarnessPanel()
+            case .agents:  V2AgentsPanel()
+            case .mcp:     V2McpPanel()
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)

@@ -7,7 +7,7 @@ import SwiftUI
 import Inject
 
 enum V2DockPanel: String, CaseIterable, Identifiable {
-    case loop, agents, mcp
+    case loop, harness, agents, mcp
     var id: String { rawValue }
 }
 
