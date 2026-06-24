@@ -17,6 +17,9 @@ struct V2LiveTranscript: View {
                     if session.transcript.isEmpty {
                         emptyState
                     }
+                    if session.preloadOmittedTurns > 0 {
+                        earlierMessagesHint
+                    }
                     ForEach(session.transcript) { item in
                         row(for: item)
                             .id(item.id)
@@ -63,6 +66,28 @@ struct V2LiveTranscript: View {
         case .compactBoundary:
             V2CompactBoundary()
         }
+    }
+
+    private var earlierMessagesHint: some View {
+        HStack(spacing: 9) {
+            Rectangle().fill(v2.line).frame(height: 1).frame(maxWidth: .infinity)
+            HStack(spacing: 6) {
+                Image(systemName: "arrow.up")
+                    .font(.system(size: 9, weight: .medium))
+                Text(earlierMessagesText)
+                    .font(.system(size: 10.5, design: .monospaced))
+                    .kerning(0.4)
+            }
+            .foregroundColor(v2.faint)
+            Rectangle().fill(v2.line).frame(height: 1).frame(maxWidth: .infinity)
+        }
+        .padding(.vertical, 2)
+    }
+
+    private var earlierMessagesText: String {
+        let n = session.preloadOmittedTurns
+        if n == 1 { return "1 EARLIER MESSAGE NOT SHOWN" }
+        return "\(n) EARLIER MESSAGES NOT SHOWN"
     }
 
     private var emptyState: some View {

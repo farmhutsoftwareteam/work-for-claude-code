@@ -149,6 +149,15 @@ final class V2AppState: ObservableObject {
         // Eagerly start — user explicitly picked this session.
         if let session = terminals.tabs.first(where: { $0.id == id })?.streamSession,
            let binary = claudeBinary {
+            // Preload prior turns BEFORE start so the transcript opens with
+            // context. Claude's --resume gets the same id, so the next user
+            // message has full history; the preload is for the human.
+            if let preload = SessionHistoryLoader.load(
+                sessionId: sessionId,
+                projectCwd: projectCwd
+            ) {
+                session.preloadHistory(preload)
+            }
             session.start(
                 cwd: URL(fileURLWithPath: projectCwd),
                 claudeURL: binary,

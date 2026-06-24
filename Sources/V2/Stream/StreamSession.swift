@@ -59,6 +59,12 @@ final class StreamSession: ObservableObject {
     /// Ordered, append-only transcript. Each item is a separate UI row.
     @Published private(set) var transcript: [TranscriptItem] = []
 
+    /// Number of older user turns that exist on disk but weren't rendered
+    /// into the transcript (we cap the preload at the latest N events).
+    /// Drives the "↑ N earlier messages" affordance at the top of the
+    /// transcript view; zero when nothing was trimmed.
+    @Published private(set) var preloadOmittedTurns: Int = 0
+
     /// Latest queued permission request — the inline permission card binds here.
     @Published private(set) var pendingPermission: PendingPermission?
 
@@ -95,6 +101,54 @@ final class StreamSession: ObservableObject {
     private var stderrHandle: FileHandle?
 
     // MARK: - Lifecycle
+
+    /// Replay a session's prior `~/.claude/projects/<…>/<id>.jsonl` into the
+    /// transcript so a resumed tab opens with context instead of a blank
+    /// canvas. Call this BEFORE `start(…, resumeId:)` — once claude is live
+    /// new events append to the same transcript.
+    ///
+    /// Historical assistant events keep their text blocks (we don't have
+    /// matching stream_event deltas at preload time, so the snapshot is the
+    /// only source of the message body). Tool uses, tool results, and
+    /// thinking blocks render via the same `.assistantBlock` row used live.
+    func preloadHistory(_ preload: SessionHistoryLoader.Preload) {
+        preloadOmittedTurns = preload.omittedUserTurns
+        for event in preload.events {
+            switch event {
+            case .user(let m):
+                for block in m.message.content {
+                    switch block {
+                    case .text(let s):
+                        let trimmed = s.trimmingCharacters(in: .whitespacesAndNewlines)
+                        if !trimmed.isEmpty {
+                            transcript.append(.userText(trimmed))
+                        }
+                    case .toolResult:
+                        transcript.append(.assistantBlock(block))
+                    default:
+                        break
+                    }
+                }
+            case .assistant(let m):
+                for block in m.message.content {
+                    // Unlike live handling we KEEP text blocks here — the
+                    // streaming deltas that would normally populate the
+                    // transcript aren't replayed on resume.
+                    switch block {
+                    case .text(let s):
+                        let trimmed = s.trimmingCharacters(in: .whitespacesAndNewlines)
+                        if !trimmed.isEmpty {
+                            transcript.append(.assistantBlock(.text(trimmed)))
+                        }
+                    case .toolUse, .toolResult, .thinking, .unknown:
+                        transcript.append(.assistantBlock(block))
+                    }
+                }
+            default:
+                break
+            }
+        }
+    }
 
     /// Launch `claude -p` in the project's cwd. No-op if not idle. Pass a
     /// `resumeId` (an existing Claude session UUID under `~/.claude/projects`)
