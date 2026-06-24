@@ -136,11 +136,8 @@ struct V2AssistantBlock: View {
     private var content: some View {
         switch block {
         case .text(let s):
-            Text(s)
-                .font(.system(size: 13, design: .monospaced))
-                .lineSpacing(13 * 0.66)
+            V2MarkdownText(text: s)
                 .foregroundColor(v2.ink)
-                .textSelection(.enabled)
         case .toolUse(_, let name, let input):
             V2LiveToolWidget(name: name, input: input)
         case .toolResult(_, let content, let isError):
