@@ -379,6 +379,39 @@ final class ConformanceTests: XCTestCase {
         XCTAssertEqual(cmd, "new")
     }
 
+    // MARK: - StreamSession dispatch (no spawn)
+
+    /// Replays the captured fixture through a non-spawned StreamSession and
+    /// asserts the transcript shape matches what the user should see:
+    /// exactly ONE assistant text block, not two (claude emits both
+    /// incremental stream_event deltas AND a final `assistant` snapshot —
+    /// rendering both naively duplicates the message in the UI).
+    @MainActor
+    func test_streamSession_doesNotDuplicateAssistantTextFromStreamAndSnapshot() throws {
+        let lines = try loadFixture("happy-path", version: "v2-1-187")
+        let events = try decodeAll(lines)
+
+        let session = StreamSession()
+        for event in events {
+            session.handle(event: event)
+        }
+
+        // The fixture contains exactly one assistant text response ("ready").
+        // Count assistant text blocks in the transcript.
+        let assistantTexts = session.transcript.compactMap { item -> String? in
+            if case .assistantBlock(let block) = item,
+               case .text(let s) = block {
+                return s
+            }
+            return nil
+        }
+        XCTAssertEqual(
+            assistantTexts.count, 1,
+            "Expected 1 assistant text block, got \(assistantTexts.count): \(assistantTexts)"
+        )
+        XCTAssertEqual(assistantTexts.first, "ready")
+    }
+
     // MARK: - AgentConfigWriter
 
     func test_agentWriter_serializeProducesParseableFrontmatter() {

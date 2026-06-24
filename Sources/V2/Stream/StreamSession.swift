@@ -204,13 +204,28 @@ final class StreamSession: ObservableObject {
 
     // MARK: - Event dispatch
 
-    private func handle(event: StreamEvent) {
+    /// Internal so XCTest can replay captured NDJSON through the dispatch
+    /// without actually spawning a child process.
+    func handle(event: StreamEvent) {
         switch event {
         case .system(let sys):
             handleSystem(sys)
         case .assistant(let m):
+            // With --include-partial-messages + --verbose, claude emits BOTH
+            // stream_event text_deltas (live streaming) AND a final assistant
+            // snapshot containing the same text. Rendering both duplicates
+            // every reply. Strategy: trust stream_events for text (already
+            // accumulated incrementally), use the assistant event only for
+            // tool_use / thinking blocks which don't fully arrive via deltas
+            // in a render-ready shape.
             for block in m.message.content {
-                transcript.append(.assistantBlock(block))
+                switch block {
+                case .text:
+                    // Already in transcript via appendStreamingText.
+                    break
+                case .toolUse, .toolResult, .thinking, .unknown:
+                    transcript.append(.assistantBlock(block))
+                }
             }
         case .user(let m):
             // Tool results echo back in user events — render as a result row.
