@@ -11,6 +11,7 @@ struct V2LeftRail: View {
     @EnvironmentObject private var store: Store
     @EnvironmentObject private var appState: V2AppState
     @State private var search: String = ""
+    @State private var showingHooksEditor = false
 
     var body: some View {
         VStack(spacing: 0) {
@@ -22,6 +23,10 @@ struct V2LeftRail: View {
         .background(v2.paper2)
         .overlay(alignment: .trailing) {
             Rectangle().fill(v2.line).frame(width: 1)
+        }
+        .sheet(isPresented: $showingHooksEditor) {
+            V2HooksEditorSheet(onClose: { showingHooksEditor = false })
+                .environmentObject(store)
         }
         .enableInjection()
     }
@@ -115,7 +120,7 @@ struct V2LeftRail: View {
                 spacing: 1
             ) {
                 ForEach(V2Mock.workbenchTiles) { tile in
-                    V2WorkbenchTileButton(tile: tile)
+                    V2WorkbenchTileButton(tile: tile, onTap: { tap(tile: tile) })
                 }
             }
             .background(v2.line)
@@ -125,6 +130,16 @@ struct V2LeftRail: View {
         .background(v2.paper3)
         .overlay(alignment: .top) {
             Rectangle().fill(v2.line).frame(height: 1)
+        }
+    }
+
+    private func tap(tile: V2WorkbenchTile) {
+        switch tile.label {
+        case "Hooks":
+            showingHooksEditor = true
+        default:
+            // Other tiles route through the v1 ExtensionsView for now.
+            break
         }
     }
 }
@@ -178,9 +193,10 @@ private struct V2ProjectRow: View {
 private struct V2WorkbenchTileButton: View {
     @Environment(\.v2) private var v2
     let tile: V2WorkbenchTile
+    let onTap: () -> Void
 
     var body: some View {
-        Button { } label: {
+        Button(action: onTap) {
             VStack(alignment: .leading, spacing: 3) {
                 HStack {
                     Text(tile.label)

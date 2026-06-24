@@ -333,6 +333,60 @@ final class ConformanceTests: XCTestCase {
         XCTAssertNil(V2AgentLoader.parse(content: raw, fileURL: url, scope: .user))
     }
 
+    // MARK: - Hook config writer (pure-transform path)
+
+    func test_hooksWriter_upsertAddsNewMatcherGroup() {
+        let before: [String: Any] = [:]
+        let after = HookConfigWriter.applyEdit(to: before) { hooks in
+            // Simulate upsert: PreToolUse + matcher "Bash" + command "echo".
+            var entries: [[String: Any]] = []
+            entries.append(["matcher": "Bash", "hooks": [["type": "command", "command": "echo"]]])
+            hooks["PreToolUse"] = entries
+            return hooks
+        }
+        let hooks = after["hooks"] as? [String: Any]
+        let entries = hooks?["PreToolUse"] as? [[String: Any]]
+        XCTAssertEqual(entries?.count, 1)
+        XCTAssertEqual(entries?.first?["matcher"] as? String, "Bash")
+    }
+
+    func test_hooksWriter_emptyHooksKeyIsDroppedFromTopLevel() {
+        let before: [String: Any] = ["hooks": ["PreToolUse": [Any]()], "otherKey": "preserved"]
+        let after = HookConfigWriter.applyEdit(to: before) { hooks in
+            hooks.removeAll()
+            return hooks
+        }
+        XCTAssertNil(after["hooks"], "empty hooks dict should be dropped from the top level")
+        XCTAssertEqual(after["otherKey"] as? String, "preserved", "unrelated keys must be preserved")
+    }
+
+    func test_hooksWriter_preservesUnrelatedTopLevelKeys() {
+        let before: [String: Any] = [
+            "hooks": ["PreToolUse": [["matcher": "Bash", "hooks": [["type": "command", "command": "old"]]]]],
+            "enabledPlugins": ["foo": true],
+            "permissions": ["allow": ["X"]]
+        ]
+        let after = HookConfigWriter.applyEdit(to: before) { hooks in
+            // Replace with a fresh PreToolUse entry.
+            hooks["PreToolUse"] = [["matcher": "Bash", "hooks": [["type": "command", "command": "new"]]]]
+            return hooks
+        }
+        XCTAssertNotNil(after["enabledPlugins"])
+        XCTAssertNotNil(after["permissions"])
+        let hooks = after["hooks"] as? [String: Any]
+        let entries = hooks?["PreToolUse"] as? [[String: Any]]
+        let cmd = (entries?.first?["hooks"] as? [[String: Any]])?.first?["command"] as? String
+        XCTAssertEqual(cmd, "new")
+    }
+
+    func test_claudeHookEvent_coversAllSupportedEvents() {
+        let expected = ["SessionStart", "UserPromptSubmit", "PreToolUse", "PostToolUse",
+                        "PostToolUseFailure", "Stop", "SubagentStop", "Notification",
+                        "PreCompact", "SessionEnd"]
+        let actual = ClaudeHookEvent.allCases.map(\.rawValue)
+        XCTAssertEqual(Set(actual), Set(expected))
+    }
+
     func test_agentLoader_summaryLineMatchesDesignFormat() {
         let raw = """
         ---
