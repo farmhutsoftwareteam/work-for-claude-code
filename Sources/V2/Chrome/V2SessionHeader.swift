@@ -41,6 +41,7 @@ struct V2SessionHeader: View {
             Spacer()
 
             HStack(spacing: 10) {
+                modePill
                 dockSwitcher
                 runningPill
             }
@@ -85,6 +86,37 @@ struct V2SessionHeader: View {
         .padding(.horizontal, 7)
         .padding(.vertical, 2)
         .overlay(Rectangle().stroke(v2.line2, lineWidth: 1))
+    }
+
+    // Tab surface pill — click to flip between Mode B (chat) and Mode A
+    // (terminal). Disabled when there's no active tab.
+    private var modePill: some View {
+        let isModeA = appState.activeTab?.mode.isModeA ?? false
+        let label = isModeA ? "terminal" : "chat"
+        let help = isModeA
+            ? "Switch to native chat (Mode B)"
+            : "Switch to embedded terminal (Mode A)"
+
+        return Button {
+            appState.flipActiveMode()
+        } label: {
+            HStack(spacing: 6) {
+                Image(systemName: isModeA ? "terminal" : "text.bubble")
+                    .font(.system(size: 10, weight: .medium))
+                Text(label)
+                    .font(.system(size: 11, design: .monospaced))
+                    .kerning(0.22)
+            }
+            .foregroundColor(v2.ink)
+            .padding(.horizontal, 11)
+            .padding(.vertical, 7)
+            .background(v2.card)
+            .overlay(Rectangle().stroke(v2.line2, lineWidth: 1))
+        }
+        .buttonStyle(.plain)
+        .help(help)
+        .disabled(appState.activeTab == nil)
+        .keyboardShortcut("y", modifiers: [.command, .shift])
     }
 
     private var dockSwitcher: some View {

@@ -81,15 +81,22 @@ private struct V2TabChip: View {
 
     @ViewBuilder
     private var stateDot: some View {
-        switch tab.session.state {
-        case .working, .awaitingPermission:
+        // Mode A tabs always pulse (the PTY is alive until the v2 tab closes).
+        // Mode B tabs reflect StreamSession lifecycle.
+        switch tab.mode {
+        case .modeA:
             V2PulseDot(size: 7, color: v2.ink)
-        case .terminated:
-            Circle().fill(v2.del).frame(width: 7, height: 7)
-        case .idle:
-            Circle().stroke(v2.line2, lineWidth: 1).frame(width: 7, height: 7)
-        default:
-            Circle().fill(v2.ink).frame(width: 7, height: 7)
+        case .modeB:
+            switch tab.session.state {
+            case .working, .awaitingPermission:
+                V2PulseDot(size: 7, color: v2.ink)
+            case .terminated:
+                Circle().fill(v2.del).frame(width: 7, height: 7)
+            case .idle:
+                Circle().stroke(v2.line2, lineWidth: 1).frame(width: 7, height: 7)
+            default:
+                Circle().fill(v2.ink).frame(width: 7, height: 7)
+            }
         }
     }
 }

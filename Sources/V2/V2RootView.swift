@@ -8,6 +8,7 @@ import Inject
 struct V2RootView: View {
     @ObserveInjection private var inject
     @EnvironmentObject private var store: Store
+    @EnvironmentObject private var terminals: TerminalsController
     @StateObject private var appState = V2AppState()
     @State private var theme: V2ThemeChoice = .light
     @State private var dockPanel: V2DockPanel = .loop
@@ -45,6 +46,7 @@ struct V2RootView: View {
         .environmentObject(appState)
         .preferredColorScheme(theme == .dark ? .dark : .light)
         .task {
+            appState.attach(terminals: terminals)
             appState.resolveBinary()
             // Seed initial project selection from Store on first appear.
             if appState.selectedProjectCwd == nil, let first = store.projects.first {
@@ -59,13 +61,20 @@ struct V2RootView: View {
     @ViewBuilder
     private var mainBody: some View {
         if let tab = appState.activeTab {
-            VStack(spacing: 0) {
-                V2LiveTranscript(session: tab.session)
-                V2LivePermissionCard(session: tab.session)
-                    .padding(.horizontal, 36)
-                    .padding(.bottom, tab.session.pendingPermission == nil ? 0 : 16)
+            switch tab.mode {
+            case .modeA(let terminalTabId):
+                EmbeddedTerminalView(tabId: terminalTabId)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .background(Color.black)
+            case .modeB:
+                VStack(spacing: 0) {
+                    V2LiveTranscript(session: tab.session)
+                    V2LivePermissionCard(session: tab.session)
+                        .padding(.horizontal, 36)
+                        .padding(.bottom, tab.session.pendingPermission == nil ? 0 : 16)
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
         } else {
             emptyState
         }
@@ -74,12 +83,50 @@ struct V2RootView: View {
     @ViewBuilder
     private var composerOrControls: some View {
         if let tab = appState.activeTab {
-            switch tab.session.state {
-            case .idle, .terminated:
-                startCTA(tab: tab)
-            default:
-                V2LiveComposer(session: tab.session)
+            switch tab.mode {
+            case .modeA:
+                modeAFooter(tab: tab)
+            case .modeB:
+                switch tab.session.state {
+                case .idle, .terminated:
+                    startCTA(tab: tab)
+                default:
+                    V2LiveComposer(session: tab.session)
+                }
             }
+        }
+    }
+
+    private func modeAFooter(tab: V2Tab) -> some View {
+        HStack(spacing: 12) {
+            Image(systemName: "terminal")
+                .font(.system(size: 11))
+                .foregroundColor(palette.mute)
+            Text("Terminal session in \(tab.cwd.path)")
+                .font(.system(size: 10.5, design: .monospaced))
+                .foregroundColor(palette.faint)
+                .lineLimit(1)
+                .truncationMode(.middle)
+            Spacer()
+            Button { appState.flipMode(tab: tab) } label: {
+                HStack(spacing: 7) {
+                    Image(systemName: "text.bubble")
+                        .font(.system(size: 11))
+                    Text("Switch to chat")
+                        .font(.system(size: 11, design: .monospaced))
+                }
+                .foregroundColor(palette.ink)
+                .padding(.horizontal, 13)
+                .padding(.vertical, 7)
+                .background(palette.paper2)
+                .overlay(Rectangle().stroke(palette.line2, lineWidth: 1))
+            }
+            .buttonStyle(.plain)
+        }
+        .padding(.horizontal, 26)
+        .padding(.vertical, 12)
+        .overlay(alignment: .top) {
+            Rectangle().fill(palette.line).frame(height: 1)
         }
     }
 
