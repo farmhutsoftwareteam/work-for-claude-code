@@ -83,6 +83,11 @@ final class StreamSession: ObservableObject {
     private var inputWriter: StreamInputWriter?
     private var eventConsumer: Task<Void, Never>?
     private var stderrConsumer: Task<Void, Never>?
+    /// Strong references to the pipe FileHandles so the OS keeps firing
+    /// our readabilityHandlers. Without these, ARC has been observed to
+    /// release the handles mid-session and the handler stops firing.
+    private var stdoutHandle: FileHandle?
+    private var stderrHandle: FileHandle?
 
     // MARK: - Lifecycle
 
@@ -90,6 +95,7 @@ final class StreamSession: ObservableObject {
     func start(cwd: URL, claudeURL: URL) {
         guard state == .idle else { return }
         state = .spawning
+        log.info("StreamSession.start cwd=\(cwd.path, privacy: .public) binary=\(claudeURL.path, privacy: .public)")
 
         let process = Process()
         process.executableURL = claudeURL
@@ -112,6 +118,16 @@ final class StreamSession: ObservableObject {
         // Avoid SIGPIPE killing the host if the child closes early.
         signal(SIGPIPE, SIG_IGN)
 
+        // Tee stdout to /tmp so we can verify chunks are arriving even when
+        // the parser path appears stuck. Truncated per session.
+        let debugLog = "/tmp/atelier-v2-stream-debug.ndjson"
+        let fm = FileManager.default
+        try? Data().write(to: URL(fileURLWithPath: debugLog))
+        let debugHandle = (try? FileHandle(forWritingTo: URL(fileURLWithPath: debugLog))) ?? FileHandle.nullDevice
+        if !fm.isWritableFile(atPath: debugLog) {
+            fm.createFile(atPath: debugLog, contents: nil)
+        }
+
         do {
             try process.run()
         } catch {
@@ -119,30 +135,73 @@ final class StreamSession: ObservableObject {
             state = .terminated(reason: "spawn failed: \(error.localizedDescription)")
             return
         }
+        log.info("StreamSession spawned pid=\(process.processIdentifier)")
 
         self.process = process
         self.inputWriter = StreamInputWriter(fileHandle: stdinPipe.fileHandleForWriting)
         self.state = .initializing
 
-        // Drain stdout into the dispatch loop.
-        eventConsumer = Task { [weak self, stdoutPipe] in
-            guard let self else { return }
-            for await event in stdoutPipe.fileHandleForReading.ndjsonEvents() {
-                await self.handle(event: event)
-                if Task.isCancelled { break }
+        // Drain stdout via readabilityHandler — the exact pattern AtelierSpike
+        // uses and that we know works against the live binary. We previously
+        // tried FileHandle.bytes.lines (buffers on pipes) and an AsyncStream
+        // wrapper around readabilityHandler (events never reached the
+        // consumer) — both left the session stuck on .initializing because
+        // system/init was never observed. (#36)
+        let buffer = LineBuffer()
+        let decoder = JSONDecoder()
+        stdoutPipe.fileHandleForReading.readabilityHandler = { [weak self] handle in
+            let chunk = handle.availableData
+            guard !chunk.isEmpty else {
+                // EOF — claude closed its stdout.
+                handle.readabilityHandler = nil
+                try? debugHandle.close()
+                Task { @MainActor [weak self] in
+                    self?.handleStreamEnd()
+                }
+                return
+            }
+            try? debugHandle.write(contentsOf: chunk)
+            buffer.append(chunk)
+            for lineData in buffer.drainLines() {
+                guard !lineData.isEmpty else { continue }
+                do {
+                    let event = try decoder.decode(StreamEvent.self, from: lineData)
+                    Task { @MainActor [weak self] in
+                        self?.handle(event: event)
+                    }
+                } catch {
+                    let preview = String(data: lineData.prefix(200), encoding: .utf8) ?? "<binary>"
+                    log.warning("ndjson decode skipped: \(error.localizedDescription, privacy: .public) — \(preview, privacy: .public)")
+                }
             }
         }
 
         // Drain stderr — log only; we don't surface this in the UI yet.
-        stderrConsumer = Task { [stderrPipe] in
-            do {
-                for try await line in stderrPipe.fileHandleForReading.bytes.lines {
-                    log.warning("claude stderr: \(line, privacy: .public)")
-                    if Task.isCancelled { break }
-                }
-            } catch {
-                log.error("stderr drain failed: \(error.localizedDescription, privacy: .public)")
+        let stderrHandle = stderrPipe.fileHandleForReading
+        stderrHandle.readabilityHandler = { handle in
+            let chunk = handle.availableData
+            guard !chunk.isEmpty else {
+                handle.readabilityHandler = nil
+                return
             }
+            if let line = String(data: chunk, encoding: .utf8)?
+                .trimmingCharacters(in: .whitespacesAndNewlines),
+               !line.isEmpty {
+                log.warning("claude stderr: \(line, privacy: .public)")
+            }
+        }
+
+        // Keep these handles strongly held so the OS keeps firing
+        // readabilityHandler. Without these references, ARC could release
+        // the FileHandles and the handlers silently stop.
+        self.stdoutHandle = stdoutPipe.fileHandleForReading
+        self.stderrHandle = stderrHandle
+    }
+
+    private func handleStreamEnd() {
+        log.info("StreamSession ndjson stream ended")
+        if state == .working || state == .initializing {
+            state = .terminated(reason: "stream closed")
         }
     }
 
@@ -195,6 +254,10 @@ final class StreamSession: ObservableObject {
         state = .closing
         eventConsumer?.cancel()
         stderrConsumer?.cancel()
+        stdoutHandle?.readabilityHandler = nil
+        stderrHandle?.readabilityHandler = nil
+        stdoutHandle = nil
+        stderrHandle = nil
         Task {
             try? await inputWriter?.close()
             process?.terminate()

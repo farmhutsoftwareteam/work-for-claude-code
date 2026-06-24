@@ -48,7 +48,7 @@ extension FileHandle {
 /// Append-and-drain line buffer. Used by the readabilityHandler to handle
 /// chunks that don't align with line boundaries — claude's stdout writes
 /// arrive in arbitrary chunk sizes.
-private final class LineBuffer: @unchecked Sendable {
+final class LineBuffer: @unchecked Sendable {
     private var data = Data()
     private let lock = NSLock()
 
