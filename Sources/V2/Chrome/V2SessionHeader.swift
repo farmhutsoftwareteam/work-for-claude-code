@@ -109,6 +109,7 @@ struct V2SessionHeader: View {
                     .kerning(0.22)
             }
             .foregroundColor(v2.ink)
+            .fixedSize(horizontal: true, vertical: false)
             .padding(.horizontal, 11)
             .padding(.vertical, 7)
             .background(v2.card)
@@ -130,13 +131,15 @@ struct V2SessionHeader: View {
                         .font(.system(size: 11, design: .monospaced))
                         .kerning(0.22)
                         .foregroundColor(dockPanel == panel ? v2.paper : v2.mute)
-                        .padding(.horizontal, 13)
+                        .fixedSize(horizontal: true, vertical: false)
+                        .padding(.horizontal, 11)
                         .padding(.vertical, 7)
                         .background(dockPanel == panel ? v2.ink : v2.card)
                 }
                 .buttonStyle(.plain)
             }
         }
+        .fixedSize(horizontal: true, vertical: false)
         .overlay(Rectangle().stroke(v2.line2, lineWidth: 1))
     }
 
@@ -145,11 +148,13 @@ struct V2SessionHeader: View {
             stateDot
             Text(stateLabel)
                 .font(.system(size: 11.5, design: .monospaced))
+                .fixedSize(horizontal: true, vertical: false)
             Image(systemName: "chevron.down")
                 .font(.system(size: 8, weight: .medium))
                 .padding(.leading, 2)
         }
         .foregroundColor(v2.ink)
+        .fixedSize(horizontal: true, vertical: false)
         .padding(.horizontal, 12)
         .padding(.vertical, 7)
         .background(v2.card)
