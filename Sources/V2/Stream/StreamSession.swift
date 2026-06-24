@@ -39,6 +39,18 @@ final class StreamSession: ObservableObject {
     @Published private(set) var model: String = "claude-sonnet"
     @Published private(set) var permissionMode: String = "default"
 
+    /// MCP servers reported by the binary on `system/init`. Populated once the
+    /// session is initialized; empty before then. Drives the right-dock MCP
+    /// panel (#34).
+    @Published private(set) var mcpServers: [MCPServerInfo] = []
+
+    /// Tools available on this session (from `system/init.tools`). Drives
+    /// the dock's tool inventory and the composer's slash-command autocomplete.
+    @Published private(set) var tools: [String] = []
+
+    /// Project cwd reported by `system/init`. Useful for UI breadcrumbs.
+    @Published private(set) var cwd: String?
+
     /// Ordered, append-only transcript. Each item is a separate UI row.
     @Published private(set) var transcript: [TranscriptItem] = []
 
@@ -221,6 +233,9 @@ final class StreamSession: ObservableObject {
             sessionId = sys.sessionId ?? sessionId
             if let m = sys.model { model = m }
             if let p = sys.permissionMode { permissionMode = p }
+            if let servers = sys.mcpServers { mcpServers = servers }
+            if let t = sys.tools { tools = t }
+            if let c = sys.cwd { cwd = c }
             state = .working
         case "api_retry":
             isRetrying = true
