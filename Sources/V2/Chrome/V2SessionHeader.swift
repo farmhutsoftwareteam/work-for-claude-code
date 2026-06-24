@@ -29,11 +29,7 @@ struct V2SessionHeader: View {
                         .kerning(-0.38)
                     if showLive { liveBadge }
                 }
-                Text(pathSubline)
-                    .font(.system(size: 11, design: .monospaced))
-                    .foregroundColor(v2.faint)
-                    .lineLimit(1)
-                    .truncationMode(.middle)
+                pathSublineView
             }
 
             Spacer()
@@ -57,12 +53,28 @@ struct V2SessionHeader: View {
         appState.activeTab?.title ?? appState.selectedProjectName.ifEmpty("no project")
     }
 
-    private var pathSubline: String {
-        let path = appState.activeTab?.projectCwd
+    private var pathSublineView: some View {
+        HStack(spacing: 6) {
+            Text(pathText)
+                .font(.system(size: 11, design: .monospaced))
+                .foregroundColor(v2.faint)
+                .lineLimit(1)
+                .truncationMode(.middle)
+            Text("·")
+                .font(.system(size: 11, design: .monospaced))
+                .foregroundColor(v2.faint)
+            // Inline chip — the design-spec'd model switcher (Atelier
+            // app.dc.html → SWITCH MODEL popover). Always rendered; the
+            // chip disables itself when there's no active session.
+            V2ModelChip()
+        }
+        .fixedSize(horizontal: false, vertical: true)
+    }
+
+    private var pathText: String {
+        appState.activeTab?.projectCwd
             ?? appState.selectedProjectCwd?.path
             ?? "—"
-        let model = appState.activeSession?.model ?? "claude"
-        return "\(path) · \(model)"
     }
 
     private var showLive: Bool {
@@ -145,7 +157,9 @@ struct V2SessionHeader: View {
 
     private var runningPill: some View {
         Menu {
-            modelMenuSection
+            // Model selection moved out of this menu — it now lives as an
+            // inline chip in the path subline (V2ModelChip), per
+            // Atelier app.dc.html spec.
             permissionMenuSection
             Divider()
             Button("Restart session") { restartActiveSession() }
@@ -172,26 +186,6 @@ struct V2SessionHeader: View {
         .menuStyle(.borderlessButton)
         .menuIndicator(.hidden)
         .fixedSize(horizontal: true, vertical: false)
-    }
-
-    @ViewBuilder
-    private var modelMenuSection: some View {
-        Section("Model") {
-            ForEach(V2Model.allCases) { model in
-                Button {
-                    appState.activeSession?.setModel(model.rawValue)
-                } label: {
-                    HStack {
-                        Text(model.label)
-                        if appState.activeSession?.model == model.rawValue
-                            || appState.activeSession?.model.contains(model.rawValue) == true {
-                            Image(systemName: "checkmark")
-                        }
-                    }
-                }
-                .disabled(appState.activeSession == nil)
-            }
-        }
     }
 
     @ViewBuilder
@@ -304,12 +298,6 @@ private extension String {
 }
 
 // MARK: - Model + permission catalogs (used by the running pill menu)
-
-enum V2Model: String, CaseIterable, Identifiable {
-    case opus, sonnet, haiku
-    var id: String { rawValue }
-    var label: String { rawValue.capitalized }
-}
 
 enum V2PermissionMode: String, CaseIterable, Identifiable {
     case `default`
