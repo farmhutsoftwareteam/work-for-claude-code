@@ -37,6 +37,11 @@ final class V2AppState: ObservableObject {
     /// on tab close.
     @Published private(set) var resumeIds: [UUID: String] = [:]
 
+    /// Models the user has actually used, discovered by scanning
+    /// ~/.claude/projects/**/*.jsonl. Empty until the first scan completes;
+    /// picker falls back to the active session's model when empty.
+    @Published private(set) var discoveredModels: [V2DiscoveredModel] = []
+
     /// Set once by V2RootView on first appear.
     weak var terminals: TerminalsController?
 
@@ -59,6 +64,18 @@ final class V2AppState: ObservableObject {
             .receive(on: RunLoop.main)
             .sink { [weak self] _ in self?.objectWillChange.send() }
             .store(in: &cancellables)
+    }
+
+    /// Sweep ~/.claude/projects/ for every distinct model the user's history
+    /// references and publish the result. Cheap on the main actor since the
+    /// scan itself runs detached; we only hop back here to assign.
+    func refreshDiscoveredModels() {
+        Task.detached(priority: .utility) {
+            let models = V2ModelDiscovery.scan()
+            await MainActor.run { [weak self] in
+                self?.discoveredModels = models
+            }
+        }
     }
 
     // MARK: - Tab access

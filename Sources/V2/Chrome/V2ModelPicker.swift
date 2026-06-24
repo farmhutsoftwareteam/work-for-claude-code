@@ -7,48 +7,7 @@
 import SwiftUI
 import Inject
 
-struct V2ModelOption: Identifiable, Equatable {
-    /// What we pass to `claude --model` / `set_model`. Catalog mirrors the
-    /// design spec one-for-one; the actual CLI accepts either family aliases
-    /// or these explicit version IDs.
-    let id: String
-    let displayName: String
-    let tag: String
-    let description: String
-
-    static let catalog: [V2ModelOption] = [
-        .init(
-            id: "claude-opus-4-5",
-            displayName: "claude-opus-4-5",
-            tag: "most capable",
-            description: "Best for complex, multi-step tasks"
-        ),
-        .init(
-            id: "claude-sonnet-4-5",
-            displayName: "claude-sonnet-4-5",
-            tag: "balanced",
-            description: "Speed + quality for everyday work"
-        ),
-        .init(
-            id: "claude-haiku-4-5",
-            displayName: "claude-haiku-4-5",
-            tag: "fast",
-            description: "Lightweight checks & quick edits"
-        ),
-        .init(
-            id: "claude-opus-4",
-            displayName: "claude-opus-4",
-            tag: "previous",
-            description: "Stable, proven on long sessions"
-        ),
-        .init(
-            id: "claude-sonnet-4",
-            displayName: "claude-sonnet-4",
-            tag: "previous",
-            description: "Previous-gen balanced model"
-        ),
-    ]
-
+enum V2ModelOption {
     /// Best-effort match against StreamSession's model string, which may be
     /// either the bare alias ("sonnet") or the explicit id ("claude-sonnet-4-8")
     /// — claude reports back whatever it resolved.
@@ -69,13 +28,44 @@ struct V2ModelPicker: View {
         appState.activeSession?.model ?? ""
     }
 
+    private var models: [V2DiscoveredModel] {
+        // Merge: discovered (from history) + the currently-active model if
+        // claude reports one we haven't seen before (fresh install, new
+        // family, etc.). The active model always appears.
+        var seen = Set(appState.discoveredModels.map(\.id))
+        var list = appState.discoveredModels
+        let activeBare = String(activeId.split(separator: "[").first ?? Substring(activeId))
+        if !activeBare.isEmpty, activeBare.contains("-"), !seen.contains(activeBare) {
+            list.insert(
+                V2DiscoveredModel(
+                    id: activeBare,
+                    displayName: activeBare,
+                    tag: V2DiscoveredModel.tag(for: activeBare),
+                    description: V2DiscoveredModel.description(for: activeBare),
+                    usageCount: 0
+                ),
+                at: 0
+            )
+            seen.insert(activeBare)
+        }
+        return list
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             sectionHeader
-            ForEach(V2ModelOption.catalog) { option in
-                row(for: option)
-                if option.id != V2ModelOption.catalog.last?.id {
-                    Divider().background(v2.line)
+            if models.isEmpty {
+                Text("No models in history yet — start a session to populate.")
+                    .font(.system(size: 11.5, design: .monospaced))
+                    .foregroundColor(v2.faint)
+                    .padding(.horizontal, 13)
+                    .padding(.vertical, 14)
+            } else {
+                ForEach(models) { option in
+                    row(for: option)
+                    if option.id != models.last?.id {
+                        Divider().background(v2.line)
+                    }
                 }
             }
             footer
@@ -109,7 +99,7 @@ struct V2ModelPicker: View {
             }
     }
 
-    private func row(for option: V2ModelOption) -> some View {
+    private func row(for option: V2DiscoveredModel) -> some View {
         let isActive = isActive(option)
         return Button {
             appState.activeSession?.setModel(option.id)
@@ -129,10 +119,17 @@ struct V2ModelPicker: View {
                         .font(.system(size: 10, design: .monospaced))
                         .foregroundColor(v2.faint)
                 }
-                Text(option.description)
-                    .font(.system(size: 10.5, design: .monospaced))
-                    .foregroundColor(v2.faint)
-                    .padding(.leading, 16)
+                HStack(spacing: 7) {
+                    Text(option.description)
+                        .font(.system(size: 10.5, design: .monospaced))
+                        .foregroundColor(v2.faint)
+                    if option.usageCount > 0 {
+                        Text("· \(formattedUsage(option.usageCount)) turns")
+                            .font(.system(size: 10.5, design: .monospaced))
+                            .foregroundColor(v2.faint.opacity(0.7))
+                    }
+                }
+                .padding(.leading, 16)
             }
             .padding(.horizontal, 13)
             .padding(.vertical, 9)
@@ -148,7 +145,12 @@ struct V2ModelPicker: View {
         .disabled(appState.activeSession == nil)
     }
 
-    private func isActive(_ option: V2ModelOption) -> Bool {
+    private func formattedUsage(_ n: Int) -> String {
+        if n >= 1000 { return "\(n / 1000)k" }
+        return "\(n)"
+    }
+
+    private func isActive(_ option: V2DiscoveredModel) -> Bool {
         let raw = activeId.lowercased()
         let opt = option.id.lowercased()
         if raw == opt { return true }

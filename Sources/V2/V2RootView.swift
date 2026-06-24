@@ -69,6 +69,7 @@ struct V2RootView: View {
         .task {
             appState.attach(terminals: terminals)
             appState.resolveBinary()
+            appState.refreshDiscoveredModels()
             // v1's ContentView normally triggers Store.load on appear, but in
             // DEBUG we miniaturize v1 immediately so its .task may not fire
             // before we read store.projects. Kick off our own load — it's
