@@ -16,8 +16,8 @@ struct V2LeftRail: View {
     var body: some View {
         VStack(spacing: 0) {
             searchBox
-            projectsHeader
-            projectList
+            railTabs
+            railContent
             workbenchRail
         }
         .background(v2.paper2)
@@ -34,22 +34,68 @@ struct V2LeftRail: View {
     // MARK: - Search
 
     private var searchBox: some View {
-        HStack(spacing: 8) {
-            Image(systemName: "magnifyingglass")
-                .font(.system(size: 11))
-                .foregroundColor(v2.faint)
-            TextField("Search projects & sessions", text: $search)
-                .textFieldStyle(.plain)
-                .font(.system(size: 11.5, design: .monospaced))
-                .foregroundColor(v2.ink)
+        Button { appState.searchOpen = true } label: {
+            HStack(spacing: 8) {
+                Image(systemName: "magnifyingglass")
+                    .font(.system(size: 11))
+                    .foregroundColor(v2.faint)
+                Text("Search sessions…")
+                    .font(.system(size: 11.5, design: .monospaced))
+                    .foregroundColor(v2.faint)
+                Spacer()
+                Text("⌘K")
+                    .font(.system(size: 10, design: .monospaced))
+                    .foregroundColor(v2.faint)
+                    .padding(.horizontal, 5)
+                    .padding(.vertical, 1)
+                    .overlay(Rectangle().stroke(v2.line2, lineWidth: 1))
+            }
+            .padding(.horizontal, 11)
+            .padding(.vertical, 8)
+            .background(v2.card)
+            .overlay(Rectangle().stroke(v2.line2, lineWidth: 1))
         }
-        .padding(.horizontal, 11)
-        .padding(.vertical, 8)
-        .background(v2.card)
-        .overlay(Rectangle().stroke(v2.line2, lineWidth: 1))
+        .buttonStyle(.plain)
         .padding(.horizontal, 14)
         .padding(.top, 14)
         .padding(.bottom, 10)
+    }
+
+    @ViewBuilder
+    private var railTabs: some View {
+        HStack(spacing: 0) {
+            ForEach(V2AppState.RailTab.allCases) { tab in
+                Button {
+                    appState.railTab = tab
+                } label: {
+                    Text(tab.rawValue)
+                        .font(.system(size: 11, design: .monospaced))
+                        .kerning(0.22)
+                        .foregroundColor(appState.railTab == tab ? v2.paper : v2.mute)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 6)
+                        .background(appState.railTab == tab ? v2.ink : Color.clear)
+                }
+                .buttonStyle(.plain)
+            }
+        }
+        .overlay(Rectangle().stroke(v2.line2, lineWidth: 1))
+        .padding(.horizontal, 14)
+        .padding(.bottom, 10)
+    }
+
+    @ViewBuilder
+    private var railContent: some View {
+        switch appState.railTab {
+        case .projects:
+            VStack(spacing: 0) {
+                projectsHeader
+                projectList
+            }
+        case .history:
+            V2HistoryRail()
+                .frame(maxHeight: .infinity)
+        }
     }
 
     private var projectsHeader: some View {

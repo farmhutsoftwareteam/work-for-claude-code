@@ -96,21 +96,31 @@ final class StreamSession: ObservableObject {
 
     // MARK: - Lifecycle
 
-    /// Launch `claude -p` in the project's cwd. No-op if not idle.
-    func start(cwd: URL, claudeURL: URL) {
+    /// Launch `claude -p` in the project's cwd. No-op if not idle. Pass a
+    /// `resumeId` (an existing Claude session UUID under `~/.claude/projects`)
+    /// to replay that session's history before the new turn — claude will
+    /// stream its prior messages out of stdout in addition to handling new
+    /// user turns.
+    func start(cwd: URL, claudeURL: URL, resumeId: String? = nil) {
         guard state == .idle else { return }
         state = .spawning
-        log.info("StreamSession.start cwd=\(cwd.path, privacy: .public) binary=\(claudeURL.path, privacy: .public)")
+        log.info("StreamSession.start cwd=\(cwd.path, privacy: .public) binary=\(claudeURL.path, privacy: .public) resume=\(resumeId ?? "-", privacy: .public)")
 
         let process = Process()
         process.executableURL = claudeURL
-        process.arguments = [
+        var args: [String] = [
             "-p",
             "--output-format", "stream-json",
             "--input-format", "stream-json",
             "--include-partial-messages",
             "--verbose"
         ]
+        if let resumeId, !resumeId.isEmpty {
+            args.append("--resume")
+            args.append(resumeId)
+            self.sessionId = resumeId
+        }
+        process.arguments = args
         process.currentDirectoryURL = cwd
         // Critical: GUI-launched apps inherit launchd's stripped PATH which
         // doesn't include ~/.local/bin, Homebrew, node managers, etc. The v1

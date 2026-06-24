@@ -24,29 +24,38 @@ struct V2RootView: View {
     }
 
     var body: some View {
-        VStack(spacing: 0) {
-            V2TitleBar(themeRaw: $themeRaw)
+        ZStack(alignment: .top) {
+            VStack(spacing: 0) {
+                V2TitleBar(themeRaw: $themeRaw)
 
-            HStack(spacing: 0) {
-                V2LeftRail()
-                    .frame(width: 264)
+                HStack(spacing: 0) {
+                    V2LeftRail()
+                        .frame(width: 264)
 
-                VStack(spacing: 0) {
-                    V2SessionTabs()
-                    V2SessionHeader(dockPanel: $dockPanel)
+                    VStack(spacing: 0) {
+                        V2SessionTabs()
+                        V2SessionHeader(dockPanel: $dockPanel)
 
-                    mainBody
+                        mainBody
 
-                    composerOrControls
+                        composerOrControls
+                    }
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .background(palette.paper)
+
+                    V2RightDock(panel: $dockPanel)
+                        .frame(width: 360)
                 }
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-                .background(palette.paper)
-
-                V2RightDock(panel: $dockPanel)
-                    .frame(width: 360)
+                .frame(maxHeight: .infinity)
             }
-            .frame(maxHeight: .infinity)
+
+            if appState.searchOpen {
+                V2SearchOverlay()
+                    .transition(.opacity.combined(with: .move(edge: .top)))
+                    .zIndex(60)
+            }
         }
+        .animation(.easeOut(duration: 0.15), value: appState.searchOpen)
         .background(palette.paper)
         .environment(\.v2, palette)
         .environmentObject(appState)
@@ -56,10 +65,15 @@ struct V2RootView: View {
         // this only fires here when v2 is foreground. Falls through to the
         // standard window close when no tab is active.
         .background(
-            Button("Close v2 Tab") { closeActiveTabOrWindow() }
-                .keyboardShortcut("w", modifiers: .command)
-                .opacity(0)
-                .frame(width: 0, height: 0)
+            ZStack {
+                Button("Close v2 Tab") { closeActiveTabOrWindow() }
+                    .keyboardShortcut("w", modifiers: .command)
+                // ⌘K opens the cross-project session search overlay.
+                Button("Open search") { appState.searchOpen = true }
+                    .keyboardShortcut("k", modifiers: .command)
+            }
+            .opacity(0)
+            .frame(width: 0, height: 0)
         )
         .task {
             appState.attach(terminals: terminals)
