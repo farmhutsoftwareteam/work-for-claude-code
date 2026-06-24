@@ -26,6 +26,9 @@ packages:
   SwiftTerm:
     url: https://github.com/migueldeicaza/SwiftTerm
     from: 1.13.0
+  Inject:
+    url: https://github.com/krzysztofzablocki/Inject
+    from: 1.5.2
 
 targets:
   Work:
@@ -40,6 +43,8 @@ targets:
         product: Sparkle
       - package: SwiftTerm
         product: SwiftTerm
+      - package: Inject
+        product: Inject
     settings:
       PRODUCT_BUNDLE_IDENTIFIER: com.munyamakosa.work
       CODE_SIGN_ENTITLEMENTS: Work.entitlements
@@ -66,3 +71,19 @@ targets:
         SUAutomaticallyUpdate: true
     scheme:
       testTargets: []
+
+  # Phase 0 protocol spike (issue #9). Standalone CLI; not part of the shipped
+  # app. Run from Xcode (AtelierSpike scheme) to spawn the user's `claude`
+  # binary with the full Mode-B flag set and capture the NDJSON event stream
+  # to /tmp for fixtures.
+  AtelierSpike:
+    type: tool
+    platform: macOS
+    sources:
+      - AtelierSpike
+    settings:
+      PRODUCT_NAME: AtelierSpike
+      SKIP_INSTALL: YES
+      CODE_SIGN_STYLE: Automatic
+      CODE_SIGNING_REQUIRED: NO
+      CODE_SIGNING_ALLOWED: NO
