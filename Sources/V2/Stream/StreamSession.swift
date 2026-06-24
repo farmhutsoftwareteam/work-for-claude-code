@@ -66,6 +66,17 @@ final class StreamSession: ObservableObject {
     /// Set true while an `api_retry` is in flight.
     @Published private(set) var isRetrying: Bool = false
 
+    /// Detail of the most recent api_retry event (cleared on the next
+    /// non-retry event). Drives the inline retry indicator copy.
+    @Published private(set) var lastRetry: RetryInfo?
+
+    struct RetryInfo: Equatable, Sendable {
+        let attempt: Int
+        let maxRetries: Int
+        let retryDelayMs: Int?
+        let errorStatus: String?
+    }
+
     // MARK: - Internals
 
     private var process: Process?
@@ -214,6 +225,7 @@ final class StreamSession: ObservableObject {
             latestResult = r
             tokensUsed = r.usage?.total ?? tokensUsed
             isRetrying = false
+            lastRetry = nil
             if state == .working || state == .awaitingPermission {
                 state = .idle
             }
@@ -239,6 +251,12 @@ final class StreamSession: ObservableObject {
             state = .working
         case "api_retry":
             isRetrying = true
+            lastRetry = RetryInfo(
+                attempt: sys.attempt ?? 1,
+                maxRetries: sys.maxRetries ?? 5,
+                retryDelayMs: sys.retryDelayMs,
+                errorStatus: sys.errorStatus
+            )
         case "compact_boundary":
             transcript.append(.compactBoundary)
         default:

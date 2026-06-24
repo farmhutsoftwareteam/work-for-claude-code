@@ -122,33 +122,122 @@ struct V2HarnessPanel: View {
         let canStart = appState.claudeBinary != nil
             && (appState.claudeVersion ?? .init(major: 0, minor: 0, patch: 0)) >= ClaudeBinary.minimumSupported
 
-        return VStack(alignment: .leading, spacing: 12) {
-            Text("No harness running on this tab.")
-                .font(.system(size: 12, design: .monospaced))
-                .foregroundColor(v2.mute)
-
-            Text("A harness runs Plan → Work → Review across fresh `claude -p` sessions. State persists in progress.md so the work survives context limits.")
-                .font(.system(size: 11, design: .monospaced))
-                .lineSpacing(11 * 0.55)
-                .foregroundColor(v2.faint)
-
-            Button { showingNewHarness = true } label: {
-                HStack(spacing: 8) {
-                    Image(systemName: "play.fill").font(.system(size: 10))
-                    Text("Configure harness")
+        return ScrollView {
+            VStack(alignment: .leading, spacing: 16) {
+                VStack(alignment: .leading, spacing: 12) {
+                    Text("No harness running on this tab.")
                         .font(.system(size: 12, design: .monospaced))
+                        .foregroundColor(v2.mute)
+
+                    Text("A harness runs Plan → Work → Review across fresh `claude -p` sessions. State persists in progress.md so the work survives context limits.")
+                        .font(.system(size: 11, design: .monospaced))
+                        .lineSpacing(11 * 0.55)
+                        .foregroundColor(v2.faint)
+
+                    Button { showingNewHarness = true } label: {
+                        HStack(spacing: 8) {
+                            Image(systemName: "play.fill").font(.system(size: 10))
+                            Text("Configure harness")
+                                .font(.system(size: 12, design: .monospaced))
+                        }
+                        .foregroundColor(canStart ? v2.paper : v2.faint)
+                        .padding(.horizontal, 13)
+                        .padding(.vertical, 8)
+                        .background(canStart ? v2.ink : v2.line2)
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(!canStart)
+                    .padding(.top, 4)
                 }
-                .foregroundColor(canStart ? v2.paper : v2.faint)
-                .padding(.horizontal, 13)
-                .padding(.vertical, 8)
-                .background(canStart ? v2.ink : v2.line2)
+
+                savedHarnessesSection
             }
-            .buttonStyle(.plain)
-            .disabled(!canStart)
-            .padding(.top, 4)
+            .padding(18)
+            .frame(maxWidth: .infinity, alignment: .topLeading)
         }
-        .padding(18)
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+    }
+
+    @ViewBuilder
+    private var savedHarnessesSection: some View {
+        let saved = HarnessOrchestrator.listSaved()
+        if !saved.isEmpty {
+            VStack(alignment: .leading, spacing: 9) {
+                HStack {
+                    Text("SAVED")
+                        .font(.system(size: 10, design: .monospaced))
+                        .kerning(1.0)
+                        .foregroundColor(v2.faint)
+                    Spacer()
+                    Text("\(saved.count)")
+                        .font(.system(size: 10, design: .monospaced))
+                        .foregroundColor(v2.faint)
+                }
+                .padding(.top, 8)
+                .overlay(alignment: .top) {
+                    Rectangle().fill(v2.line).frame(height: 1)
+                }
+                .padding(.top, 8)
+
+                VStack(spacing: 8) {
+                    ForEach(saved) { saved in
+                        savedHarnessRow(saved)
+                    }
+                }
+            }
+        }
+    }
+
+    private func savedHarnessRow(_ saved: HarnessOrchestrator.SavedHarness) -> some View {
+        Button {
+            NSWorkspace.shared.activateFileViewerSelecting([saved.url])
+        } label: {
+            HStack(alignment: .top, spacing: 10) {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(saved.summary.isEmpty ? "(no plan recorded)" : saved.summary)
+                        .font(.system(size: 12, design: .monospaced))
+                        .foregroundColor(v2.ink)
+                        .lineLimit(2)
+                    HStack(spacing: 9) {
+                        Text(formatDate(saved.createdAt))
+                            .font(.system(size: 10, design: .monospaced))
+                            .foregroundColor(v2.faint)
+                        if saved.hasProgress {
+                            Text("· progress saved")
+                                .font(.system(size: 10, design: .monospaced))
+                                .foregroundColor(v2.faint)
+                        }
+                    }
+                }
+                Spacer()
+                Image(systemName: "arrow.up.right.square")
+                    .font(.system(size: 10))
+                    .foregroundColor(v2.faint)
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 10)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(v2.card)
+            .overlay(Rectangle().stroke(v2.line, lineWidth: 1))
+        }
+        .buttonStyle(.plain)
+        .help("Reveal harness directory in Finder")
+        .contextMenu {
+            Button("Reveal in Finder") {
+                NSWorkspace.shared.activateFileViewerSelecting([saved.url])
+            }
+            Button("Copy path") {
+                let pb = NSPasteboard.general
+                pb.clearContents()
+                pb.setString(saved.url.path, forType: .string)
+            }
+        }
+    }
+
+    private func formatDate(_ d: Date) -> String {
+        let f = DateFormatter()
+        f.dateStyle = .short
+        f.timeStyle = .short
+        return f.string(from: d)
     }
 
     // MARK: - Live sections (used by V2HarnessLiveView)

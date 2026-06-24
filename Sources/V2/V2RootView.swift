@@ -51,6 +51,16 @@ struct V2RootView: View {
         .environment(\.v2, palette)
         .environmentObject(appState)
         .preferredColorScheme(theme.preferredColorScheme)
+        // ⌘W: close the active v2 tab when v2 window is key. The system
+        // resolves the shortcut against the focused responder chain, so
+        // this only fires here when v2 is foreground. Falls through to the
+        // standard window close when no tab is active.
+        .background(
+            Button("Close v2 Tab") { closeActiveTabOrWindow() }
+                .keyboardShortcut("w", modifiers: .command)
+                .opacity(0)
+                .frame(width: 0, height: 0)
+        )
         .task {
             appState.attach(terminals: terminals)
             appState.resolveBinary()
@@ -187,6 +197,14 @@ struct V2RootView: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(palette.paper)
+    }
+
+    private func closeActiveTabOrWindow() {
+        if let id = appState.activeTabId {
+            appState.close(tabId: id)
+        } else {
+            NSApp.keyWindow?.performClose(nil)
+        }
     }
 
     private func startCTA(tab: TerminalTab, session: StreamSession) -> some View {

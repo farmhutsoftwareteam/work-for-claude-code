@@ -95,6 +95,70 @@ final class HarnessOrchestrator: ObservableObject {
         self.storageRoot = HarnessOrchestrator.storageRoot(forId: id)
     }
 
+    /// Application Support root that holds every harness directory.
+    nonisolated static var harnessesRoot: URL {
+        let appSupport = FileManager.default.urls(
+            for: .applicationSupportDirectory,
+            in: .userDomainMask
+        ).first ?? URL(fileURLWithPath: NSTemporaryDirectory())
+        return appSupport
+            .appendingPathComponent("com.munyamakosa.work")
+            .appendingPathComponent("harnesses")
+    }
+
+    /// Lightweight on-disk record of a previously-run harness. Used by the
+    /// dock panel's empty state to offer resume/inspect.
+    struct SavedHarness: Identifiable, Equatable {
+        let id: UUID
+        let url: URL
+        let createdAt: Date
+        /// First non-empty line of plan.md, used as a label. Empty if the
+        /// plan file is missing or empty.
+        let summary: String
+        let hasProgress: Bool
+    }
+
+    /// Enumerate harness directories under Application Support and return
+    /// their summaries newest-first. Excludes the currently-active harness
+    /// (matching `excluding`) if provided.
+    nonisolated static func listSaved(excluding currentId: UUID? = nil) -> [SavedHarness] {
+        let fm = FileManager.default
+        guard let entries = try? fm.contentsOfDirectory(
+            at: harnessesRoot,
+            includingPropertiesForKeys: [.creationDateKey],
+            options: [.skipsHiddenFiles]
+        ) else { return [] }
+
+        return entries.compactMap { url -> SavedHarness? in
+            guard url.hasDirectoryPath,
+                  let uuid = UUID(uuidString: url.lastPathComponent),
+                  uuid != currentId else { return nil }
+            let attrs = try? url.resourceValues(forKeys: [.creationDateKey])
+            let created = attrs?.creationDate ?? .distantPast
+
+            let planURL = url.appendingPathComponent("plan.md")
+            let progressURL = url.appendingPathComponent("progress.md")
+            let plan = (try? String(contentsOf: planURL, encoding: .utf8)) ?? ""
+            let firstLine = plan
+                .split(whereSeparator: \.isNewline)
+                .first(where: { !$0.trimmingCharacters(in: .whitespaces).isEmpty })
+                .map { line -> String in
+                    var s = String(line)
+                    // Strip Markdown heading markers for a cleaner label.
+                    while s.hasPrefix("#") || s.hasPrefix(" ") { s.removeFirst() }
+                    return s
+                } ?? ""
+
+            return SavedHarness(
+                id: uuid,
+                url: url,
+                createdAt: created,
+                summary: firstLine,
+                hasProgress: fm.fileExists(atPath: progressURL.path)
+            )
+        }.sorted { $0.createdAt > $1.createdAt }
+    }
+
     nonisolated static func storageRoot(forId id: UUID) -> URL {
         let appSupport = FileManager.default.urls(
             for: .applicationSupportDirectory,

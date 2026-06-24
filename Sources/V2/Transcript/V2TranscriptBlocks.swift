@@ -519,14 +519,42 @@ struct V2SubagentBlock: View {
 
 struct V2ApiRetryInline: View {
     @Environment(\.v2) private var v2
+    let info: StreamSession.RetryInfo?
+
+    init(info: StreamSession.RetryInfo? = nil) {
+        self.info = info
+    }
 
     var body: some View {
         HStack(spacing: 9) {
             V2Spinner(size: 11)
-            Text("overloaded — retrying (attempt 2 of 5)…")
+            Text(label)
+                .foregroundColor(v2.faint)
+            if let delay = info?.retryDelayMs, delay > 0 {
+                Text("(retry in \(formatDelay(delay)))")
+                    .foregroundColor(v2.faint.opacity(0.7))
+            }
         }
         .font(.system(size: 11.5, design: .monospaced))
-        .foregroundColor(v2.faint)
+        .padding(.horizontal, 11)
+        .padding(.vertical, 7)
+        .background(v2.paper2)
+        .overlay(Rectangle().stroke(v2.line, lineWidth: 1))
+        .transition(.opacity)
+    }
+
+    private var label: String {
+        guard let info else {
+            return "overloaded — retrying…"
+        }
+        let cause = info.errorStatus.flatMap { $0.isEmpty ? nil : $0 } ?? "upstream error"
+        return "\(cause) — retrying (attempt \(info.attempt) of \(info.maxRetries))…"
+    }
+
+    private func formatDelay(_ ms: Int) -> String {
+        if ms < 1000 { return "\(ms)ms" }
+        let s = Double(ms) / 1000.0
+        return s >= 10 ? String(format: "%.0fs", s) : String(format: "%.1fs", s)
     }
 }
 

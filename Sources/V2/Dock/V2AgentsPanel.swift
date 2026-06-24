@@ -14,6 +14,19 @@ struct V2AgentsPanel: View {
     @EnvironmentObject private var appState: V2AppState
     @State private var filter: ScopeFilter = .all
     @State private var agents: [V2Agent] = []
+    @State private var editing: EditTarget?
+
+    enum EditTarget: Identifiable {
+        case new(scope: AgentConfigWriter.Scope)
+        case edit(V2Agent)
+
+        var id: String {
+            switch self {
+            case .new:           return "new"
+            case .edit(let a):   return "edit-\(a.id.uuidString)"
+            }
+        }
+    }
 
     enum ScopeFilter: String, CaseIterable, Identifiable {
         case all, user, project
@@ -29,6 +42,32 @@ struct V2AgentsPanel: View {
         }
         .task(id: appState.activeTab?.id) {
             reload()
+        }
+        .sheet(item: $editing) { target in
+            switch target {
+            case .new(let scope):
+                V2AgentEditorSheet(
+                    mode: .new,
+                    scope: scope,
+                    onSaved: { _ in
+                        editing = nil
+                        reload()
+                    },
+                    onCancel: { editing = nil }
+                )
+            case .edit(let agent):
+                V2AgentEditorSheet(
+                    mode: .edit(agent),
+                    scope: agent.scope == .user
+                        ? .user
+                        : .project(cwd: URL(fileURLWithPath: appState.activeTab?.projectCwd ?? "/")),
+                    onSaved: { _ in
+                        editing = nil
+                        reload()
+                    },
+                    onCancel: { editing = nil }
+                )
+            }
         }
         .enableInjection()
     }
@@ -55,12 +94,37 @@ struct V2AgentsPanel: View {
             }
             .buttonStyle(.plain)
             .help("Reload from disk")
+            Button { editing = .new(scope: defaultNewScope()) } label: {
+                Text("+ new")
+                    .font(.system(size: 10.5, design: .monospaced))
+                    .foregroundColor(v2.ink)
+                    .padding(.horizontal, 9)
+                    .padding(.vertical, 5)
+                    .background(v2.card)
+                    .overlay(Rectangle().stroke(v2.line2, lineWidth: 1))
+            }
+            .buttonStyle(.plain)
+            .help("Create a new agent in the current project (or user scope)")
         }
         .padding(.horizontal, 18)
         .padding(.vertical, 16)
         .frame(maxWidth: .infinity, alignment: .leading)
         .overlay(alignment: .bottom) {
             Rectangle().fill(v2.line).frame(height: 1)
+        }
+    }
+
+    private func defaultNewScope() -> AgentConfigWriter.Scope {
+        // Match the scope filter the user has selected: a 'project' filter
+        // implies they want to write a project agent. Otherwise user.
+        switch filter {
+        case .project:
+            if let cwd = appState.activeTab?.projectCwd {
+                return .project(cwd: URL(fileURLWithPath: cwd))
+            }
+            return .user
+        default:
+            return .user
         }
     }
 
@@ -164,6 +228,28 @@ struct V2AgentsPanel: View {
     // MARK: - Card
 
     private func card(_ agent: V2Agent) -> some View {
+        Button { editing = .edit(agent) } label: {
+            cardContent(agent)
+        }
+        .buttonStyle(.plain)
+        .contextMenu {
+            Button("Edit") { editing = .edit(agent) }
+            Button("Reveal in Finder") {
+                NSWorkspace.shared.activateFileViewerSelecting([agent.path])
+            }
+            Button("Copy slug") {
+                let pb = NSPasteboard.general
+                pb.clearContents()
+                pb.setString(agent.slug, forType: .string)
+            }
+            Divider()
+            Button("Move to Trash", role: .destructive) {
+                deleteAgent(agent)
+            }
+        }
+    }
+
+    private func cardContent(_ agent: V2Agent) -> some View {
         VStack(alignment: .leading, spacing: 6) {
             HStack(spacing: 9) {
                 if let color = agent.color {
@@ -199,16 +285,22 @@ struct V2AgentsPanel: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(v2.card)
         .overlay(Rectangle().stroke(v2.line2, lineWidth: 1))
-        .contextMenu {
-            Button("Reveal in Finder") {
-                NSWorkspace.shared.activateFileViewerSelecting([agent.path])
-            }
-            Button("Copy slug") {
-                let pb = NSPasteboard.general
-                pb.clearContents()
-                pb.setString(agent.slug, forType: .string)
+    }
+
+    private func deleteAgent(_ agent: V2Agent) {
+        let scope: AgentConfigWriter.Scope
+        switch agent.scope {
+        case .user:
+            scope = .user
+        case .project:
+            if let cwd = appState.activeTab?.projectCwd {
+                scope = .project(cwd: URL(fileURLWithPath: cwd))
+            } else {
+                return
             }
         }
+        try? AgentConfigWriter.delete(slug: agent.slug, from: scope)
+        reload()
     }
 
     // MARK: - Helpers

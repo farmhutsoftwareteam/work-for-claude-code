@@ -23,7 +23,8 @@ struct V2LiveTranscript: View {
                     }
 
                     if session.isRetrying {
-                        V2ApiRetryInline()
+                        V2ApiRetryInline(info: session.lastRetry)
+                            .animation(.easeOut(duration: 0.2), value: session.isRetrying)
                     }
 
                     if let result = session.latestResult {

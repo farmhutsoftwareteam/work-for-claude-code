@@ -12,11 +12,21 @@ struct V2McpPanel: View {
     @ObserveInjection private var inject
     @Environment(\.v2) private var v2
     @EnvironmentObject private var appState: V2AppState
+    @EnvironmentObject private var store: Store
+    @State private var addingMCP = false
 
     var body: some View {
         VStack(spacing: 0) {
             header
             content
+        }
+        .sheet(isPresented: $addingMCP) {
+            MCPEditor(mode: .add(defaultScope: .user)) {
+                addingMCP = false
+                Task { await store.load() }
+            }
+            .environmentObject(store)
+            .frame(minWidth: 560, minHeight: 600)
         }
         .enableInjection()
     }
@@ -34,7 +44,7 @@ struct V2McpPanel: View {
                     .font(.system(size: 10.5, design: .monospaced))
                     .foregroundColor(v2.faint)
             }
-            Button { } label: {
+            Button { addingMCP = true } label: {
                 Text("+ add")
                     .font(.system(size: 10.5, design: .monospaced))
                     .foregroundColor(v2.ink)
@@ -44,8 +54,7 @@ struct V2McpPanel: View {
                     .overlay(Rectangle().stroke(v2.line2, lineWidth: 1))
             }
             .buttonStyle(.plain)
-            .help("Add a server (use Extensions tab in v1 window for now)")
-            .disabled(true)
+            .help("Add a new MCP server")
         }
         .padding(.horizontal, 18)
         .padding(.vertical, 16)

@@ -379,6 +379,74 @@ final class ConformanceTests: XCTestCase {
         XCTAssertEqual(cmd, "new")
     }
 
+    // MARK: - AgentConfigWriter
+
+    func test_agentWriter_serializeProducesParseableFrontmatter() {
+        let draft = AgentConfigWriter.Draft(
+            slug: "reviewer",
+            name: "Reviewer",
+            description: "Catches bugs",
+            model: "opus",
+            tools: ["Read", "Grep", "Bash"],
+            color: "red",
+            prompt: "You are a code reviewer."
+        )
+        let serialized = AgentConfigWriter.serialize(
+            draft: draft,
+            normalizedName: "Reviewer",
+            normalizedPrompt: "You are a code reviewer."
+        )
+        // Round-trip through the loader.
+        let url = URL(fileURLWithPath: "/tmp/reviewer.md")
+        let agent = V2AgentLoader.parse(content: serialized, fileURL: url, scope: .user)
+        XCTAssertEqual(agent?.name, "Reviewer")
+        XCTAssertEqual(agent?.model, "opus")
+        XCTAssertEqual(agent?.tools, ["Read", "Grep", "Bash"])
+        XCTAssertEqual(agent?.color, "red")
+        XCTAssertTrue(agent?.prompt.contains("code reviewer") ?? false)
+    }
+
+    func test_agentWriter_quotesValuesWithColons() {
+        let draft = AgentConfigWriter.Draft(
+            slug: "x",
+            name: "Foo: with colon",
+            description: "",
+            model: "",
+            tools: [],
+            color: "",
+            prompt: "p"
+        )
+        let serialized = AgentConfigWriter.serialize(
+            draft: draft,
+            normalizedName: draft.name,
+            normalizedPrompt: draft.prompt
+        )
+        XCTAssertTrue(serialized.contains("name: \"Foo: with colon\""), "values with colons should be quoted to keep YAML parseable")
+    }
+
+    func test_agentWriter_skipsEmptyOptionalFields() {
+        let draft = AgentConfigWriter.Draft(
+            slug: "x",
+            name: "Bare",
+            description: "",
+            model: "",
+            tools: [],
+            color: "",
+            prompt: "p"
+        )
+        let serialized = AgentConfigWriter.serialize(draft: draft, normalizedName: "Bare", normalizedPrompt: "p")
+        XCTAssertFalse(serialized.contains("description:"))
+        XCTAssertFalse(serialized.contains("model:"))
+        XCTAssertFalse(serialized.contains("tools:"))
+        XCTAssertFalse(serialized.contains("color:"))
+    }
+
+    // MARK: - Harness saved list
+
+    func test_harnessRoot_pathContainsExpectedSegments() {
+        XCTAssertTrue(HarnessOrchestrator.harnessesRoot.path.hasSuffix("com.munyamakosa.work/harnesses"))
+    }
+
     // MARK: - Theme model (V2ThemeChoice)
 
     func test_themeChoice_lightAndDark_returnFixedPalettes() {
