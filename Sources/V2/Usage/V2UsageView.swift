@@ -20,6 +20,22 @@ struct V2UsageView: View {
     @EnvironmentObject private var store: Store
     @EnvironmentObject private var appState: V2AppState
 
+    enum Range: String, CaseIterable, Identifiable {
+        case month, last30, year, all
+        var id: String { rawValue }
+        var label: String {
+            switch self {
+            case .month:  return "month"
+            case .last30: return "last 30d"
+            case .year:   return "year"
+            case .all:    return "all time"
+            }
+        }
+    }
+
+    @State private var range: Range = .all
+    @State private var refreshing = false
+
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 0) {
@@ -29,6 +45,14 @@ struct V2UsageView: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(v2.paper)
+        .task {
+            // The first time this view appears: if Store hasn't loaded usage
+            // yet (dev build skipping v1's path, fresh launch race, etc.),
+            // kick it off. cheap no-op when usageTotals is already populated.
+            if store.usageTotals.total.total == 0 {
+                await store.load()
+            }
+        }
         .enableInjection()
     }
 
@@ -58,15 +82,51 @@ struct V2UsageView: View {
 
             Spacer()
 
-            Text(billingNote)
-                .font(.system(size: 11, design: .monospaced))
-                .foregroundColor(v2.faint)
+            rangeSelector
+
+            Button { refresh() } label: {
+                HStack(spacing: 5) {
+                    Image(systemName: refreshing ? "arrow.triangle.2.circlepath" : "arrow.clockwise")
+                        .font(.system(size: 10, weight: .medium))
+                    Text(refreshing ? "scanning…" : "refresh")
+                        .font(.system(size: 11, design: .monospaced))
+                }
+                .foregroundColor(v2.mute)
+            }
+            .buttonStyle(.plain)
+            .disabled(refreshing)
         }
         .padding(.horizontal, 28)
         .padding(.top, 18)
         .padding(.bottom, 16)
         .overlay(alignment: .bottom) {
             Rectangle().fill(v2.line).frame(height: 1)
+        }
+    }
+
+    private var rangeSelector: some View {
+        HStack(spacing: 0) {
+            ForEach(Range.allCases) { r in
+                Button { range = r } label: {
+                    Text(r.label)
+                        .font(.system(size: 10.5, design: .monospaced))
+                        .foregroundColor(range == r ? v2.paper : v2.mute)
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 5)
+                        .background(range == r ? v2.ink : Color.clear)
+                }
+                .buttonStyle(.plain)
+            }
+        }
+        .overlay(Rectangle().stroke(v2.line2, lineWidth: 1))
+    }
+
+    private func refresh() {
+        guard !refreshing else { return }
+        refreshing = true
+        Task {
+            await store.load()
+            refreshing = false
         }
     }
 
@@ -90,17 +150,17 @@ struct V2UsageView: View {
         HStack(spacing: 1) {
             statCard(
                 label: "TOTAL SPEND",
-                value: AnthropicPricing.formatUSD(monthlyCost),
-                hint: "estimated · current month"
+                value: AnthropicPricing.formatUSD(rangedCost),
+                hint: "estimated · \(range.label)"
             )
             statCard(
                 label: "TOTAL TOKENS",
-                value: formatTokens(currentMonthTotal.total),
+                value: formatTokens(rangedTotal.total),
                 hint: "input + output + cache"
             )
             statCard(
                 label: "SESSIONS",
-                value: "\(sessionCountCurrentMonth)",
+                value: "\(sessionCountInRange)",
                 hint: "across \(projectCount) project\(projectCount == 1 ? "" : "s")"
             )
             statCard(
@@ -137,7 +197,7 @@ struct V2UsageView: View {
 
     private var dailySparkline: some View {
         VStack(alignment: .leading, spacing: 14) {
-            Text("DAILY SPEND — \(monthYearLabel)")
+            Text("DAILY SPEND — \(range.label.uppercased())")
                 .font(.system(size: 9.5, weight: .regular, design: .monospaced))
                 .kerning(1.5)
                 .foregroundColor(v2.faint)
@@ -332,58 +392,70 @@ struct V2UsageView: View {
 
     private var totals: UsageTotals { store.usageTotals }
 
-    private var currentMonthTotal: TokenUsage {
-        // Sum byDay entries whose date is in the current calendar month.
+    /// Lower bound for the selected range; nil = no lower bound (.all).
+    private var rangeStart: Date? {
         let cal = Calendar.current
         let now = Date()
-        guard let interval = cal.dateInterval(of: .month, for: now) else {
-            return totals.total
+        let startOfToday = cal.startOfDay(for: now)
+        switch range {
+        case .month:  return cal.dateInterval(of: .month, for: now)?.start
+        case .last30: return cal.date(byAdding: .day, value: -29, to: startOfToday)
+        case .year:   return cal.date(byAdding: .day, value: -364, to: startOfToday)
+        case .all:    return nil
         }
+    }
+
+    private func inRange(_ date: Date) -> Bool {
+        guard let start = rangeStart else { return true }
+        return date >= start
+    }
+
+    private var rangedTotal: TokenUsage {
         var sum: TokenUsage = .zero
-        for (day, usage) in totals.byDay where interval.contains(day) {
+        for (day, usage) in totals.byDay where inRange(day) {
             sum += usage
         }
         return sum
     }
 
-    private var monthlyCost: Double {
-        AnthropicPricing.totalCost(currentMonthTotal)
+    private var rangedCost: Double {
+        AnthropicPricing.totalCost(rangedTotal)
     }
 
-    private var sessionCountCurrentMonth: Int {
-        // Count sessions whose lastActivity falls in the current month.
-        let cal = Calendar.current
-        guard let interval = cal.dateInterval(of: .month, for: Date()) else { return 0 }
-        return store.projects.reduce(0) { acc, project in
-            acc + project.sessions.filter { interval.contains($0.lastActivity) }.count
+    private var sessionCountInRange: Int {
+        store.projects.reduce(0) { acc, project in
+            acc + project.sessions.filter { inRange($0.lastActivity) }.count
         }
     }
 
     private var projectCount: Int {
-        let cal = Calendar.current
-        guard let interval = cal.dateInterval(of: .month, for: Date()) else { return 0 }
-        return store.projects.filter { project in
-            project.sessions.contains { interval.contains($0.lastActivity) }
+        store.projects.filter { project in
+            project.sessions.contains { inRange($0.lastActivity) }
         }.count
     }
 
     private var avgPerSessionFormatted: String {
-        guard sessionCountCurrentMonth > 0 else { return "—" }
-        return AnthropicPricing.formatUSD(monthlyCost / Double(sessionCountCurrentMonth))
+        guard sessionCountInRange > 0 else { return "—" }
+        return AnthropicPricing.formatUSD(rangedCost / Double(sessionCountInRange))
     }
 
     private var avgTokensFormatted: String {
-        guard sessionCountCurrentMonth > 0 else { return "no sessions yet" }
-        return "\(formatTokens(currentMonthTotal.total / sessionCountCurrentMonth)) tokens avg"
+        guard sessionCountInRange > 0 else { return "no sessions yet" }
+        return "\(formatTokens(rangedTotal.total / sessionCountInRange)) tokens avg"
     }
 
     private var periodLabel: String {
         let f = DateFormatter()
-        f.dateFormat = "MMM d"
-        let cal = Calendar.current
+        f.dateFormat = "MMM d, yyyy"
         let now = Date()
-        guard let interval = cal.dateInterval(of: .month, for: now) else { return "" }
-        return "\(f.string(from: interval.start)) – \(f.string(from: now)), \(yearFormatter.string(from: now))"
+        guard let start = rangeStart else {
+            // .all — show the earliest activity date as a true range.
+            if let earliest = totals.byDay.keys.min() {
+                return "\(f.string(from: earliest)) – \(f.string(from: now))"
+            }
+            return "all time"
+        }
+        return "\(f.string(from: start)) – \(f.string(from: now))"
     }
 
     private var monthYearLabel: String {
@@ -392,55 +464,53 @@ struct V2UsageView: View {
         return f.string(from: Date()).lowercased()
     }
 
-    private var billingNote: String {
-        // First day of next month — useful anchor; we don't actually know
-        // the user's Anthropic billing date.
-        let cal = Calendar.current
-        let now = Date()
-        guard let nextMonth = cal.date(byAdding: .month, value: 1, to: now),
-              let firstOfNext = cal.dateInterval(of: .month, for: nextMonth)?.start else {
-            return ""
-        }
-        let f = DateFormatter()
-        f.dateFormat = "MMM d"
-        return "month resets \(f.string(from: firstOfNext))"
-    }
-
-    private var yearFormatter: DateFormatter {
-        let f = DateFormatter()
-        f.dateFormat = "yyyy"
-        return f
-    }
-
-    // Daily bars for the current month, mapped to a 0-56pt height range.
+    // Daily bars for the selected range, mapped to a 0-56pt height range.
+    // For long ranges (year / all), we still emit one bar per day; the
+    // HStack stretches so each bar gets a sliver.
     private var dailyBars: [DailyBar] {
         let cal = Calendar.current
         let now = Date()
-        guard let interval = cal.dateInterval(of: .month, for: now) else { return [] }
-        let dayCount = cal.dateComponents([.day], from: interval.start, to: now).day ?? 0
         let today = cal.startOfDay(for: now)
 
         let costsByDay: [Date: Double] = totals.byDay.reduce(into: [:]) { acc, pair in
-            acc[cal.startOfDay(for: pair.key)] = AnthropicPricing.totalCost(pair.value)
+            let day = cal.startOfDay(for: pair.key)
+            guard inRange(day) else { return }
+            acc[day, default: 0] += AnthropicPricing.totalCost(pair.value)
         }
+        guard let earliest = costsByDay.keys.min() else { return [] }
         let maxCost = max(0.001, costsByDay.values.max() ?? 0)
 
-        return (0...dayCount).compactMap { offset in
-            guard let day = cal.date(byAdding: .day, value: offset, to: interval.start) else { return nil }
-            let startOfDay = cal.startOfDay(for: day)
-            let cost = costsByDay[startOfDay] ?? 0
-            let dayNum = cal.component(.day, from: day)
-            return DailyBar(
-                day: dayNum,
-                cost: cost,
-                heightPx: cost / maxCost * 56,
-                isToday: cal.isDate(startOfDay, inSameDayAs: today)
-            )
+        let totalDays = cal.dateComponents([.day], from: earliest, to: today).day ?? 0
+        // Cap rendered bars at 90 — beyond that the chart gets too dense to
+        // read. Bucket into weeks instead when the range is huge.
+        let stride = max(1, (totalDays + 1) / 90)
+
+        var bars: [DailyBar] = []
+        var idx = 0
+        while idx <= totalDays {
+            guard let bucketStart = cal.date(byAdding: .day, value: idx, to: earliest) else { break }
+            var bucketCost = 0.0
+            for j in 0..<stride {
+                if let day = cal.date(byAdding: .day, value: j, to: bucketStart),
+                   day <= today {
+                    bucketCost += costsByDay[day] ?? 0
+                }
+            }
+            let isToday = cal.isDate(bucketStart, inSameDayAs: today)
+                || (idx + stride > totalDays)
+            bars.append(DailyBar(
+                day: cal.component(.day, from: bucketStart),
+                cost: bucketCost,
+                heightPx: bucketCost / maxCost * 56,
+                isToday: isToday
+            ))
+            idx += stride
         }
+        return bars
     }
 
     private var modelBars: [Bar] {
-        let byModel = currentMonthByModel
+        let byModel = rangedByModel
         let total = byModel.values.reduce(0.0, +)
         guard total > 0 else { return [] }
         return byModel
@@ -454,13 +524,9 @@ struct V2UsageView: View {
             .sorted { $0.fraction > $1.fraction }
     }
 
-    private var currentMonthByModel: [String: Double] {
-        // Aggregate per-model tokens from byDay restricted to current month,
-        // then cost them through AnthropicPricing.
-        let cal = Calendar.current
-        guard let interval = cal.dateInterval(of: .month, for: Date()) else { return [:] }
+    private var rangedByModel: [String: Double] {
         var totalsByModel: [String: TokenUsage] = [:]
-        for (day, usage) in totals.byDay where interval.contains(day) {
+        for (day, usage) in totals.byDay where inRange(day) {
             for (model, sub) in usage.byModel {
                 let folded = String(model.split(separator: "[").first ?? Substring(model))
                 totalsByModel[folded, default: .zero] += sub
@@ -474,15 +540,12 @@ struct V2UsageView: View {
     }
 
     private var projectBars: [Bar] {
-        let cal = Calendar.current
-        guard let interval = cal.dateInterval(of: .month, for: Date()) else { return [] }
-
         // Aggregate cost per project by going through the project's session
         // ids and matching against bySession.
         var costsByProject: [(name: String, cost: Double)] = []
         for project in store.projects {
             var projectCost = 0.0
-            for session in project.sessions where interval.contains(session.lastActivity) {
+            for session in project.sessions where inRange(session.lastActivity) {
                 let key = "\(project.cwd)::\(session.id)"
                 if let usage = totals.bySession[key]?.usage {
                     projectCost += AnthropicPricing.totalCost(usage)
@@ -496,8 +559,8 @@ struct V2UsageView: View {
         guard total > 0 else { return [] }
 
         let sorted = costsByProject.sorted { $0.cost > $1.cost }
-        let top = sorted.prefix(4)
-        let rest = sorted.dropFirst(4).reduce(0) { $0 + $1.cost }
+        let top = sorted.prefix(5)
+        let rest = sorted.dropFirst(5).reduce(0) { $0 + $1.cost }
 
         var bars: [Bar] = top.map { (name, cost) in
             Bar(label: name, costText: AnthropicPricing.formatUSD(cost), fraction: cost / total)
@@ -514,9 +577,11 @@ struct V2UsageView: View {
 
     private var recentRows: [V2UsageSessionRow] {
         // Pull the most recent N sessions across all projects, costed.
+        // Filtered to the selected range so the table doesn't show old
+        // sessions when scoping to e.g. "month".
         var rows: [V2UsageSessionRow] = []
         for project in store.projects {
-            for session in project.sessions {
+            for session in project.sessions where inRange(session.lastActivity) {
                 let key = "\(project.cwd)::\(session.id)"
                 guard let usage = totals.bySession[key]?.usage else { continue }
                 rows.append(V2UsageSessionRow(
@@ -532,7 +597,7 @@ struct V2UsageView: View {
         }
         return rows
             .sorted { $0.lastActivity > $1.lastActivity }
-            .prefix(8)
+            .prefix(10)
             .map { $0 }
     }
 
