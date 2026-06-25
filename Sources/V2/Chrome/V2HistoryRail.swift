@@ -198,7 +198,7 @@ struct V2HistoryEntry: Identifiable {
         return groups
     }
 
-    private static func titleFor(session s: Session) -> String {
+    static func titleFor(session s: Session) -> String {
         if let slug = s.slug, !slug.isEmpty { return slug.replacingOccurrences(of: "-", with: " ") }
         let preview = s.lastMessagePreview.trimmingCharacters(in: .whitespacesAndNewlines)
         if !preview.isEmpty { return String(preview.prefix(72)) }

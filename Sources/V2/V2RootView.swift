@@ -31,13 +31,20 @@ struct V2RootView: View {
                 V2LeftRail()
                     .frame(width: 264)
 
-                VStack(spacing: 0) {
-                    V2SessionTabs()
-                    V2SessionHeader(dockPanel: $dockPanel)
+                Group {
+                    switch appState.mainView {
+                    case .chat:
+                        VStack(spacing: 0) {
+                            V2SessionTabs()
+                            V2SessionHeader(dockPanel: $dockPanel)
 
-                    mainBody
+                            mainBody
 
-                    composerOrControls
+                            composerOrControls
+                        }
+                    case .usage:
+                        V2UsageView()
+                    }
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .background(palette.paper)

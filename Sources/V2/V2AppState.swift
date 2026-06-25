@@ -28,6 +28,11 @@ final class V2AppState: ObservableObject {
     /// Left-rail tab — projects list or session-history timeline.
     @Published var railTab: RailTab = .projects
 
+    /// Which main column to render — the chat surface (transcript +
+    /// composer) or the full-width Usage report. Toggled by the Usage
+    /// workbench tile and the back button in the Usage header.
+    @Published var mainView: MainView = .chat
+
     /// ⌘K search overlay visibility + current query.
     @Published var searchOpen: Bool = false
     @Published var searchQuery: String = ""
@@ -48,6 +53,11 @@ final class V2AppState: ObservableObject {
     enum RailTab: String, CaseIterable, Identifiable {
         case projects, history
         var id: String { rawValue }
+    }
+
+    enum MainView: String, Equatable {
+        case chat
+        case usage
     }
 
     private var cancellables: Set<AnyCancellable> = []

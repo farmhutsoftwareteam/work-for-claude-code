@@ -234,6 +234,8 @@ struct V2LeftRail: View {
         switch tile.label {
         case "Hooks":
             showingHooksEditor = true
+        case "Usage":
+            appState.mainView = .usage
         default:
             // Other tiles route through the v1 ExtensionsView for now.
             break
