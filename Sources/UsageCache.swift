@@ -51,13 +51,27 @@ actor UsageCacheStore {
             data = .empty
             return data
         }
-        // Version 2 (1.2.0) added byModel for cost attribution. Pre-v2 rows
-        // would render as "$? (unknown model)" forever, so we invalidate and
-        // force one re-parse on first launch after upgrade.
-        if decoded.version != 2 {
-            NSLog("[Work] Usage cache version %d → invalidating (1.2.0 migration to v2).", decoded.version)
-            data = .empty
-            return data
+        // Version 2 (1.2.0) added byModel for cost attribution. Old caches
+        // that genuinely lack byModel get blown away so the next aggregate
+        // pass populates it. But: production was shipping v2-shaped data
+        // with `"version":1` stamped on it (default-init bug), so a strict
+        // version check threw away perfectly good caches and triggered a
+        // 5,000-file re-scan on every launch. Now: only invalidate when the
+        // data ACTUALLY lacks byModel; otherwise upgrade the version flag
+        // in place (next save() writes v2).
+        if decoded.version < 2 {
+            let hasModelData = decoded.entries.contains { _, entry in
+                !entry.usage.byModel.isEmpty
+            }
+            if !hasModelData && !decoded.entries.isEmpty {
+                NSLog("[Work] Usage cache v%d lacks byModel — invalidating to re-aggregate.", decoded.version)
+                data = .empty
+                return data
+            }
+            var upgraded = decoded
+            upgraded.version = 2
+            data = upgraded
+            return upgraded
         }
         data = decoded
         return decoded
