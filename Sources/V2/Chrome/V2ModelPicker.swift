@@ -124,7 +124,7 @@ struct V2ModelPicker: View {
                         .font(.system(size: 10.5, design: .monospaced))
                         .foregroundColor(v2.faint)
                     if option.usageCount > 0 {
-                        Text("· \(formattedUsage(option.usageCount)) turns")
+                        Text("· \(V2Format.count(option.usageCount)) turns")
                             .font(.system(size: 10.5, design: .monospaced))
                             .foregroundColor(v2.faint.opacity(0.7))
                     }
@@ -143,11 +143,6 @@ struct V2ModelPicker: View {
         }
         .buttonStyle(.plain)
         .disabled(appState.activeSession == nil)
-    }
-
-    private func formattedUsage(_ n: Int) -> String {
-        if n >= 1000 { return "\(n / 1000)k" }
-        return "\(n)"
     }
 
     private func isActive(_ option: V2DiscoveredModel) -> Bool {

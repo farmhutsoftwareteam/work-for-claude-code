@@ -144,9 +144,7 @@ struct V2LiveComposer: View {
     }
 
     private var modelStatus: String {
-        let used = session.tokensUsed
-        let usedText = used >= 1000 ? "\(used / 1000)k" : "\(used)"
-        return "\(session.model) · \(usedText) tokens"
+        return "\(session.model) · \(V2Format.count(session.tokensUsed)) tokens"
     }
 
     private func sendCurrent() {

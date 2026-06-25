@@ -150,7 +150,7 @@ struct V2UsageView: View {
         HStack(spacing: 1) {
             statCard(
                 label: "TOTAL SPEND",
-                value: AnthropicPricing.formatUSD(rangedCost),
+                value: V2Format.usd(rangedCost),
                 hint: "estimated · \(range.label)"
             )
             statCard(
@@ -160,8 +160,8 @@ struct V2UsageView: View {
             )
             statCard(
                 label: "SESSIONS",
-                value: "\(sessionCountInRange)",
-                hint: "across \(projectCount) project\(projectCount == 1 ? "" : "s")"
+                value: V2Format.count(sessionCountInRange),
+                hint: "across \(V2Format.count(projectCount)) project\(projectCount == 1 ? "" : "s")"
             )
             statCard(
                 label: "AVG / SESSION",
@@ -213,7 +213,7 @@ struct V2UsageView: View {
                             .fontWeight(bar.isToday ? .medium : .regular)
                     }
                     .frame(maxWidth: .infinity)
-                    .help(AnthropicPricing.formatUSD(bar.cost))
+                    .help(V2Format.usd(bar.cost))
                 }
             }
             .frame(height: 70)
@@ -374,7 +374,7 @@ struct V2UsageView: View {
                 .font(.system(size: 12, design: .monospaced))
                 .foregroundColor(v2.mute)
                 .frame(width: 76, alignment: .trailing)
-            Text(AnthropicPricing.formatUSD(row.cost))
+            Text(V2Format.usd(row.cost))
                 .font(.system(size: 12, design: .monospaced))
                 .foregroundColor(v2.ink)
                 .frame(width: 70, alignment: .trailing)
@@ -436,7 +436,7 @@ struct V2UsageView: View {
 
     private var avgPerSessionFormatted: String {
         guard sessionCountInRange > 0 else { return "—" }
-        return AnthropicPricing.formatUSD(rangedCost / Double(sessionCountInRange))
+        return V2Format.usd(rangedCost / Double(sessionCountInRange))
     }
 
     private var avgTokensFormatted: String {
@@ -517,7 +517,7 @@ struct V2UsageView: View {
             .map { (label, cost) in
                 Bar(
                     label: label,
-                    costText: "\(AnthropicPricing.formatUSD(cost)) · \(Int(round(cost / total * 100)))%",
+                    costText: "\(V2Format.usd(cost)) · \(Int(round(cost / total * 100)))%",
                     fraction: cost / total
                 )
             }
@@ -563,12 +563,12 @@ struct V2UsageView: View {
         let rest = sorted.dropFirst(5).reduce(0) { $0 + $1.cost }
 
         var bars: [Bar] = top.map { (name, cost) in
-            Bar(label: name, costText: AnthropicPricing.formatUSD(cost), fraction: cost / total)
+            Bar(label: name, costText: V2Format.usd(cost), fraction: cost / total)
         }
         if rest > 0 {
             bars.append(Bar(
                 label: "others",
-                costText: AnthropicPricing.formatUSD(rest),
+                costText: V2Format.usd(rest),
                 fraction: rest / total
             ))
         }
@@ -610,11 +610,7 @@ struct V2UsageView: View {
         return bare.replacingOccurrences(of: "claude-", with: "")
     }
 
-    private func formatTokens(_ n: Int) -> String {
-        if n >= 1_000_000 { return String(format: "%.1fM", Double(n) / 1_000_000) }
-        if n >= 1_000 { return "\(n / 1_000)k" }
-        return "\(n)"
-    }
+    private func formatTokens(_ n: Int) -> String { V2Format.count(n) }
 }
 
 // MARK: - Row types

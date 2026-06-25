@@ -310,10 +310,10 @@ struct V2LiveResultFooter: View {
 
     var body: some View {
         HStack(spacing: 16) {
-            Text("\(result.numTurns ?? 0) turns")
+            Text("\(V2Format.count(result.numTurns ?? 0)) turns")
             Text(durationText)
             if let cost = result.totalCostUsd {
-                Text(String(format: "$%.4f", cost))
+                Text(V2Format.usd(cost))
             }
             Spacer()
             if let sid = sessionId {

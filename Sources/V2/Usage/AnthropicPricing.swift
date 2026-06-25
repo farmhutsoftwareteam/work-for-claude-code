@@ -64,12 +64,12 @@ struct AnthropicPricing {
         }
     }
 
-    /// Format as `$0.04` / `$1.84` / `$24.31`. Three decimals when small,
-    /// two when bigger — matches the design's mixed precision.
+    /// Format as `$0.04` / `$1.84` / `$24.31` / `$1.2k`. Delegates to
+    /// V2Format.usd so the whole app reads dollar amounts the same way.
+    /// Kept as a thin shim so callers can stay co-located with the
+    /// pricing constants for context.
     static func formatUSD(_ value: Double) -> String {
-        if value < 0.01 { return String(format: "$%.4f", value) }
-        if value < 1    { return String(format: "$%.3f", value) }
-        return String(format: "$%.2f", value)
+        V2Format.usd(value)
     }
 
     private static func rate(for modelId: String) -> Rate? {
