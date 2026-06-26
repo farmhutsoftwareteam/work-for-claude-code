@@ -274,6 +274,13 @@ struct V2LiveComposer: View {
         let body = draft
         let prefix = attachments.outboundPrefix()
         let full = prefix + body
+        // Pre-authorise Reads for paths the user just attached. Without
+        // this claude prompts for permission to read a file the user
+        // literally picked seconds ago — even when the file lives outside
+        // the project cwd (Desktop screenshots, etc.).
+        for item in attachments.items {
+            session.preApproveRead(path: item.url.path)
+        }
         draft = ""
         attachments.clear()
         session.send(text: full)

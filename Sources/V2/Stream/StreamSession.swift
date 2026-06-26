@@ -68,6 +68,13 @@ final class StreamSession: ObservableObject {
     /// Latest queued permission request — the inline permission card binds here.
     @Published private(set) var pendingPermission: PendingPermission?
 
+    /// File paths the user has implicitly authorised by attaching them to a
+    /// composer message. When claude asks `can_use_tool` for `Read` against
+    /// one of these, we auto-allow so the user doesn't get a permission
+    /// prompt for a file they JUST picked. Composer registers a path right
+    /// before send().
+    private var preApprovedReadPaths: Set<String> = []
+
     /// Latest result event totals (for the result footer).
     @Published private(set) var latestResult: ResultEvent?
 
@@ -368,6 +375,14 @@ final class StreamSession: ObservableObject {
         }
     }
 
+    /// Pre-authorise Read of a specific absolute path for this session.
+    /// Used by the composer when the user attaches a file via paperclip /
+    /// paste / drop — they've already implicitly granted permission to read
+    /// it, so we silently allow without surfacing a prompt.
+    func preApproveRead(path: String) {
+        preApprovedReadPaths.insert(path)
+    }
+
     /// Resolve a pending permission request.
     func respondToPermission(allow: Bool, message: String? = nil) {
         guard let pending = pendingPermission, let inputWriter else { return }
@@ -538,6 +553,25 @@ final class StreamSession: ObservableObject {
 
     private func handleControlRequest(_ req: ControlRequest) {
         guard req.request.subtype == "can_use_tool" else { return }
+
+        // Auto-allow Reads of files the user explicitly attached this turn.
+        // Skipping the prompt for paths the user JUST picked makes the
+        // composer's @-attachments feel native — they shouldn't have to
+        // approve their own pick.
+        if req.request.toolName == "Read",
+           let path = req.request.input?.dig("file_path")?.asString,
+           preApprovedReadPaths.contains(path) {
+            log.info("auto-allow Read of pre-approved path \(path, privacy: .public)")
+            Task { [weak self] in
+                guard let self, let writer = await self.inputWriter else { return }
+                try? await writer.respondToPermission(
+                    requestId: req.requestId,
+                    behavior: .allow
+                )
+            }
+            return
+        }
+
         let preview = makePermissionPreview(toolName: req.request.toolName, input: req.request.input)
         pendingPermission = PendingPermission(
             requestId: req.requestId,
