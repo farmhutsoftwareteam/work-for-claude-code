@@ -65,7 +65,11 @@ struct V2LiveComposer: View {
                 onImagePasted: { image in attachments.addImage(image) },
                 onFilesDropped: { urls in attachments.addFiles(urls) }
             )
-            .frame(minHeight: 22, maxHeight: 160)
+            // Size to actual text content. 19pt per line approximates the
+            // monospaced 13pt with default leading + the scrollview's 4pt
+            // top inset. Cap at 8 lines — beyond that, the inner NSScrollView
+            // kicks in.
+            .frame(height: composerHeight)
 
             attachButton
 
@@ -246,6 +250,21 @@ struct V2LiveComposer: View {
 
     private var modelStatus: String {
         "\(session.model) · \(V2Format.count(session.tokensUsed)) tokens"
+    }
+
+    // MARK: - Sizing
+
+    /// One line by default; grows with explicit newlines up to 8 lines.
+    /// Soft-wrapped long lines also count via a rough column estimate so
+    /// pasted paragraphs don't snap to a single row.
+    private var composerHeight: CGFloat {
+        let lineHeight: CGFloat = 19
+        let topBottomPadding: CGFloat = 8
+        let newlines = draft.filter { $0 == "\n" }.count
+        // Rough soft-wrap estimate: 80 chars per visible line.
+        let wrapped = max(0, (draft.count / 80) - newlines)
+        let lines = max(1, min(8, 1 + newlines + wrapped))
+        return CGFloat(lines) * lineHeight + topBottomPadding
     }
 
     // MARK: - Send
