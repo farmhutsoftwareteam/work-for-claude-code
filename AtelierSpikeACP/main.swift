@@ -81,6 +81,12 @@ client.onToolCall = { call in
     print(line)
 }
 client.onAgentThought = { _ in print("[thinking…]") }
+client.onPlan = { entries in
+    print("PLAN (\(entries.count)):")
+    for e in entries { print("  [\(e.status)] \(e.content)") }
+}
+client.onModeChanged = { mode in print("MODE → \(mode)") }
+client.onCommands = { cmds in print("COMMANDS: \(cmds.count) available") }
 client.onError = { err in
     FileHandle.standardError.write(Data("ERROR: \(err)\n".utf8))
     exit(1)

@@ -54,6 +54,14 @@ final class ACPClient: @unchecked Sendable {
     /// emitted each time (tool_call_update sends only deltas; the client
     /// merges them), so the consumer can render the complete current state.
     var onToolCall: ((ACPToolCall) -> Void)?
+    /// The agent's current plan (todo list). Emitted on every `plan` update
+    /// with the full entry list.
+    var onPlan: (([ACPPlanEntry]) -> Void)?
+    /// The session's permission mode changed (either we set it, or the agent
+    /// did — e.g. exiting plan mode). Keeps the UI's mode pill in sync.
+    var onModeChanged: ((String) -> Void)?
+    /// Slash commands the agent advertises (for composer autocomplete).
+    var onCommands: (([ACPCommand]) -> Void)?
     /// A protocol-level or transport error.
     var onError: ((String) -> Void)?
     /// Agent is asking the client to approve a tool use. This is a
@@ -239,6 +247,41 @@ final class ACPClient: @unchecked Sendable {
         }
     }
 
+    /// Switch the session's model (session/set_model). modelId comes from
+    /// the list session/new returned (default / sonnet / haiku / …).
+    func setModel(_ modelId: String) {
+        guard let sessionId else { return }
+        sendRequest(method: "session/set_model",
+                    params: ["sessionId": sessionId, "modelId": modelId]) { _ in }
+    }
+
+    /// Switch the session's permission mode (session/set_mode). This is the
+    /// CORRECT way to change modes — including the bypassPermissions case
+    /// the stream-json path couldn't switch to at runtime. A
+    /// current_mode_update notification confirms it via onModeChanged.
+    func setMode(_ modeId: String) {
+        guard let sessionId else { return }
+        sendRequest(method: "session/set_mode",
+                    params: ["sessionId": sessionId, "modeId": modeId]) { _ in }
+    }
+
+    /// Resume a prior session (session/load). Replays its history as
+    /// session/update notifications, then the session is live again — the
+    /// native replacement for `claude --resume` + manual jsonl preload.
+    func loadSession(sessionId: String, cwd: URL, completion: @escaping (Bool) -> Void) {
+        sendRequest(method: "session/load", params: [
+            "sessionId": sessionId, "cwd": cwd.path, "mcpServers": []
+        ]) { [weak self] result in
+            switch result {
+            case .failure(let e): onMain { self?.onError?("session/load failed: \(e.message)"); completion(false) }
+            case .success:
+                self?.sessionId = sessionId
+                self?.isConnected = true
+                onMain { completion(true) }
+            }
+        }
+    }
+
     func stop() {
         running = false
         try? stdinHandle?.close()
@@ -298,8 +341,27 @@ final class ACPClient: @unchecked Sendable {
         case "tool_call", "tool_call_update":
             // Both carry the same field set; merge handles new vs delta.
             handleToolCall(update)
+        case "plan":
+            let entries = (update["entries"] as? [[String: Any]] ?? []).map {
+                ACPPlanEntry(
+                    content: $0["content"] as? String ?? "",
+                    status: $0["status"] as? String ?? "pending",
+                    priority: $0["priority"] as? String ?? "medium"
+                )
+            }
+            onMain { self.onPlan?(entries) }
+        case "current_mode_update":
+            if let mode = update["currentModeId"] as? String {
+                onMain { self.onModeChanged?(mode) }
+            }
+        case "available_commands_update":
+            let cmds = (update["availableCommands"] as? [[String: Any]] ?? []).map {
+                ACPCommand(name: $0["name"] as? String ?? "",
+                           description: $0["description"] as? String ?? "")
+            }
+            onMain { self.onCommands?(cmds) }
         default:
-            break  // plan / available_commands_update / current_mode_update → 3b+
+            break
         }
     }
 
@@ -462,6 +524,21 @@ struct ACPModel: Equatable, Sendable {
     let id: String
     let name: String
     let description: String
+}
+
+/// A single entry in the agent's plan (todo list). status walks
+/// pending → in_progress → completed; priority is high/medium/low.
+struct ACPPlanEntry: Sendable, Equatable {
+    let content: String
+    let status: String
+    let priority: String
+}
+
+/// A slash command the agent advertises (for composer autocomplete).
+struct ACPCommand: Sendable, Equatable, Identifiable {
+    let name: String
+    let description: String
+    var id: String { name }
 }
 
 /// One rendered piece of a tool call's output.
