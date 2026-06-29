@@ -9,9 +9,36 @@ struct V2TitleBar: View {
     @ObserveInjection private var inject
     @Binding var themeRaw: String
     @Environment(\.v2) private var v2
+    @EnvironmentObject private var store: Store
 
     private var theme: V2ThemeChoice {
         V2ThemeChoice(rawValue: themeRaw) ?? .system
+    }
+
+    private var totalSkills: Int {
+        store.standaloneSkills.count
+            + store.pluginSkills.values.reduce(0) { $0 + $1.count }
+    }
+
+    private var totalMCPs: Int {
+        store.standaloneMCPs.count
+            + store.pluginMCPs.values.reduce(0) { $0 + $1.count }
+    }
+
+    private var statusLine: String {
+        // Compact one-liner replacing the old "workshop" placeholder text +
+        // the workbench tile grid in the left rail. Reads real counts from
+        // Store; clicking it is reserved for the future Workshop window.
+        var parts: [String] = []
+        if totalMCPs > 0 { parts.append("\(totalMCPs) mcp\(totalMCPs == 1 ? "" : "s")") }
+        if store.plugins.count > 0 {
+            parts.append("\(store.plugins.count) plugin\(store.plugins.count == 1 ? "" : "s")")
+        }
+        if totalSkills > 0 { parts.append("\(totalSkills) skill\(totalSkills == 1 ? "" : "s")") }
+        if store.hooks.count > 0 {
+            parts.append("\(store.hooks.count) hook\(store.hooks.count == 1 ? "" : "s")")
+        }
+        return parts.joined(separator: " · ")
     }
 
     var body: some View {
@@ -51,17 +78,12 @@ struct V2TitleBar: View {
                 .buttonStyle(.plain)
                 .help("Theme: \(theme.label) (click to cycle)")
 
-                Text("workshop")
-                    .font(.system(size: 11, design: .monospaced))
-                    .foregroundColor(v2.faint)
-
-                Button { } label: {
-                    Image(systemName: "chevron.right")
-                        .font(.system(size: 11, weight: .medium))
-                        .foregroundColor(v2.mute)
-                        .frame(width: 28, height: 28)
+                if !statusLine.isEmpty {
+                    Text(statusLine)
+                        .font(.system(size: 11, design: .monospaced))
+                        .foregroundColor(v2.faint)
+                        .help("Configured MCPs, plugins, skills, hooks. Workshop window coming.")
                 }
-                .buttonStyle(.plain)
             }
         }
         .padding(.horizontal, 16)

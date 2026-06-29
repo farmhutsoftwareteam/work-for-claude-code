@@ -52,6 +52,11 @@ final class V2AppState: ObservableObject {
     /// just sets the initial model for fresh sessions and resumes.
     @AppStorage("v2.defaultSpawnModel") var defaultSpawnModel: String = "claude-opus-4-8"
 
+    /// Right dock collapsed by default — set-once-forget panels (agents /
+    /// MCP) burn 360px when the user is just chatting. Expanded mode is
+    /// for active loop / harness inspection.
+    @AppStorage("v2.dockCollapsed") var dockCollapsed: Bool = true
+
     /// Set once by V2RootView on first appear.
     weak var terminals: TerminalsController?
 

@@ -50,7 +50,13 @@ struct V2RootView: View {
                 .background(palette.paper)
 
                 V2RightDock(panel: $dockPanel)
-                    .frame(width: 360)
+                    // Width comes from the dock itself (40pt collapsed,
+                    // 360pt expanded). Animate the swap so the transcript
+                    // smoothly reflows when the dock opens/closes.
+                    .animation(
+                        .spring(response: 0.28, dampingFraction: 0.86),
+                        value: appState.dockCollapsed
+                    )
             }
             .frame(maxHeight: .infinity)
         }

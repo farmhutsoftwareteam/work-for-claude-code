@@ -11,22 +11,21 @@ struct V2LeftRail: View {
     @EnvironmentObject private var store: Store
     @EnvironmentObject private var appState: V2AppState
     @FocusState private var searchFocused: Bool
-    @State private var showingHooksEditor = false
 
     var body: some View {
         VStack(spacing: 0) {
             searchBox
             railTabs
             railContent
-            workbenchRail
+            // workbenchRail moved out — it was a dashboard tile grid
+            // (Plugins · Skills · MCPs · Hooks · Usage · Market) that
+            // mostly showed counters with no next-action. Counts live
+            // in the title bar now; Hooks/Usage have dedicated surfaces
+            // we still open from other places.
         }
         .background(v2.paper2)
         .overlay(alignment: .trailing) {
             Rectangle().fill(v2.line).frame(width: 1)
-        }
-        .sheet(isPresented: $showingHooksEditor) {
-            V2HooksEditorSheet(onClose: { showingHooksEditor = false })
-                .environmentObject(store)
         }
         .enableInjection()
     }
@@ -203,44 +202,9 @@ struct V2LeftRail: View {
         }
     }
 
-    // MARK: - Workbench
-
-    private var workbenchRail: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            Text("WORKBENCH")
-                .font(.system(size: 10, weight: .regular, design: .monospaced))
-                .kerning(1.2)
-                .foregroundColor(v2.faint)
-
-            LazyVGrid(
-                columns: [GridItem(.flexible(), spacing: 1), GridItem(.flexible(), spacing: 1)],
-                spacing: 1
-            ) {
-                ForEach(V2Mock.workbenchTiles) { tile in
-                    V2WorkbenchTileButton(tile: tile, onTap: { tap(tile: tile) })
-                }
-            }
-            .background(v2.line)
-            .overlay(Rectangle().stroke(v2.line, lineWidth: 1))
-        }
-        .padding(14)
-        .background(v2.paper3)
-        .overlay(alignment: .top) {
-            Rectangle().fill(v2.line).frame(height: 1)
-        }
-    }
-
-    private func tap(tile: V2WorkbenchTile) {
-        switch tile.label {
-        case "Hooks":
-            showingHooksEditor = true
-        case "Usage":
-            appState.mainView = .usage
-        default:
-            // Other tiles route through the v1 ExtensionsView for now.
-            break
-        }
-    }
+    // Workbench tile grid removed — counts now live in the title bar
+    // (V2TitleBar.statusLine). Hooks editor sheet hosting also moved out
+    // since nothing in the rail surfaces it anymore.
 }
 
 // MARK: - Project row
@@ -288,35 +252,3 @@ private struct V2ProjectRow: View {
     }
 }
 
-// MARK: - Workbench tile
-
-private struct V2WorkbenchTileButton: View {
-    @Environment(\.v2) private var v2
-    let tile: V2WorkbenchTile
-    let onTap: () -> Void
-
-    var body: some View {
-        Button(action: onTap) {
-            VStack(alignment: .leading, spacing: 3) {
-                HStack {
-                    Text(tile.label)
-                        .font(.system(size: 12.5, weight: .medium))
-                        .kerning(-0.13)
-                        .foregroundColor(v2.ink)
-                    Spacer()
-                    Text(tile.count)
-                        .font(.system(size: 10, design: .monospaced))
-                        .foregroundColor(v2.faint)
-                }
-                Text(tile.hint)
-                    .font(.system(size: 9.5, design: .monospaced))
-                    .foregroundColor(v2.faint)
-            }
-            .padding(.horizontal, 12)
-            .padding(.vertical, 11)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .background(v2.paper2)
-        }
-        .buttonStyle(.plain)
-    }
-}
