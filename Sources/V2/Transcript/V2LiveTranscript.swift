@@ -78,7 +78,21 @@ struct V2LiveTranscript: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(v2.paper)
+        .overlay { if session.isResuming { resumingOverlay } }
         .enableInjection()
+    }
+
+    /// Shown while a resumed session reads its history off disk — so clicking
+    /// a session registers immediately instead of looking frozen.
+    private var resumingOverlay: some View {
+        VStack(spacing: 11) {
+            V2PulseDot(size: 9, color: v2.ink)
+            Text("Loading conversation…")
+                .font(.system(size: 13, design: .monospaced))
+                .foregroundColor(v2.mute)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(v2.paper)
     }
 
     /// Immediate, unmistakable "claude is working" cue shown the instant

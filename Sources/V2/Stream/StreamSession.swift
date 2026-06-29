@@ -94,6 +94,11 @@ final class StreamSession: ObservableObject {
     /// "stuck". Set in send(); only meaningful while state == .working.
     @Published private(set) var turnStartedAt: Date?
 
+    /// True while a resumed session is reading its history off disk (before
+    /// the process spawns). Drives a "Loading conversation…" indicator so the
+    /// click registers and the UI never looks frozen.
+    @Published private(set) var isResuming = false
+
     /// Set true while an `api_retry` is in flight.
     @Published private(set) var isRetrying: Bool = false
 
@@ -167,6 +172,25 @@ final class StreamSession: ObservableObject {
             default:
                 break
             }
+        }
+    }
+
+    /// Resume a session from history without freezing the UI. Reads + decodes
+    /// the (possibly large) .jsonl OFF the main thread, then preloads it and
+    /// starts the process. `isResuming` is true for the read window so the UI
+    /// shows a loading indicator instead of looking stuck.
+    func resume(cwd: URL, claudeURL: URL, sessionId: String, model: String? = nil, permissionMode: String? = nil) {
+        isResuming = true
+        let cwdPath = cwd.path
+        Task { [weak self] in
+            let preload = await Task.detached(priority: .userInitiated) {
+                SessionHistoryLoader.load(sessionId: sessionId, projectCwd: cwdPath)
+            }.value
+            guard let self else { return }
+            if let preload { self.preloadHistory(preload) }
+            self.isResuming = false
+            self.start(cwd: cwd, claudeURL: claudeURL, resumeId: sessionId,
+                       model: model, permissionMode: permissionMode)
         }
     }
 

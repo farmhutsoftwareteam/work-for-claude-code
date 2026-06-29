@@ -182,6 +182,12 @@ struct V2RootView: View {
                 modeAFooter(tab: tab)
             case .modeB:
                 if let session = tab.streamSession {
+                    if session.isResuming {
+                        // History is loading off disk — the transcript shows a
+                        // "Loading conversation…" overlay; don't flash the
+                        // Start CTA underneath it.
+                        EmptyView()
+                    } else {
                     switch session.state {
                     case .idle, .terminated:
                         // .idle = never started; .terminated = previous
@@ -196,6 +202,7 @@ struct V2RootView: View {
                         // message (and attachments) bleed into other tabs.
                         V2LiveComposer(session: session)
                             .id(tab.id)
+                    }
                     }
                 }
             }
