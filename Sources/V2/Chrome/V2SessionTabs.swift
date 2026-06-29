@@ -11,41 +11,49 @@ struct V2SessionTabs: View {
     @EnvironmentObject private var terminals: TerminalsController
 
     var body: some View {
-        HStack(spacing: 0) {
-            // Only tabs in the project the user is currently focused on.
-            // Showing every project's tabs in one strip made it impossible
-            // to know which project you were in — clicking a project in
-            // the rail would highlight it but the strip kept showing the
-            // foreign tab from the previous project as the active one.
-            ForEach(visibleTabs) { tab in
-                V2TabChip(
-                    tab: tab,
-                    isActive: tab.id == appState.activeTabId,
-                    onActivate: { appState.activate(tabId: tab.id) },
-                    onClose: { appState.close(tabId: tab.id) }
-                )
-            }
+        // No strip at all when the current project has no tabs — the main
+        // body's empty state ("Pick a project, then ⌘N for a new tab")
+        // covers the start-a-session affordance. A lonely 40pt-tall strip
+        // with just a floating `+` button felt heavy and noisy.
+        if visibleTabs.isEmpty {
+            EmptyView()
+        } else {
+            HStack(spacing: 0) {
+                // Only tabs in the project the user is currently focused on.
+                // Showing every project's tabs in one strip made it
+                // impossible to know which project you were in — clicking
+                // a project in the rail would highlight it but the strip
+                // kept showing the foreign tab from the previous project
+                // as the active one.
+                ForEach(visibleTabs) { tab in
+                    V2TabChip(
+                        tab: tab,
+                        isActive: tab.id == appState.activeTabId,
+                        onActivate: { appState.activate(tabId: tab.id) },
+                        onClose: { appState.close(tabId: tab.id) }
+                    )
+                }
 
-            Button { appState.newTab() } label: {
-                Image(systemName: "plus")
-                    .font(.system(size: 11, weight: .regular))
-                    .foregroundColor(v2.faint)
-                    .padding(.horizontal, 12)
-                    .frame(maxHeight: .infinity)
-            }
-            .buttonStyle(.plain)
-            .disabled(appState.selectedProjectCwd == nil)
-            .help(appState.selectedProjectCwd == nil ? "Select a project first" : "New tab")
+                Button { appState.newTab() } label: {
+                    Image(systemName: "plus")
+                        .font(.system(size: 11, weight: .regular))
+                        .foregroundColor(v2.faint)
+                        .padding(.horizontal, 12)
+                        .frame(maxHeight: .infinity)
+                }
+                .buttonStyle(.plain)
+                .help("New tab")
 
-            Spacer()
+                Spacer()
+            }
+            .frame(height: 40)
+            .background(v2.paper2)
+            .padding(.horizontal, 10)
+            .overlay(alignment: .bottom) {
+                Rectangle().fill(v2.line).frame(height: 1)
+            }
+            .enableInjection()
         }
-        .frame(height: 40)
-        .background(v2.paper2)
-        .padding(.horizontal, 10)
-        .overlay(alignment: .bottom) {
-            Rectangle().fill(v2.line).frame(height: 1)
-        }
-        .enableInjection()
     }
 
     /// Tabs scoped to the rail's currently selected project. Falls back to
