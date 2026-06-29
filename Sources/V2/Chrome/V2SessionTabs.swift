@@ -23,7 +23,7 @@ struct V2SessionTabs: View {
             EmptyView()
         } else {
             ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 0) {
+                HStack(alignment: .bottom, spacing: 3) {
                     ForEach(allTabs) { tab in
                         V2TabChip(
                             tab: tab,
@@ -38,16 +38,17 @@ struct V2SessionTabs: View {
                         Image(systemName: "plus")
                             .font(.system(size: 11, weight: .regular))
                             .foregroundColor(v2.faint)
-                            .padding(.horizontal, 12)
-                            .frame(maxHeight: .infinity)
+                            .frame(width: 30, height: 28)
+                            .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
+                    .padding(.bottom, 4)
                     .help("New chat in \(appState.selectedProjectName.isEmpty ? "this project" : appState.selectedProjectName) (⌘N)")
                 }
+                .padding(.horizontal, 8)
             }
             .frame(height: 40)
             .background(v2.paper2)
-            .padding(.horizontal, 10)
             .overlay(alignment: .bottom) {
                 Rectangle().fill(v2.line).frame(height: 1)
             }
@@ -84,40 +85,50 @@ private struct V2TabChip: View {
         //   • outer tap target = a clear rectangle with .onTapGesture
         //   • close button = a separate Button laid on top via overlay,
         //     reserved space so layout doesn't shift when it appears
-        HStack(spacing: 9) {
+        HStack(spacing: 8) {
             stateDot
             VStack(alignment: .leading, spacing: 1) {
                 Text(tab.title)
                     .font(.system(size: 12, design: .monospaced))
                     .foregroundColor(isActive ? v2.ink : v2.mute)
                     .lineLimit(1)
+                    .truncationMode(.tail)
                 if showProject {
                     Text(projectLabel)
                         .font(.system(size: 9, design: .monospaced))
                         .foregroundColor(v2.faint)
                         .lineLimit(1)
+                        .truncationMode(.tail)
                 }
             }
+            .frame(maxWidth: .infinity, alignment: .leading)
             closeSlot
         }
-        .padding(.horizontal, 16)
-        .frame(maxHeight: .infinity)
+        .padding(.horizontal, 11)
+        // Chrome-style: fixed-width tabs that truncate their title rather
+        // than growing. Bottom-aligned in the 40pt strip with a rounded top
+        // so the active tab reads as "raised" into the content below.
+        .frame(width: 184, height: 34, alignment: .leading)
+        .background(tabShape.fill(isActive ? v2.paper : (hover ? v2.paper3 : Color.clear)))
+        .overlay(isActive ? tabShape.stroke(v2.line2, lineWidth: 1) : nil)
         .contentShape(Rectangle())
         .onTapGesture(perform: onActivate)
-        .overlay(alignment: .bottom) {
-            if isActive {
-                Rectangle().fill(v2.ink).frame(height: 2)
-            }
-        }
         .onHover { hover = $0 }
+    }
+
+    private var tabShape: UnevenRoundedRectangle {
+        UnevenRoundedRectangle(
+            topLeadingRadius: 8, bottomLeadingRadius: 0,
+            bottomTrailingRadius: 0, topTrailingRadius: 8, style: .continuous
+        )
     }
 
     private var projectLabel: String {
         (tab.projectCwd as NSString).lastPathComponent
     }
 
-    /// Always reserves space — when not hovering the X is hidden but the
-    /// 14pt slot stays so the chip width doesn't twitch on hover.
+    /// Always reserves space so the chip width doesn't twitch. Shown on hover
+    /// and always on the active tab (Chrome keeps × visible on the open tab).
     private var closeSlot: some View {
         Button(action: onClose) {
             Image(systemName: "xmark")
@@ -127,8 +138,8 @@ private struct V2TabChip: View {
                 .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .opacity(hover ? 1 : 0)
-        .allowsHitTesting(hover)
+        .opacity((hover || isActive) ? 1 : 0)
+        .allowsHitTesting(hover || isActive)
     }
 
     @ViewBuilder

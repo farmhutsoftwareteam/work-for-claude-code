@@ -372,8 +372,31 @@ private struct V2ProjectRow: View {
                 }
             }
         }
-        .buttonStyle(.plain)
+        .buttonStyle(V2RowPressStyle())
         .help(cwd)
+    }
+}
+
+/// Instant press feedback for rail rows. The highlight + left bar appear on
+/// mouse-DOWN — before any session spawns or content loads — so a click is
+/// visibly acknowledged immediately and you don't click twice wondering if it
+/// registered. Used by project rows and history rows.
+struct V2RowPressStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        PressBody(configuration: configuration)
+    }
+    private struct PressBody: View {
+        @Environment(\.v2) private var v2
+        let configuration: Configuration
+        var body: some View {
+            configuration.label
+                .overlay(configuration.isPressed ? v2.ink.opacity(0.10) : Color.clear)
+                .overlay(alignment: .leading) {
+                    if configuration.isPressed {
+                        Rectangle().fill(v2.ink).frame(width: 2)
+                    }
+                }
+        }
     }
 }
 

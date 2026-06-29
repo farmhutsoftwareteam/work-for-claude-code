@@ -177,7 +177,7 @@ private struct V2HistoryRow: View {
                 }
             }
         }
-        .buttonStyle(.plain)
+        .buttonStyle(V2RowPressStyle())
         .help("\(entry.projectCwd) · session \(String(entry.sessionId.prefix(8)))")
     }
 }

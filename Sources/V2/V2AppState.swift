@@ -269,6 +269,19 @@ final class V2AppState: ObservableObject {
     /// they explicitly chose to resume.
     func openHistorySession(sessionId: String, projectCwd: String, projectName: String, title: String) {
         guard let terminals else { return }
+        // Don't spawn a duplicate. If a tab is already resuming this session
+        // (e.g. the user double-clicked the history row), just activate the
+        // existing one — clicking twice should never open two identical tabs.
+        if let existing = tabs.first(where: {
+            resumeIds[$0.id] == sessionId || $0.streamSession?.sessionId == sessionId
+        }) {
+            activeTabId = existing.id
+            selectedProjectCwd = URL(fileURLWithPath: projectCwd)
+            selectedProjectName = projectName.isEmpty
+                ? (projectCwd as NSString).lastPathComponent
+                : projectName
+            return
+        }
         let id = terminals.openModeB(projectCwd: projectCwd, title: title.isEmpty ? projectName : title)
         resumeIds[id] = sessionId
         activeTabId = id
