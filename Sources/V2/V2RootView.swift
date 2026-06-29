@@ -41,7 +41,13 @@ struct V2RootView: View {
                         case .chat:
                             VStack(spacing: 0) {
                                 V2SessionTabs()
-                                V2SessionHeader(dockPanel: $dockPanel)
+                                // The per-session header only makes sense with
+                                // a live session. On the project-home screen
+                                // (no active tab) V2ProjectHome draws its own
+                                // header, so suppress this one.
+                                if appState.activeTab != nil {
+                                    V2SessionHeader(dockPanel: $dockPanel)
+                                }
 
                                 mainBody
 
@@ -161,6 +167,8 @@ struct V2RootView: View {
                     invalidStateView
                 }
             }
+        } else if appState.selectedProjectCwd != nil {
+            V2ProjectHome()
         } else {
             emptyState
         }
