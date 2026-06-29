@@ -180,6 +180,37 @@ enum V2Git {
 
     // MARK: - Mutations (explicit user actions only)
 
+    /// Clone `url` into `parent`/`name`. `parent` must exist. Captures stderr
+    /// (git writes progress + errors there). Returns the cloned path on
+    /// success, or an error message.
+    static func clone(url: String, into parent: String, name: String, branch: String?) async -> (path: String?, error: String?) {
+        await withCheckedContinuation { cont in
+            DispatchQueue.global(qos: .userInitiated).async {
+                try? FileManager.default.createDirectory(atPath: parent, withIntermediateDirectories: true)
+                var args = ["-C", parent, "clone"]
+                if let branch, !branch.isEmpty { args += ["--branch", branch] }
+                args += [url, name]
+                let p = Process()
+                p.executableURL = URL(fileURLWithPath: gitPath)
+                p.arguments = args
+                let err = Pipe()
+                p.standardError = err
+                p.standardOutput = Pipe()
+                do { try p.run() } catch { cont.resume(returning: (nil, "couldn't launch git")); return }
+                let errData = err.fileHandleForReading.readDataToEndOfFile()
+                p.waitUntilExit()
+                if p.terminationStatus == 0 {
+                    cont.resume(returning: (parent + "/" + name, nil))
+                } else {
+                    let msg = String(data: errData, encoding: .utf8)?
+                        .trimmingCharacters(in: .whitespacesAndNewlines)
+                        .components(separatedBy: "\n").last
+                    cont.resume(returning: (nil, msg?.isEmpty == false ? msg : "git clone failed"))
+                }
+            }
+        }
+    }
+
     static func stage(cwd: String, path: String) async {
         _ = await run(["add", "--", path], cwd: cwd)
     }

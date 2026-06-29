@@ -33,6 +33,10 @@ final class V2AppState: ObservableObject {
     /// workbench tile and the back button in the Usage header.
     @Published var mainView: MainView = .chat
 
+    /// Presents the Add Project modal (triggered from the rail's add buttons
+    /// and the empty-state CTA).
+    @Published var showAddProject = false
+
     /// ⌘K search overlay visibility + current query.
     @Published var searchOpen: Bool = false
     @Published var searchQuery: String = ""

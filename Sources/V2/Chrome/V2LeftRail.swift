@@ -26,6 +26,9 @@ struct V2LeftRail: View {
             searchBox
             railTabs
             railContent
+            if appState.railTab == .projects {
+                addProjectButton
+            }
             workbenchRail
         }
         .background(v2.paper2)
@@ -196,19 +199,43 @@ struct V2LeftRail: View {
             Text("\(filtered.count)")
                 .font(.system(size: 10, design: .monospaced))
                 .foregroundColor(v2.faint)
-            Button(action: openFolderAsProject) {
+            Button { appState.showAddProject = true } label: {
                 Image(systemName: "plus")
-                    .font(.system(size: 10, weight: .medium))
+                    .font(.system(size: 11, weight: .semibold))
                     .foregroundColor(v2.mute)
-                    .frame(width: 16, height: 16)
+                    .frame(width: 20, height: 20)
+                    .overlay(Rectangle().stroke(v2.line2, lineWidth: 1))
                     .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
-            .help("Open a folder as a new project (⌘O)")
+            .help("Add a project (⌘O)")
             .keyboardShortcut("o", modifiers: .command)
         }
         .padding(.horizontal, 14)
         .padding(.bottom, 6)
+    }
+
+    /// Prominent, always-visible add affordance at the foot of the project
+    /// list (design: the dashed "Add project" button).
+    private var addProjectButton: some View {
+        Button { appState.showAddProject = true } label: {
+            HStack(spacing: 9) {
+                Image(systemName: "plus").font(.system(size: 12, weight: .semibold))
+                Text("Add project").font(.system(size: 12, design: .monospaced))
+            }
+            .foregroundColor(v2.mute)
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 11)
+            .background(v2.card)
+            .overlay(
+                Rectangle().stroke(style: StrokeStyle(lineWidth: 1, dash: [4, 3]))
+                    .foregroundColor(v2.line2)
+            )
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .padding(12)
+        .overlay(alignment: .top) { Rectangle().fill(v2.line).frame(height: 1) }
     }
 
     private var projectList: some View {

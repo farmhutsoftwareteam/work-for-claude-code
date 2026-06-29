@@ -97,6 +97,16 @@ struct V2RootView: View {
             Button("Toggle ACP preview") { showACPPreview.toggle() }
                 .keyboardShortcut("a", modifiers: [.command, .control])
                 .opacity(0).frame(width: 0, height: 0)
+
+            // Add Project modal — window-level centered overlay.
+            if appState.showAddProject {
+                V2AddProjectModal(onClose: { appState.showAddProject = false })
+                    .environment(\.v2, palette)
+                    .environmentObject(store)
+                    .environmentObject(appState)
+                    .transition(.opacity)
+                    .zIndex(300)
+            }
         }
         .animation(.easeOut(duration: 0.15), value: appState.activeSession?.pendingPermission?.id)
         .background(palette.paper)
