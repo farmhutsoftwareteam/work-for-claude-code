@@ -157,8 +157,17 @@ struct V2McpPanel: View {
     }
 
     private func configuredRow(_ server: MCPServer) -> some View {
-        HStack(spacing: 11) {
-            Rectangle().stroke(v2.line2, lineWidth: 1).frame(width: 11, height: 11)
+        let oauth = isOAuthCapable(server.transport)
+        let needsAuth = oauth && store.mcpNeedsAuth.contains(server.name)
+        let signedIn = oauth && !needsAuth   // OAuth-capable and NOT in needs-auth cache
+        return HStack(spacing: 11) {
+            // Filled square = ready to use (stdio or signed-in OAuth); hollow =
+            // needs sign-in. Mirrors the live serverRow's state square.
+            if needsAuth {
+                Rectangle().stroke(v2.line2, lineWidth: 1).frame(width: 11, height: 11)
+            } else {
+                Rectangle().fill(v2.ink).frame(width: 11, height: 11)
+            }
             VStack(alignment: .leading, spacing: 2) {
                 Text(server.name)
                     .font(.system(size: 13.5, weight: .medium)).kerning(-0.13)
@@ -167,10 +176,15 @@ struct V2McpPanel: View {
                     .foregroundColor(v2.faint)
             }
             Spacer()
-            // OAuth-capable servers (http/sse) get a Sign in affordance; stdio
-            // servers don't authenticate.
-            if isOAuthCapable(server.transport) {
+            // Only servers that ACTUALLY need auth (per claude's needs-auth
+            // cache) get a Sign in button. Signed-in OAuth servers read "signed
+            // in"; stdio servers (no auth) read "configured".
+            if needsAuth {
                 authButton(server.name)
+            } else if signedIn {
+                Text("signed in")
+                    .font(.system(size: 11, design: .monospaced))
+                    .foregroundColor(v2.mute)
             } else {
                 Text("configured")
                     .font(.system(size: 11, design: .monospaced))
@@ -212,6 +226,10 @@ struct V2McpPanel: View {
             let r = await V2MCPAuth.login(claudeBinary: binary, name: name, cwd: cwd)
             authing.remove(name)
             if r.ok {
+                // Refresh auth state from claude's own cache FIRST (cheap, sync,
+                // and immune to load()'s in-progress guard) so the row flips from
+                // "sign in" → "signed in" immediately.
+                store.loadMCPNeedsAuth()
                 await store.load()
                 // Don't make them restart by hand — reconnect the live session
                 // for them so the server just appears, folded into the session's
@@ -219,7 +237,7 @@ struct V2McpPanel: View {
                 let reconnected = appState.reconnectSessions(inProject: cwd, afterAuthOf: name)
                 authNote = reconnected > 0
                     ? "\(name): signed in ✓ — reconnecting your session…"
-                    : "\(name): signed in ✓ — it'll connect when you start a session."
+                    : "\(name): signed in ✓ — connected."
             } else {
                 // Fall back to the visible terminal if the headless flow can't
                 // complete (e.g. a server with no loopback that needs the paste).

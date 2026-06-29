@@ -42,6 +42,15 @@ final class Store: ObservableObject {
     // MCP runtime statuses (keyed by MCPServer.statusKey)
     @Published var mcpStatuses: [String: MCPStatus] = [:]
 
+    /// Server names that currently need OAuth sign-in, sourced from claude's own
+    /// `~/.claude/mcp-needs-auth-cache.json` — the authoritative list it keeps of
+    /// servers whose connection last failed with `needs-auth`. A name's PRESENCE
+    /// means "needs sign-in"; absence (for an OAuth-capable server) means it's
+    /// already authenticated. This is what lets the MCP panel show real auth
+    /// state without a live session reporting it. Refreshed by loadExtensions()
+    /// and right after a `claude mcp login` completes.
+    @Published var mcpNeedsAuth: Set<String> = []
+
     // Token usage aggregated across all sessions
     @Published var usageTotals: UsageTotals = UsageTotals()
     /// True while `UsageAggregator.aggregate()` is running. Used by UsageView
@@ -931,6 +940,18 @@ final class Store: ObservableObject {
         }.value
         projectMCPs = perProject.mcps
         projectSkills = perProject.skills
+        loadMCPNeedsAuth()
+    }
+
+    /// Read claude's needs-auth cache into `mcpNeedsAuth`. Cheap (a few hundred
+    /// bytes); safe to call on the main actor. The file's top-level keys are the
+    /// server names that need sign-in; a missing file means nothing needs auth.
+    func loadMCPNeedsAuth() {
+        let url = claudeDir.appendingPathComponent("mcp-needs-auth-cache.json")
+        guard let data = try? Data(contentsOf: url),
+              let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
+        else { mcpNeedsAuth = []; return }
+        mcpNeedsAuth = Set(obj.keys)
     }
 
     private nonisolated static func parseExtensions(claudeDir: URL) -> (
