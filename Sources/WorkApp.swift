@@ -147,13 +147,12 @@ struct WorkApp: App {
             }
         }
 
-        // Atelier v2 preview window — DEBUG builds only. Lets us prototype the
-        // Mode-B chat UI in parallel with the shipping v1.x window without
-        // touching production. Tracked under epic #8 on the v2-redesign branch.
-        //
-        // Re-injects the same environment objects as the main WindowGroup;
-        // separate Scene = separate environment, so we wire them explicitly.
-        #if DEBUG
+        // Atelier v2 (preview) — the default surface as of 2.0.0. The legacy
+        // WindowGroup above stays so SwiftUI has something to auto-open on
+        // launch (Window scenes can't auto-open), and V2AutoOpen
+        // miniaturises it immediately. Both scenes share the same Store /
+        // TerminalsController / Update state — separate Scene = separate
+        // SwiftUI environment, so we wire them explicitly here.
         Window("Atelier v2 (preview)", id: "v2-preview") {
             V2RootView()
                 .environmentObject(store)
@@ -162,7 +161,6 @@ struct WorkApp: App {
         }
         .windowResizability(.contentMinSize)
         .defaultSize(width: 1440, height: 900)
-        #endif
     }
 
     private func checkTerminalPermission() {
