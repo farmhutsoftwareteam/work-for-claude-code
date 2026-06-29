@@ -46,6 +46,8 @@ enum V2ClientCommand: String, Equatable {
     case cost         // show tokens + cost for this session
     case model        // switch the active model
     case permissions  // change the permission mode
+    case mcp          // open the MCP servers dock panel
+    case agents       // open the subagents dock panel
     case help         // list everything available here
 }
 
@@ -125,6 +127,16 @@ enum V2SlashCatalog {
               category: .session,
               kind: .client(.permissions),
               argumentHint: "[mode]"),
+        .init(name: "mcp",
+              desc: "Show this session's MCP servers",
+              category: .session,
+              kind: .client(.mcp),
+              argumentHint: nil),
+        .init(name: "agents",
+              desc: "Show this session's subagents",
+              category: .session,
+              kind: .client(.agents),
+              argumentHint: nil),
         .init(name: "init",
               desc: "Analyse this codebase and write a CLAUDE.md",
               category: .project,

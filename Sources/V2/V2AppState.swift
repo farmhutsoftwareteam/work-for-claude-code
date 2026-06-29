@@ -75,6 +75,17 @@ final class V2AppState: ObservableObject {
     /// for active loop / harness inspection.
     @AppStorage("v2.dockCollapsed") var dockCollapsed: Bool = true
 
+    /// Which right-dock panel is active (loop / harness / agents / mcp). Lives
+    /// here (not as V2RootView @State) so slash commands like /mcp and /agents
+    /// can open the matching panel.
+    @Published var dockPanel: V2DockPanel = .loop
+
+    /// Open a dock panel and expand the dock — used by /mcp, /agents.
+    func openDock(_ panel: V2DockPanel) {
+        dockPanel = panel
+        dockCollapsed = false
+    }
+
     /// Set once by V2RootView on first appear.
     weak var terminals: TerminalsController?
 

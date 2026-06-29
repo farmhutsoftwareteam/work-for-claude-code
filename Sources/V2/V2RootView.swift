@@ -13,7 +13,7 @@ struct V2RootView: View {
     @StateObject private var appState = V2AppState()
     @AppStorage("v2.theme") private var themeRaw: String = V2ThemeChoice.system.rawValue
     @Environment(\.colorScheme) private var systemColorScheme
-    @State private var dockPanel: V2DockPanel = .loop
+    // dockPanel lives on appState so /mcp, /agents can open the panel.
     /// Phase-4 dogfood: ⌘⌃A opens the self-contained ACP-backed chat surface
     /// as an overlay. Off by default; the shipping StreamSession chat is
     /// untouched whether this is open or not.
@@ -46,7 +46,7 @@ struct V2RootView: View {
                                 // (no active tab) V2ProjectHome draws its own
                                 // header, so suppress this one.
                                 if appState.activeTab != nil {
-                                    V2SessionHeader(dockPanel: $dockPanel)
+                                    V2SessionHeader(dockPanel: $appState.dockPanel)
                                 }
 
                                 mainBody
@@ -60,7 +60,7 @@ struct V2RootView: View {
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                     .background(palette.paper)
 
-                    V2RightDock(panel: $dockPanel)
+                    V2RightDock(panel: $appState.dockPanel)
                         // Width comes from the dock itself (40pt collapsed,
                         // 360pt expanded). Animate the swap so the transcript
                         // smoothly reflows when the dock opens/closes.

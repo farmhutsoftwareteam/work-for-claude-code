@@ -396,6 +396,10 @@ struct V2LiveComposer: View {
             applyModelCommand(args)
         case .permissions:
             applyPermissionCommand(args)
+        case .mcp:
+            appState.openDock(.mcp)
+        case .agents:
+            appState.openDock(.agents)
         case .help:
             session.appendSystemNote(helpText())
         }
