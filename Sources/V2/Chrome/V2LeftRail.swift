@@ -11,21 +11,31 @@ struct V2LeftRail: View {
     @EnvironmentObject private var store: Store
     @EnvironmentObject private var appState: V2AppState
     @FocusState private var searchFocused: Bool
+    @State private var showingHooksEditor = false
+    @State private var showingMCPSheet = false
 
     var body: some View {
         VStack(spacing: 0) {
             searchBox
             railTabs
             railContent
-            // workbenchRail moved out — it was a dashboard tile grid
-            // (Plugins · Skills · MCPs · Hooks · Usage · Market) that
-            // mostly showed counters with no next-action. Counts live
-            // in the title bar now; Hooks/Usage have dedicated surfaces
-            // we still open from other places.
+            workbenchRail
         }
         .background(v2.paper2)
         .overlay(alignment: .trailing) {
             Rectangle().fill(v2.line).frame(width: 1)
+        }
+        .sheet(isPresented: $showingHooksEditor) {
+            V2HooksEditorSheet(onClose: { showingHooksEditor = false })
+                .environmentObject(store)
+        }
+        .sheet(isPresented: $showingMCPSheet) {
+            MCPEditor(mode: .add(defaultScope: .user)) {
+                showingMCPSheet = false
+                Task { await store.load() }
+            }
+            .environmentObject(store)
+            .frame(minWidth: 560, minHeight: 600)
         }
         .enableInjection()
     }
@@ -231,9 +241,68 @@ struct V2LeftRail: View {
         }
     }
 
-    // Workbench tile grid removed — counts now live in the title bar
-    // (V2TitleBar.statusLine). Hooks editor sheet hosting also moved out
-    // since nothing in the rail surfaces it anymore.
+    // MARK: - Workbench
+
+    /// Six-tile grid at the bottom of the rail. Real counts from Store,
+    /// real destinations on click. Same chrome region the original v2
+    /// design called for.
+    private var workbenchRail: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("WORKBENCH")
+                .font(.system(size: 10, weight: .regular, design: .monospaced))
+                .kerning(1.2)
+                .foregroundColor(v2.faint)
+
+            LazyVGrid(
+                columns: [GridItem(.flexible(), spacing: 1), GridItem(.flexible(), spacing: 1)],
+                spacing: 1
+            ) {
+                ForEach(workbenchTiles) { tile in
+                    V2WorkbenchTileButton(tile: tile, onTap: { tap(tile: tile) })
+                }
+            }
+            .background(v2.line)
+            .overlay(Rectangle().stroke(v2.line, lineWidth: 1))
+        }
+        .padding(14)
+        .background(v2.paper3)
+        .overlay(alignment: .top) {
+            Rectangle().fill(v2.line).frame(height: 1)
+        }
+    }
+
+    /// Live counts pulled from Store, not mocks. Order matches the design.
+    private var workbenchTiles: [V2WorkbenchTile] {
+        let totalSkills = store.standaloneSkills.count
+            + store.pluginSkills.values.reduce(0) { $0 + $1.count }
+        let totalMCPs = store.standaloneMCPs.count
+            + store.pluginMCPs.values.reduce(0) { $0 + $1.count }
+        return [
+            V2WorkbenchTile(label: "Plugins", count: "\(store.plugins.count)", hint: "installed"),
+            V2WorkbenchTile(label: "Skills",  count: "\(totalSkills)",          hint: "available"),
+            V2WorkbenchTile(label: "MCPs",    count: "\(totalMCPs)",            hint: "connected"),
+            V2WorkbenchTile(label: "Hooks",   count: "\(store.hooks.count)",    hint: "active"),
+            V2WorkbenchTile(label: "Usage",   count: "—",                        hint: "this month"),
+            V2WorkbenchTile(label: "Market",  count: "∞",                        hint: "browse"),
+        ]
+    }
+
+    private func tap(tile: V2WorkbenchTile) {
+        switch tile.label {
+        case "Hooks":
+            showingHooksEditor = true
+        case "MCPs":
+            showingMCPSheet = true
+        case "Usage":
+            appState.mainView = .usage
+        case "Plugins", "Skills", "Market":
+            // No v2 surface for these yet — fall through. Plugins/Skills
+            // are still managed via the v1 Extensions window for now.
+            break
+        default:
+            break
+        }
+    }
 }
 
 // MARK: - Project row
@@ -281,3 +350,36 @@ private struct V2ProjectRow: View {
     }
 }
 
+// MARK: - Workbench tile button
+
+private struct V2WorkbenchTileButton: View {
+    @Environment(\.v2) private var v2
+    let tile: V2WorkbenchTile
+    let onTap: () -> Void
+
+    var body: some View {
+        Button(action: onTap) {
+            VStack(alignment: .leading, spacing: 3) {
+                HStack {
+                    Text(tile.label)
+                        .font(.system(size: 12.5, weight: .medium))
+                        .kerning(-0.13)
+                        .foregroundColor(v2.ink)
+                    Spacer()
+                    Text(tile.count)
+                        .font(.system(size: 10, design: .monospaced))
+                        .foregroundColor(v2.faint)
+                }
+                Text(tile.hint)
+                    .font(.system(size: 9.5, design: .monospaced))
+                    .foregroundColor(v2.faint)
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 11)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(v2.paper2)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+    }
+}
