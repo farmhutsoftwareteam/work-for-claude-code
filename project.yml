@@ -133,3 +133,19 @@ targets:
       CODE_SIGN_STYLE: Automatic
       CODE_SIGNING_REQUIRED: NO
       CODE_SIGNING_ALLOWED: NO
+
+  # Phase 1 ACP-migration smoke test (see memory: atelier-acp-migration).
+  # Standalone CLI that compiles the SAME Sources/V2/ACP/ACPClient.swift the
+  # app uses and drives a live round-trip against claude-code-acp. Not shipped.
+  AtelierSpikeACP:
+    type: tool
+    platform: macOS
+    sources:
+      - AtelierSpikeACP
+      - Sources/V2/ACP/ACPClient.swift
+    settings:
+      PRODUCT_NAME: AtelierSpikeACP
+      SKIP_INSTALL: YES
+      CODE_SIGN_STYLE: Automatic
+      CODE_SIGNING_REQUIRED: NO
+      CODE_SIGNING_ALLOWED: NO

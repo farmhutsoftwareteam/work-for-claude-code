@@ -163,7 +163,22 @@ final class StreamSession: ObservableObject {
     /// stream its prior messages out of stdout in addition to handling new
     /// user turns.
     func start(cwd: URL, claudeURL: URL, resumeId: String? = nil, model: String? = nil, permissionMode: String? = nil) {
-        guard state == .idle else { return }
+        // Allow (re)start from a finished session too, not just a fresh one.
+        // stop() leaves state at .terminated, so the previous `== .idle`
+        // guard silently no-op'd every restart — the "Restart session" button
+        // and any restart-to-apply-permission path did nothing.
+        // (.terminated carries an associated reason, so it can't be compared
+        // with ==; pattern-match instead.)
+        switch state {
+        case .idle, .terminated: break
+        default: return
+        }
+        // Clear transient per-run state so a restart doesn't inherit a stale
+        // retry banner or permission card. Transcript is intentionally kept
+        // so the conversation stays on screen across the restart.
+        isRetrying = false
+        lastRetry = nil
+        pendingPermission = nil
         state = .spawning
 
         // Resolve the permission mode for this spawn: explicit arg →
@@ -503,7 +518,11 @@ final class StreamSession: ObservableObject {
 
     /// Cycle through Claude's permission modes (Shift+Tab in the composer).
     func cyclePermissionMode() {
-        let modes = Self.permissionModes
+        // Shift+Tab only cycles the runtime-switchable modes — bypass is
+        // launch-only and needs a session restart (handled via the header
+        // menu → V2AppState.changePermissionMode), so we don't land on it
+        // from a quick keystroke.
+        let modes = ["plan", "default", "acceptEdits"]
         let current = modes.firstIndex(of: permissionMode) ?? -1
         let next = modes[(current + 1) % modes.count]
         setPermissionMode(next)

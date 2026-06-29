@@ -178,6 +178,45 @@ final class V2AppState: ObservableObject {
         }
     }
 
+    /// Change the active session's permission mode. Persists the choice as
+    /// the default for future spawns, then applies it to the running session
+    /// the right way for each mode:
+    ///   • plan / default / acceptEdits — switchable at runtime, applied live
+    ///     via set_permission_mode (instant, no restart).
+    ///   • bypassPermissions — launch-only for safety; claude won't escalate
+    ///     a live session to it. So we restart the session with --resume +
+    ///     --permission-mode bypassPermissions: the conversation carries over
+    ///     (transcript stays on screen, claude reloads context) and bypass
+    ///     actually takes effect instead of silently reverting.
+    func changePermissionMode(_ mode: String) {
+        defaultPermissionMode = mode  // persist for next spawn (AppStorage)
+        guard let tab = activeTab, let session = tab.streamSession else { return }
+
+        let liveSwitchable: Set<String> = ["plan", "default", "acceptEdits"]
+        if liveSwitchable.contains(mode) {
+            session.setPermissionMode(mode)
+            return
+        }
+
+        // bypassPermissions → seamless restart preserving the conversation.
+        guard let binary = claudeBinary else {
+            session.setPermissionMode(mode)  // at least persist + reflect
+            return
+        }
+        let cwd = URL(fileURLWithPath: tab.projectCwd)
+        let resume = session.sessionId ?? resumeIds[tab.id]
+        session.stop()
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.45) {
+            session.start(
+                cwd: cwd,
+                claudeURL: binary,
+                resumeId: resume,
+                model: self.defaultSpawnModel,
+                permissionMode: mode
+            )
+        }
+    }
+
     /// Start the active Mode-B tab's session if it's still idle. If the tab
     /// was opened from history we have a resume id stashed in `resumeIds`,
     /// which gets passed to claude as `--resume <id>` so the previous

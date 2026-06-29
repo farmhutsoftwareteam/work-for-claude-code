@@ -193,7 +193,9 @@ struct V2SessionHeader: View {
         Section("Permission mode") {
             ForEach(V2PermissionMode.allCases) { mode in
                 Button {
-                    appState.activeSession?.setPermissionMode(mode.rawValue)
+                    // Routes through V2AppState so bypass (launch-only) gets a
+                    // seamless --resume restart instead of silently reverting.
+                    appState.changePermissionMode(mode.rawValue)
                 } label: {
                     HStack {
                         Text(mode.label)
