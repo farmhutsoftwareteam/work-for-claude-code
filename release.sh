@@ -201,12 +201,20 @@ DEVICE=$(hdiutil attach "$RAW_DMG" \
     -readwrite -noverify -noautoopen \
     | egrep '^/dev/' | sed 1q | awk '{print $1}')
 
-# Probe /Volumes/Work for writability — TCC denial shows up as "Operation
-# not permitted" on the first write, not at attach time.
-if ! touch "$MOUNT_POINT/.write-probe" 2>/dev/null; then
-    echo "  ⚠ /Volumes/Work is not writable from this shell (TCC). Falling back"
-    echo "    to /tmp mount. The DMG will ship without Finder window styling."
+# Probe /Volumes/Work for writability. Some macs allow touch / mkdir under
+# TCC but block ditto's xattr-preserving copy of a signed .app bundle —
+# so we don't just touch, we mkdir + ditto-copy a tiny test file. This is
+# closer to the actual operation that fails on TCC-restricted shells.
+PROBE_DIR="$MOUNT_POINT/.write-probe"
+PROBE_SRC="/tmp/work-dmg-probe.txt"
+echo "probe" > "$PROBE_SRC"
+if mkdir -p "$PROBE_DIR" 2>/dev/null && ditto "$PROBE_SRC" "$PROBE_DIR/probe.txt" 2>/dev/null; then
+    rm -rf "$PROBE_DIR" "$PROBE_SRC"
+else
+    echo "  ⚠ /Volumes/Work doesn't accept ditto writes (TCC). Falling back to"
+    echo "    /tmp mount. The DMG will ship without Finder window styling."
     echo "    For the full layout, run this from a Terminal with Full Disk Access."
+    rm -f "$PROBE_SRC"
     hdiutil detach "$DEVICE" -force 2>/dev/null || true
     MOUNT_POINT="/tmp/work-dmg-mount-${VERSION}"
     mkdir -p "$MOUNT_POINT"
@@ -215,8 +223,6 @@ if ! touch "$MOUNT_POINT/.write-probe" 2>/dev/null; then
         -nobrowse -readwrite -noverify -noautoopen \
         | egrep '^/dev/' | sed 1q | awk '{print $1}')
     FANCY_LAYOUT=0
-else
-    rm -f "$MOUNT_POINT/.write-probe"
 fi
 
 # 3. Copy the app in. `ditto` preserves HFS metadata + symlinks + xattrs
