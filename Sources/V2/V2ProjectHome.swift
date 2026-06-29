@@ -194,6 +194,12 @@ struct V2ProjectHome: View {
 
     // MARK: - Sessions body
 
+    /// Lookup so a row can reach the underlying Session (for firstPrompt and
+    /// lazy loading) while still grouping/ordering via V2HistoryEntry.
+    private var sessionsById: [String: Session] {
+        Dictionary(project?.sessions.map { ($0.id, $0) } ?? [], uniquingKeysWith: { a, _ in a })
+    }
+
     private var sessionsBody: some View {
         ScrollView {
             LazyVStack(alignment: .leading, spacing: 0) {
@@ -202,15 +208,16 @@ struct V2ProjectHome: View {
                 } else {
                     ForEach(Array(groups.enumerated()), id: \.offset) { _, group in
                         groupHeader(group.label)
-                        VStack(spacing: 0) {
-                            ForEach(group.entries) { entry in
-                                sessionRow(entry)
-                            }
+                        ForEach(group.entries) { entry in
+                            sessionRow(entry)
                         }
-                        .overlay(alignment: .bottom) { Rectangle().fill(v2.line).frame(height: 1) }
                     }
                 }
             }
+            // Cap the content column so the timestamp sits NEXT TO the title
+            // instead of floating 1000px away on a wide window (Law of
+            // Proximity). Left-aligned content column, like Mail / Linear.
+            .frame(maxWidth: 1060, alignment: .leading)
         }
     }
 
@@ -224,44 +231,54 @@ struct V2ProjectHome: View {
     }
 
     private func sessionRow(_ entry: V2HistoryEntry) -> some View {
+        let s = sessionsById[entry.sessionId]
         let open = isOpen(entry)
+        let title = rowTitle(entry, s)
+        let subtitle = rowSubtitle(s)
         return Button(action: { openSession(entry) }) {
-            HStack(alignment: .top, spacing: 12) {
-                VStack(alignment: .leading, spacing: 5) {
-                    Text(entry.title)
-                        .font(.system(size: 14.5, weight: open ? .medium : .regular)).kerning(-0.29)
+            HStack(alignment: .firstTextBaseline, spacing: 16) {
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(title)
+                        .font(.system(size: 14, weight: open ? .semibold : .medium)).kerning(-0.2)
                         .foregroundColor(v2.ink)
                         .lineLimit(1).truncationMode(.tail)
-                    if let meta = sessionMeta(entry) {
-                        Text(meta)
+                    if let subtitle {
+                        Text(subtitle)
                             .font(.system(size: 11, design: .monospaced))
                             .foregroundColor(v2.faint)
-                            .lineLimit(1)
+                            .lineLimit(1).truncationMode(.tail)
                     }
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
-                VStack(alignment: .trailing, spacing: 5) {
-                    Text("\(entry.relativeTime) ago")
-                        .font(.system(size: 11, design: .monospaced))
-                        .foregroundColor(v2.faint)
-                    if open {
-                        Text("open")
-                            .font(.system(size: 9.5, design: .monospaced)).kerning(0.6)
-                            .foregroundColor(v2.ink)
-                            .padding(.horizontal, 6).padding(.vertical, 2)
-                            .overlay(Rectangle().stroke(v2.ink, lineWidth: 1))
-                    }
-                }
+                if open { openBadge }
+                // Fixed-width time column so every timestamp lines up — the
+                // rows read as a table, not scattered text (Law of Similarity).
+                Text("\(entry.relativeTime) ago")
+                    .font(.system(size: 11, design: .monospaced))
+                    .foregroundColor(v2.faint)
+                    .frame(width: 76, alignment: .trailing)
             }
-            .padding(.horizontal, 28).padding(.vertical, 16)
+            .padding(.horizontal, 28).padding(.vertical, 12)
             .frame(maxWidth: .infinity, alignment: .leading)
             .background(open ? v2.card : Color.clear)
-            .overlay(alignment: .leading) {
-                if open { Rectangle().fill(v2.ink).frame(width: 3) }
-            }
+            .overlay(alignment: .leading) { if open { Rectangle().fill(v2.ink).frame(width: 3) } }
+            .overlay(alignment: .bottom) { Rectangle().fill(v2.line).frame(height: 1) }
             .contentShape(Rectangle())
         }
         .buttonStyle(V2RowPressStyle())
+        .onAppear {
+            if let s {
+                Task { await store.loadSlug(for: s); await store.loadFirstPrompt(for: s) }
+            }
+        }
+    }
+
+    private var openBadge: some View {
+        Text("open")
+            .font(.system(size: 9.5, design: .monospaced)).kerning(0.6)
+            .foregroundColor(v2.ink)
+            .padding(.horizontal, 6).padding(.vertical, 2)
+            .overlay(Rectangle().stroke(v2.ink, lineWidth: 1))
     }
 
     private var emptySessions: some View {
@@ -272,15 +289,39 @@ struct V2ProjectHome: View {
             .padding(.horizontal, 28).padding(.vertical, 22)
     }
 
-    /// "Nk tokens · model" from the usage aggregator, when available.
-    private func sessionMeta(_ entry: V2HistoryEntry) -> String? {
-        guard let u = store.usageTotals.bySession["\(cwd)::\(entry.sessionId)"] else { return nil }
-        var parts: [String] = []
-        if u.usage.total > 0 { parts.append("\(V2Format.count(u.usage.total)) tokens") }
-        if let model = u.usage.byModel.max(by: { $0.value.total < $1.value.total })?.key {
-            parts.append(model.replacingOccurrences(of: "claude-", with: ""))
+    /// What the session was ABOUT — the first human prompt wins (far better
+    /// than the last message, which is often "/clear"). Falls back through a
+    /// real last message, the session name, then the id.
+    private func rowTitle(_ entry: V2HistoryEntry, _ s: Session?) -> String {
+        if let fp = s?.firstPrompt, !fp.isEmpty { return fp }
+        if let s {
+            let p = s.lastMessagePreview.trimmingCharacters(in: .whitespacesAndNewlines)
+            if !p.isEmpty && !p.hasPrefix("/") { return p }
+            if let slug = s.slug, !slug.isEmpty { return humanize(slug) }
+            if !p.isEmpty { return p }
         }
-        return parts.isEmpty ? nil : parts.joined(separator: " · ")
+        return entry.title
+    }
+
+    /// A muted second line of clues so rows are never empty: model · tokens,
+    /// plus the session's own name when the title is the opening prompt.
+    private func rowSubtitle(_ s: Session?) -> String? {
+        guard let s else { return nil }
+        var bits: [String] = []
+        if let u = store.usageTotals.bySession["\(cwd)::\(s.id)"] {
+            if u.usage.total > 0 { bits.append("\(V2Format.count(u.usage.total)) tokens") }
+            if let model = u.usage.byModel.max(by: { $0.value.total < $1.value.total })?.key {
+                bits.append(model.replacingOccurrences(of: "claude-", with: ""))
+            }
+        }
+        if let fp = s.firstPrompt, !fp.isEmpty, let slug = s.slug, !slug.isEmpty {
+            bits.append(humanize(slug))
+        }
+        return bits.isEmpty ? nil : bits.joined(separator: " · ")
+    }
+
+    private func humanize(_ slug: String) -> String {
+        slug.replacingOccurrences(of: "-", with: " ")
     }
 
     private func isOpen(_ entry: V2HistoryEntry) -> Bool {

@@ -36,6 +36,10 @@ struct Session: Identifiable, Hashable {
     let projectCwd: String
     var slug: String?        // e.g. "spicy-yawning-cat" — lazily loaded from .jsonl tail
     var lastMessagePreview: String
+    /// First substantive human prompt — what the session was actually about.
+    /// Lazily read from the .jsonl head; "" once read but none found, nil until
+    /// loaded. Far better as a title than the last message (often "/clear").
+    var firstPrompt: String? = nil
     var lastActivity: Date
     var isActive: Bool       // true if this session is the one currently running
 

@@ -400,6 +400,63 @@ final class Store: ObservableObject {
         }
     }
 
+    // MARK: - Lazy first-prompt loading (the "what was it about" clue)
+
+    func loadFirstPrompt(for session: Session) async {
+        guard session.firstPrompt == nil else { return }
+        let dir = claudeDir
+        let sessionId = session.id
+        let cwd = session.projectCwd
+
+        let prompt = await Task.detached(priority: .background) { () -> String in
+            let encoded = cwd.replacingOccurrences(of: "/", with: "-")
+            let jsonlURL = dir
+                .appendingPathComponent("projects")
+                .appendingPathComponent(encoded)
+                .appendingPathComponent(sessionId + ".jsonl")
+            return Self.readFirstPromptFromHead(at: jsonlURL) ?? ""
+        }.value
+
+        if let pi = projects.firstIndex(where: { $0.cwd == session.projectCwd }),
+           let si = projects[pi].sessions.firstIndex(where: { $0.id == session.id }) {
+            projects[pi].sessions[si].firstPrompt = prompt   // "" = looked, found none
+            if selectedProject?.cwd == session.projectCwd {
+                selectedProject = projects[pi]
+            }
+        }
+    }
+
+    /// Scan the head of a session's JSONL for the first substantive human
+    /// prompt — skipping the continuation-summary preamble, slash commands,
+    /// caveats, and tool-result turns (whose content is an array, not a string).
+    private nonisolated static func readFirstPromptFromHead(at url: URL) -> String? {
+        guard let fh = FileHandle(forReadingAtPath: url.path) else { return nil }
+        defer { try? fh.close() }
+        // Large window so a long continuation-summary preamble (one giant
+        // user line) doesn't crowd out the real first prompt that follows it.
+        let data = fh.readData(ofLength: 300_000)
+        guard let text = String(data: data, encoding: .utf8) else { return nil }
+
+        for line in text.split(separator: "\n") {
+            guard let lineData = line.data(using: .utf8),
+                  let obj = try? JSONSerialization.jsonObject(with: lineData) as? [String: Any],
+                  obj["type"] as? String == "user",
+                  let message = obj["message"] as? [String: Any],
+                  let content = message["content"] as? String   // string ⇒ typed by a human
+            else { continue }
+
+            let t = content.trimmingCharacters(in: .whitespacesAndNewlines)
+            if t.count < 8 { continue }
+            if t.hasPrefix("/") { continue }                                   // slash command
+            if t.hasPrefix("This session is being continued") { continue }     // compaction preamble
+            if t.hasPrefix("Caveat:") { continue }
+            if t.hasPrefix("<") { continue }                                   // system-reminder / tags
+            let oneLine = t.replacingOccurrences(of: "\n", with: " ")
+            return String(oneLine.prefix(120))
+        }
+        return nil
+    }
+
     // MARK: - Active-session badge refresh
 
     func refreshActiveSessions() async {
