@@ -52,6 +52,13 @@ final class V2AppState: ObservableObject {
     /// just sets the initial model for fresh sessions and resumes.
     @AppStorage("v2.defaultSpawnModel") var defaultSpawnModel: String = "claude-opus-4-8"
 
+    /// Default permission mode passed to `claude --permission-mode X` on
+    /// spawn. Defaults to acceptEdits (claude can edit files without a prompt
+    /// per edit, but still asks for riskier tools). Persisted with the same
+    /// key StreamSession reads/writes, so a mid-conversation change sticks
+    /// for the next spawn. Key must match StreamSession.defaultPermissionKey.
+    @AppStorage("v2.defaultPermissionMode") var defaultPermissionMode: String = "acceptEdits"
+
     /// Right dock collapsed by default — set-once-forget panels (agents /
     /// MCP) burn 360px when the user is just chatting. Expanded mode is
     /// for active loop / harness inspection.
@@ -186,7 +193,8 @@ final class V2AppState: ObservableObject {
             cwd: cwd,
             claudeURL: binary,
             resumeId: resumeIds[tab.id],
-            model: defaultSpawnModel
+            model: defaultSpawnModel,
+            permissionMode: defaultPermissionMode
         )
     }
 
@@ -229,7 +237,8 @@ final class V2AppState: ObservableObject {
                 cwd: URL(fileURLWithPath: projectCwd),
                 claudeURL: binary,
                 resumeId: sessionId,
-                model: defaultSpawnModel
+                model: defaultSpawnModel,
+                permissionMode: defaultPermissionMode
             )
         }
     }

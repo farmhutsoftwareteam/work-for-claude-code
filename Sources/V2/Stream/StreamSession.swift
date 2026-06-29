@@ -162,10 +162,21 @@ final class StreamSession: ObservableObject {
     /// to replay that session's history before the new turn — claude will
     /// stream its prior messages out of stdout in addition to handling new
     /// user turns.
-    func start(cwd: URL, claudeURL: URL, resumeId: String? = nil, model: String? = nil) {
+    func start(cwd: URL, claudeURL: URL, resumeId: String? = nil, model: String? = nil, permissionMode: String? = nil) {
         guard state == .idle else { return }
         state = .spawning
-        log.info("StreamSession.start cwd=\(cwd.path, privacy: .public) binary=\(claudeURL.path, privacy: .public) resume=\(resumeId ?? "-", privacy: .public) model=\(model ?? "-", privacy: .public)")
+
+        // Resolve the permission mode for this spawn: explicit arg →
+        // persisted default → "acceptEdits". Persisting it here (and in
+        // setPermissionMode / cyclePermissionMode) is what makes the choice
+        // STICK across new tabs, restarts, and resumes — previously every
+        // spawn reset to claude's "default" because we never passed
+        // --permission-mode and never persisted the user's pick.
+        let resolvedPermission = permissionMode
+            ?? UserDefaults.standard.string(forKey: Self.defaultPermissionKey)
+            ?? "acceptEdits"
+
+        log.info("StreamSession.start cwd=\(cwd.path, privacy: .public) binary=\(claudeURL.path, privacy: .public) resume=\(resumeId ?? "-", privacy: .public) model=\(model ?? "-", privacy: .public) perm=\(resolvedPermission, privacy: .public)")
 
         let process = Process()
         process.executableURL = claudeURL
@@ -188,6 +199,11 @@ final class StreamSession: ObservableObject {
             // "claude" for the first few frames before system/init lands.
             self.model = model
         }
+        // --permission-mode makes the spawn honour the chosen mode from the
+        // first turn instead of defaulting to per-call prompts.
+        args.append("--permission-mode")
+        args.append(resolvedPermission)
+        self.permissionMode = resolvedPermission
         process.arguments = args
         process.currentDirectoryURL = cwd
         // Critical: GUI-launched apps inherit launchd's stripped PATH which
@@ -413,6 +429,21 @@ final class StreamSession: ObservableObject {
         }
     }
 
+    /// Re-send the most recent user turn. Used by the Retry button so a
+    /// failed / unsatisfying turn can be re-run without retyping. No-op if
+    /// there's no prior user message or a turn is already in flight.
+    func retryLastTurn() {
+        guard state == .ready || state == .idle else { return }
+        let lastUser: String? = {
+            for item in transcript.reversed() {
+                if case .userText(let s) = item { return s }
+            }
+            return nil
+        }()
+        guard let text = lastUser else { return }
+        send(text: text)
+    }
+
     /// Pre-authorise Read of a specific absolute path for this session.
     /// Used by the composer when the user attaches a file via paperclip /
     /// paste / drop — they've already implicitly granted permission to read
@@ -454,22 +485,28 @@ final class StreamSession: ObservableObject {
     }
 
     /// Set the permission mode directly (used by the runningPill menu).
+    /// Permission modes claude actually accepts on the CLI + set_permission_mode
+    /// control request. Trimmed to the real ones — the old list included
+    /// "dontAsk" / "auto" which aren't valid --permission-mode values and
+    /// would make the spawn reject the flag.
+    static let permissionModes = ["default", "acceptEdits", "plan", "bypassPermissions"]
+    static let defaultPermissionKey = "v2.defaultPermissionMode"
+
     func setPermissionMode(_ mode: String) {
         permissionMode = mode
+        // Persist so the choice STICKS for the next spawn / new tab / resume.
+        UserDefaults.standard.set(mode, forKey: Self.defaultPermissionKey)
+        // Apply live to the running session too, so it takes effect
+        // mid-conversation without a restart.
         Task { try? await inputWriter?.setPermissionMode(mode) }
     }
 
-    /// Cycle through Claude's permission modes.
+    /// Cycle through Claude's permission modes (Shift+Tab in the composer).
     func cyclePermissionMode() {
-        let modes = ["default", "acceptEdits", "plan", "dontAsk", "bypassPermissions", "auto"]
-        // Operator precedence trap fixed: `?? 0 + 1` parses as `?? (0+1)`,
-        // so an unknown current mode used to skip to `modes[2]` instead of
-        // wrapping to `modes[0]`. Parenthesize explicitly + fall back to
-        // -1 so the "+1" lands on index 0.
+        let modes = Self.permissionModes
         let current = modes.firstIndex(of: permissionMode) ?? -1
         let next = modes[(current + 1) % modes.count]
-        permissionMode = next
-        Task { try? await inputWriter?.setPermissionMode(next) }
+        setPermissionMode(next)
     }
 
     /// Close stdin (clean EOF) and terminate the child.
@@ -593,8 +630,26 @@ final class StreamSession: ObservableObject {
             )
         case "compact_boundary":
             transcript.append(.compactBoundary)
-        default:
+        case "stop_hook_summary":
+            // Output from the user's Stop hooks — previously invisible.
+            if let body = sys.noteText, !body.isEmpty {
+                transcript.append(.systemNote(kind: .hook, text: body))
+            }
+        case "informational", "bridge_status", "local_command",
+             "scheduled_task_fire", "away_summary":
+            if let body = sys.noteText, !body.isEmpty {
+                transcript.append(.systemNote(kind: .info, text: "\(sys.subtype): \(body)"))
+            }
+        case "turn_duration":
+            // High-frequency + already implied by the result footer; skip to
+            // avoid spamming the transcript.
             break
+        default:
+            // Anything else claude introduces later: surface it rather than
+            // silently swallow, so "see all states" actually holds.
+            if let body = sys.noteText, !body.isEmpty {
+                transcript.append(.systemNote(kind: .info, text: "\(sys.subtype): \(body)"))
+            }
         }
     }
 
@@ -683,12 +738,23 @@ enum TranscriptItem: Identifiable {
     case userText(String)
     case assistantBlock(ContentBlock)
     case compactBoundary
+    /// A claude `system` event surfaced as a subtle inline note — stop-hook
+    /// output, informational notices, errors, etc. that we used to drop.
+    /// `kind` drives the icon/color; `text` is the body.
+    case systemNote(kind: SystemNoteKind, text: String)
+
+    enum SystemNoteKind: Equatable {
+        case info       // informational, bridge_status, local_command, …
+        case hook       // stop_hook_summary
+        case error      // non-retryable errors
+    }
 
     var id: String {
         switch self {
-        case .userText(let s):       return "u-\(s.hashValue)"
-        case .assistantBlock(let b): return "a-\(b.id)"
-        case .compactBoundary:       return "cb-\(UUID().uuidString)"
+        case .userText(let s):              return "u-\(s.hashValue)"
+        case .assistantBlock(let b):        return "a-\(b.id)"
+        case .compactBoundary:              return "cb-\(UUID().uuidString)"
+        case .systemNote(let kind, let t):  return "sys-\(kind)-\(t.hashValue)"
         }
     }
 }

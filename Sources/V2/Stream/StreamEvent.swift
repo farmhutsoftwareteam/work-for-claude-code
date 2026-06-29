@@ -58,9 +58,21 @@ struct SystemEvent: Decodable, Sendable {
     let retryInMs: Double?
     let retryAttempt: Int?
 
+    // Body fields for the assorted note-carrying subtypes (informational,
+    // stop_hook_summary, …). All optional; noteText picks the first present.
+    let content: String?
+    let message: String?
+    let stopReason: String?
+
     struct APIErrorDetail: Decodable, Sendable {
         let message: String?
         let formatted: String?
+    }
+
+    /// Best human-readable body for an arbitrary system event, used when we
+    /// surface it as an inline systemNote.
+    var noteText: String? {
+        content ?? message ?? stopReason ?? errorDetail?.formatted ?? errorDetail?.message
     }
 
     enum CodingKeys: String, CodingKey {
@@ -77,6 +89,9 @@ struct SystemEvent: Decodable, Sendable {
         case errorDetail = "error"
         case retryInMs
         case retryAttempt
+        case content
+        case message
+        case stopReason
     }
 }
 

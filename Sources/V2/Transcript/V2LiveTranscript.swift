@@ -33,7 +33,11 @@ struct V2LiveTranscript: View {
                     }
 
                     if let result = session.latestResult {
-                        V2LiveResultFooter(result: result, sessionId: session.sessionId)
+                        V2LiveResultFooter(
+                            result: result,
+                            sessionId: session.sessionId,
+                            onRetry: { session.retryLastTurn() }
+                        )
                     }
 
                     if session.state == .working {
@@ -125,6 +129,8 @@ struct V2LiveTranscript: View {
             V2AssistantBlock(block: block)
         case .compactBoundary:
             V2CompactBoundary()
+        case .systemNote(let kind, let text):
+            V2SystemNote(kind: kind, text: text)
         }
     }
 
@@ -367,6 +373,7 @@ struct V2LiveResultFooter: View {
     @Environment(\.v2) private var v2
     let result: ResultEvent
     let sessionId: String?
+    var onRetry: (() -> Void)? = nil
 
     var body: some View {
         HStack(spacing: 16) {
@@ -374,6 +381,18 @@ struct V2LiveResultFooter: View {
             Text(durationText)
             if let cost = result.totalCostUsd {
                 Text(V2Format.usd(cost))
+            }
+            if let onRetry {
+                Button(action: onRetry) {
+                    HStack(spacing: 4) {
+                        Image(systemName: "arrow.clockwise")
+                            .font(.system(size: 9, weight: .medium))
+                        Text("retry")
+                    }
+                    .foregroundColor(v2.mute)
+                }
+                .buttonStyle(.plain)
+                .help("Re-send the last message")
             }
             Spacer()
             if let sid = sessionId {
@@ -392,5 +411,53 @@ struct V2LiveResultFooter: View {
         guard let ms = result.durationMs else { return "" }
         let seconds = ms / 1000
         return seconds >= 60 ? "\(seconds / 60)m \(seconds % 60)s" : "\(seconds)s"
+    }
+}
+
+// MARK: - System note
+
+/// Subtle inline row for claude `system` events we used to drop — stop-hook
+/// output, informational notices, non-retryable errors. Icon + tint by kind,
+/// monospaced body, indented under a hairline so it reads as chrome, not as
+/// an assistant message.
+struct V2SystemNote: View {
+    @Environment(\.v2) private var v2
+    let kind: TranscriptItem.SystemNoteKind
+    let text: String
+
+    private var icon: String {
+        switch kind {
+        case .info:  return "info.circle"
+        case .hook:  return "bolt.horizontal.circle"
+        case .error: return "exclamationmark.triangle"
+        }
+    }
+
+    private var tint: Color {
+        switch kind {
+        case .info:  return v2.faint
+        case .hook:  return v2.mute
+        case .error: return v2.del
+        }
+    }
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 9) {
+            Image(systemName: icon)
+                .font(.system(size: 11, weight: .medium))
+                .foregroundColor(tint)
+                .padding(.top, 1)
+            Text(text)
+                .font(.system(size: 11.5, design: .monospaced))
+                .foregroundColor(tint)
+                .textSelection(.enabled)
+                .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 9)
+        .background(v2.paper2)
+        .overlay(alignment: .leading) {
+            Rectangle().fill(tint.opacity(0.4)).frame(width: 2)
+        }
     }
 }

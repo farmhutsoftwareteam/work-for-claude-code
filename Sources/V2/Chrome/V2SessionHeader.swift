@@ -300,21 +300,21 @@ private extension String {
 // MARK: - Model + permission catalogs (used by the running pill menu)
 
 enum V2PermissionMode: String, CaseIterable, Identifiable {
+    // Only the modes claude actually accepts on --permission-mode /
+    // set_permission_mode. The old enum had "dontAsk" / "auto" which aren't
+    // real and would make the spawn reject the flag. Ordered least → most
+    // permissive so "increase" reads top-to-bottom.
+    case plan
     case `default`
     case acceptEdits
-    case plan
-    case dontAsk
     case bypassPermissions
-    case auto
     var id: String { rawValue }
     var label: String {
         switch self {
-        case .default:           return "default (ask each time)"
-        case .acceptEdits:       return "accept edits"
-        case .plan:              return "plan mode"
-        case .dontAsk:           return "don't ask"
-        case .bypassPermissions: return "bypass permissions"
-        case .auto:              return "auto"
+        case .plan:              return "plan — read-only, no changes"
+        case .default:           return "default — ask for each tool"
+        case .acceptEdits:       return "accept edits — auto-allow file edits"
+        case .bypassPermissions: return "bypass — allow everything"
         }
     }
 }
