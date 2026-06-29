@@ -276,6 +276,7 @@ private struct V2ProjectRow: View {
             .padding(.vertical, 8)
             .frame(maxWidth: .infinity, alignment: .leading)
             .background(isActive ? v2.card : Color.clear)
+            .contentShape(Rectangle())
             .overlay(alignment: .leading) {
                 if isActive {
                     Rectangle().fill(v2.ink).frame(width: 2)

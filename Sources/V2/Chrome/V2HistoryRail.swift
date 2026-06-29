@@ -129,6 +129,7 @@ private struct V2HistoryRow: View {
             .padding(.vertical, 10)
             .frame(maxWidth: .infinity, alignment: .leading)
             .background(entry.isActive ? v2.card : Color.clear)
+            .contentShape(Rectangle())
             .overlay(alignment: .leading) {
                 if entry.isActive {
                     Rectangle().fill(v2.ink).frame(width: 2)

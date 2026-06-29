@@ -53,31 +53,47 @@ private struct V2TabChip: View {
     @State private var hover = false
 
     var body: some View {
-        Button(action: onActivate) {
-            HStack(spacing: 9) {
-                stateDot
-                Text(tab.title)
-                    .font(.system(size: 12, design: .monospaced))
-                    .foregroundColor(isActive ? v2.ink : v2.mute)
-                if hover {
-                    Button(action: onClose) {
-                        Image(systemName: "xmark")
-                            .font(.system(size: 8, weight: .medium))
-                            .foregroundColor(v2.faint)
-                    }
-                    .buttonStyle(.plain)
-                }
-            }
-            .padding(.horizontal, 16)
-            .frame(maxHeight: .infinity)
-            .overlay(alignment: .bottom) {
-                if isActive {
-                    Rectangle().fill(v2.ink).frame(height: 2)
-                }
+        // SwiftUI on macOS doesn't route taps cleanly through nested
+        // Buttons — the previous structure had a Button-inside-a-Button
+        // for the hover-only close target, which created a dead zone
+        // around the chip's right edge AND made layout shift on every
+        // hover toggle (close button appears → chip widens → cursor
+        // target moves out from under the press). Switch to:
+        //   • outer tap target = a clear rectangle with .onTapGesture
+        //   • close button = a separate Button laid on top via overlay,
+        //     reserved space so layout doesn't shift when it appears
+        HStack(spacing: 9) {
+            stateDot
+            Text(tab.title)
+                .font(.system(size: 12, design: .monospaced))
+                .foregroundColor(isActive ? v2.ink : v2.mute)
+            closeSlot
+        }
+        .padding(.horizontal, 16)
+        .frame(maxHeight: .infinity)
+        .contentShape(Rectangle())
+        .onTapGesture(perform: onActivate)
+        .overlay(alignment: .bottom) {
+            if isActive {
+                Rectangle().fill(v2.ink).frame(height: 2)
             }
         }
-        .buttonStyle(.plain)
         .onHover { hover = $0 }
+    }
+
+    /// Always reserves space — when not hovering the X is hidden but the
+    /// 14pt slot stays so the chip width doesn't twitch on hover.
+    private var closeSlot: some View {
+        Button(action: onClose) {
+            Image(systemName: "xmark")
+                .font(.system(size: 8, weight: .medium))
+                .foregroundColor(v2.faint)
+                .frame(width: 14, height: 14)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .opacity(hover ? 1 : 0)
+        .allowsHitTesting(hover)
     }
 
     @ViewBuilder

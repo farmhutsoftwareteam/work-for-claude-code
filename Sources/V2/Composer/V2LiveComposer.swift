@@ -36,12 +36,11 @@ struct V2LiveComposer: View {
             Rectangle().fill(v2.line).frame(height: 1)
         }
         .onAppear { inputFocused = true }
-        .onChange(of: session.state) { _, newState in
-            switch newState {
-            case .ready, .working: inputFocused = true
-            default: break
-            }
-        }
+        // Focus once on appear, then leave the user alone. The previous
+        // onChange(of: session.state) yanked focus back on every transition
+        // — when you clicked a rail/tab to switch projects, the new
+        // composer's onChange fired as its session reached .ready and
+        // stole focus right back, which felt like the click had failed.
         .enableInjection()
     }
 
