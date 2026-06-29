@@ -305,7 +305,14 @@ final class StreamSession: ObservableObject {
 
     private func handleStreamEnd() {
         log.info("StreamSession ndjson stream ended")
-        if state == .working || state == .initializing {
+        // Cover every non-terminal state, not just .working / .initializing.
+        // If claude crashed in .ready or .awaitingPermission, the UI would
+        // previously leave the composer enabled and the permission card up
+        // while the process was actually dead.
+        switch state {
+        case .terminated, .closing, .idle:
+            break
+        case .spawning, .initializing, .ready, .working, .awaitingPermission:
             state = .terminated(reason: "stream closed")
         }
     }
@@ -369,9 +376,27 @@ final class StreamSession: ObservableObject {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }
         transcript.append(.userText(trimmed))
-        Task {
-            do { try await inputWriter.sendUserText(trimmed); state = .working }
-            catch { log.error("user-turn send failed: \(error.localizedDescription, privacy: .public)") }
+        // Optimistic state flip — if the write fails we roll back below.
+        // Previously the success path was the only one that set .working,
+        // so a failed send left the transcript showing the user turn with
+        // the session stuck in .ready and no visible error.
+        state = .working
+        Task { [weak self] in
+            guard let self else { return }
+            do {
+                try await inputWriter.sendUserText(trimmed)
+            } catch {
+                log.error("user-turn send failed: \(error.localizedDescription, privacy: .public)")
+                await MainActor.run {
+                    // Surface the failure: drop back to .ready so the
+                    // composer re-enables, append a synthesised assistant
+                    // block so the user sees something went wrong.
+                    self.state = .ready
+                    self.transcript.append(.assistantBlock(
+                        .text("⚠ send failed: \(error.localizedDescription)")
+                    ))
+                }
+            }
         }
     }
 
@@ -386,17 +411,26 @@ final class StreamSession: ObservableObject {
     /// Resolve a pending permission request.
     func respondToPermission(allow: Bool, message: String? = nil) {
         guard let pending = pendingPermission, let inputWriter else { return }
-        Task {
+        // Clear the card immediately so it doesn't get stuck on screen if
+        // the write throws — the user has already made their call. If the
+        // write does throw, we surface it in the transcript.
+        pendingPermission = nil
+        state = .working
+        Task { [weak self] in
+            guard let self else { return }
             do {
                 try await inputWriter.respondToPermission(
                     requestId: pending.requestId,
                     behavior: allow ? .allow : .deny,
                     message: message
                 )
-                pendingPermission = nil
-                state = .working
             } catch {
                 log.error("permission reply failed: \(error.localizedDescription, privacy: .public)")
+                await MainActor.run {
+                    self.transcript.append(.assistantBlock(
+                        .text("⚠ permission reply failed: \(error.localizedDescription)")
+                    ))
+                }
             }
         }
     }
@@ -415,8 +449,12 @@ final class StreamSession: ObservableObject {
     /// Cycle through Claude's permission modes.
     func cyclePermissionMode() {
         let modes = ["default", "acceptEdits", "plan", "dontAsk", "bypassPermissions", "auto"]
-        let idx = (modes.firstIndex(of: permissionMode) ?? 0 + 1) % modes.count
-        let next = modes[(idx + 1) % modes.count]
+        // Operator precedence trap fixed: `?? 0 + 1` parses as `?? (0+1)`,
+        // so an unknown current mode used to skip to `modes[2]` instead of
+        // wrapping to `modes[0]`. Parenthesize explicitly + fall back to
+        // -1 so the "+1" lands on index 0.
+        let current = modes.firstIndex(of: permissionMode) ?? -1
+        let next = modes[(current + 1) % modes.count]
         permissionMode = next
         Task { try? await inputWriter?.setPermissionMode(next) }
     }
@@ -562,10 +600,14 @@ final class StreamSession: ObservableObject {
            let path = req.request.input?.dig("file_path")?.asString,
            preApprovedReadPaths.contains(path) {
             log.info("auto-allow Read of pre-approved path \(path, privacy: .public)")
-            Task { [weak self] in
-                guard let self, let writer = await self.inputWriter else { return }
-                try? await writer.respondToPermission(
-                    requestId: req.requestId,
+            // Capture the writer on the main actor before hopping off — the
+            // previous `await self.inputWriter` inside a non-isolated Task
+            // was an isolation violation.
+            let writer = inputWriter
+            let requestId = req.requestId
+            Task {
+                try? await writer?.respondToPermission(
+                    requestId: requestId,
                     behavior: .allow
                 )
             }

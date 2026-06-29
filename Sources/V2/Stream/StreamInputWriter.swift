@@ -98,8 +98,14 @@ actor StreamInputWriter {
     private func writeLine<T: Encodable>(_ value: T) throws {
         guard !closed else { throw WriteError.closed }
         let data = try encoder.encode(value)
-        try fileHandle.write(contentsOf: data)
-        try fileHandle.write(contentsOf: Data([0x0A]))
+        // Combine envelope + newline into one write so we never publish a
+        // half-line. The two-write form could leave the stdin stream with
+        // a JSON envelope but no terminating newline if the second write
+        // failed — the next writeLine would then concatenate with the
+        // previous envelope and claude's parser would choke.
+        var line = data
+        line.append(0x0A)
+        try fileHandle.write(contentsOf: line)
     }
 
     enum WriteError: Error { case closed }

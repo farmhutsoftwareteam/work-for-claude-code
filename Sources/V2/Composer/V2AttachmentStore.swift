@@ -73,10 +73,33 @@ final class V2AttachmentStore: ObservableObject {
     }
 
     func clear() {
-        for item in items where item.isOwned {
-            try? FileManager.default.removeItem(at: item.url)
-        }
+        // We DO NOT delete owned files here. Composer calls clear()
+        // immediately after session.send() returns, but claude hasn't
+        // necessarily issued its Read tool call yet — deleting the PNG out
+        // from under an in-flight Read makes the attachment vanish before
+        // it can be seen. Old attachments age out via purgeOldAttachments()
+        // on next launch instead.
         items.removeAll()
+    }
+
+    /// Sweep ~/Library/Application Support/com.munyamakosa.work/attachments
+    /// at app launch, removing owned pastes older than the cutoff. Anything
+    /// fresher than that is still potentially mid-Read by an active claude
+    /// session and must not be touched.
+    static func purgeOldAttachments(olderThan cutoff: TimeInterval = 24 * 60 * 60) {
+        let fm = FileManager.default
+        guard let entries = try? fm.contentsOfDirectory(
+            at: scratchDir,
+            includingPropertiesForKeys: [.contentModificationDateKey]
+        ) else { return }
+        let now = Date()
+        for url in entries {
+            let attrs = try? url.resourceValues(forKeys: [.contentModificationDateKey])
+            guard let mtime = attrs?.contentModificationDate else { continue }
+            if now.timeIntervalSince(mtime) > cutoff {
+                try? fm.removeItem(at: url)
+            }
+        }
     }
 
     // MARK: - Outbound

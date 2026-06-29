@@ -77,6 +77,10 @@ struct V2RootView: View {
             appState.attach(terminals: terminals)
             appState.resolveBinary()
             appState.refreshDiscoveredModels()
+            // Aged composer pastes (>24h) get cleaned up here rather than
+            // on every send — clearing post-send was deleting PNGs out from
+            // under an in-flight Read tool call.
+            V2AttachmentStore.purgeOldAttachments()
             // v1's ContentView normally triggers Store.load on appear, but in
             // DEBUG we miniaturize v1 immediately so its .task may not fire
             // before we read store.projects. Kick off our own load — it's

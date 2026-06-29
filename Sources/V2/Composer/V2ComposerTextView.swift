@@ -212,7 +212,7 @@ final class ComposerNSTextView: NSTextView {
     }
 
     override func performDragOperation(_ sender: NSDraggingInfo) -> Bool {
-        handlePasteboard(sender.draggingPasteboard)
+        return handlePasteboard(sender.draggingPasteboard)
     }
 
     static func isImageExtension(_ ext: String) -> Bool {

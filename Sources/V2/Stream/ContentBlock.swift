@@ -13,11 +13,17 @@ enum ContentBlock: Decodable, Sendable, Identifiable {
     case unknown(String)
 
     var id: String {
+        // Stable across renders: previously the .text / .thinking cases
+        // generated a NEW UUID on every access, so SwiftUI ForEach saw
+        // every text block as a different identity each render — animations
+        // broke, scroll position jumped, identical text rows duplicated.
+        // Hash of the content is stable for a given block instance and
+        // collisions are visually identical anyway.
         switch self {
-        case .text:                          return "text-\(UUID().uuidString)"
+        case .text(let s):                   return "text-\(s.hashValue)"
         case .toolUse(let id, _, _):         return "use-\(id)"
         case .toolResult(let id, _, _):      return "res-\(id)"
-        case .thinking:                      return "think-\(UUID().uuidString)"
+        case .thinking(let t, _):            return "think-\(t.hashValue)"
         case .unknown(let t):                return "unk-\(t)"
         }
     }
