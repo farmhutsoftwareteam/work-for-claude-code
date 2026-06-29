@@ -50,6 +50,10 @@ final class ACPClient: @unchecked Sendable {
     var onTurnEnd: ((String) -> Void)?
     /// The models the agent reported at session/new.
     var onModels: (([ACPModel]) -> Void)?
+    /// A tool call started or changed. The full merged ACPToolCall is
+    /// emitted each time (tool_call_update sends only deltas; the client
+    /// merges them), so the consumer can render the complete current state.
+    var onToolCall: ((ACPToolCall) -> Void)?
     /// A protocol-level or transport error.
     var onError: ((String) -> Void)?
     /// Agent is asking the client to approve a tool use. This is a
@@ -89,6 +93,12 @@ final class ACPClient: @unchecked Sendable {
     /// `cancelled` outcome (spec requirement) or the agent hangs.
     private var pendingPermissionIds: Set<Int> = []
     private let permLock = NSLock()
+
+    /// Tool calls by toolCallId. Mutated only on the reader thread (in
+    /// handleSessionUpdate, which runs serially there), so no lock needed.
+    /// tool_call_update carries only changed fields; we merge into the
+    /// stored value and emit the full object.
+    private var toolCalls: [String: ACPToolCall] = [:]
 
     /// id → handler for our outgoing requests' responses.
     private var pending: [Int: (Result<[String: Any], ACPError>) -> Void] = [:]
@@ -285,8 +295,48 @@ final class ACPClient: @unchecked Sendable {
             if let text = (update["content"] as? [String: Any])?["text"] as? String {
                 onMain { self.onAgentThought?(text) }
             }
+        case "tool_call", "tool_call_update":
+            // Both carry the same field set; merge handles new vs delta.
+            handleToolCall(update)
         default:
-            break  // tool_call / plan / available_commands_update → later phases
+            break  // plan / available_commands_update / current_mode_update → 3b+
+        }
+    }
+
+    /// Build or merge a tool call from a tool_call / tool_call_update.
+    private func handleToolCall(_ u: [String: Any]) {
+        guard let id = u["toolCallId"] as? String else { return }
+        var call = toolCalls[id] ?? ACPToolCall(
+            id: id, title: "", kind: "other", status: "pending", content: []
+        )
+        // Merge only present fields (updates are sparse).
+        if let t = u["title"] as? String { call.title = t }
+        if let k = u["kind"] as? String { call.kind = k }
+        if let s = u["status"] as? String { call.status = s }
+        if let content = u["content"] as? [[String: Any]] {
+            call.content = content.compactMap { Self.parseToolContent($0) }
+        }
+        toolCalls[id] = call
+        onMain { self.onToolCall?(call) }
+    }
+
+    private static func parseToolContent(_ c: [String: Any]) -> ACPToolContent? {
+        switch c["type"] as? String {
+        case "content":
+            // { type:"content", content: ContentBlock(text) }
+            if let text = (c["content"] as? [String: Any])?["text"] as? String {
+                return .text(text)
+            }
+            return nil
+        case "diff":
+            guard let path = c["path"] as? String,
+                  let newText = c["newText"] as? String else { return nil }
+            return .diff(path: path, oldText: c["oldText"] as? String, newText: newText)
+        case "terminal":
+            guard let tid = c["terminalId"] as? String else { return nil }
+            return .terminal(terminalId: tid)
+        default:
+            return nil
         }
     }
 
@@ -412,6 +462,25 @@ struct ACPModel: Equatable, Sendable {
     let id: String
     let name: String
     let description: String
+}
+
+/// One rendered piece of a tool call's output.
+enum ACPToolContent: Sendable, Equatable {
+    case text(String)
+    case diff(path: String, oldText: String?, newText: String)
+    case terminal(terminalId: String)
+}
+
+/// A tool call as it streams: created via tool_call, refined via
+/// tool_call_update. `status` walks pending → in_progress → completed/failed.
+/// `kind` is the ACP ToolKind (read/edit/delete/move/search/execute/think/
+/// fetch/switch_mode/other) — drives the icon in the UI.
+struct ACPToolCall: Sendable, Identifiable, Equatable {
+    let id: String
+    var title: String
+    var kind: String
+    var status: String
+    var content: [ACPToolContent]
 }
 
 struct ACPPermissionOption: Equatable, Sendable, Identifiable {

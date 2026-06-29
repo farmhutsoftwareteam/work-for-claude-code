@@ -69,6 +69,17 @@ client.onAgentText = { chunk in
     replyBuffer += chunk
     FileHandle.standardOutput.write(Data(chunk.utf8))
 }
+client.onToolCall = { call in
+    var line = "TOOL [\(call.kind)] \(call.status): \(call.title)"
+    for c in call.content {
+        switch c {
+        case .text(let t):      line += "\n    out: \(t.prefix(120))"
+        case .diff(let p, _, _): line += "\n    diff: \(p)"
+        case .terminal(let id):  line += "\n    terminal: \(id)"
+        }
+    }
+    print(line)
+}
 client.onAgentThought = { _ in print("[thinking…]") }
 client.onError = { err in
     FileHandle.standardError.write(Data("ERROR: \(err)\n".utf8))
