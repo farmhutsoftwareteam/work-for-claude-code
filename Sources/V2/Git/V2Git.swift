@@ -191,4 +191,44 @@ enum V2Git {
         let r = await run(["commit", "-m", message], cwd: cwd)
         return (r.code == 0, r.out)
     }
+
+    /// Draft a commit message by running `claude -p` over the staged diff.
+    /// One-shot text generation — no session, no tools. Returns nil on any
+    /// failure so the caller can surface a friendly error.
+    static func generateCommitMessage(claudeBinary: URL, diff: String) async -> String? {
+        let capped = diff.count > 8000 ? String(diff.prefix(8000)) + "\n… (diff truncated)" : diff
+        let prompt = """
+        Write a git commit message for the staged diff below. Conventional-commits style: a concise `type: summary` subject under 72 characters (types: feat, fix, refactor, docs, test, chore, style, perf), with a short body only if it genuinely helps. Output ONLY the commit message — no preamble, no surrounding quotes or backticks.
+
+        Staged diff:
+
+        \(capped)
+        """
+        return await withCheckedContinuation { cont in
+            DispatchQueue.global(qos: .userInitiated).async {
+                let p = Process()
+                p.executableURL = claudeBinary
+                p.arguments = ["-p", prompt, "--output-format", "text"]
+                // Clear the nested-session guard vars just in case the app was
+                // launched from inside a claude session.
+                var env = ProcessInfo.processInfo.environment
+                for k in env.keys where k == "CLAUDECODE" || k.hasPrefix("CLAUDE_CODE") {
+                    env.removeValue(forKey: k)
+                }
+                p.environment = env
+                let out = Pipe()
+                p.standardOutput = out
+                p.standardError = Pipe()
+                do { try p.run() } catch { cont.resume(returning: nil); return }
+                let data = out.fileHandleForReading.readDataToEndOfFile()
+                p.waitUntilExit()
+                var s = String(data: data, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines)
+                // Strip wrapping backticks/quotes if the model added them.
+                if let t = s {
+                    s = t.trimmingCharacters(in: CharacterSet(charactersIn: "`\"' \n"))
+                }
+                cont.resume(returning: (p.terminationStatus == 0 && !(s?.isEmpty ?? true)) ? s : nil)
+            }
+        }
+    }
 }

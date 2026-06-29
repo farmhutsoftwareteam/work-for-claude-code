@@ -16,6 +16,7 @@ final class V2GitModel: ObservableObject {
     @Published var diff: [DiffLine] = []
     @Published var commitMessage = ""
     @Published var committing = false
+    @Published var drafting = false
     @Published var commitError: String?
     private(set) var cwd = ""
 
@@ -52,6 +53,20 @@ final class V2GitModel: ObservableObject {
         if r.ok { commitMessage = ""; await load(cwd: cwd) }
         else { commitError = r.output.isEmpty ? "commit failed" : String(r.output.prefix(160)) }
     }
+
+    /// Draft the commit message with Claude from the staged diff.
+    func draftMessage(claudeBinary: URL?) async {
+        guard let bin = claudeBinary else { commitError = "claude binary not found"; return }
+        guard !(status?.staged.isEmpty ?? true) else { commitError = "stage changes first"; return }
+        let staged = await V2Git.run(["diff", "--cached"], cwd: cwd).out
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !staged.isEmpty else { commitError = "nothing staged to summarise"; return }
+        drafting = true; commitError = nil
+        let msg = await V2Git.generateCommitMessage(claudeBinary: bin, diff: staged)
+        drafting = false
+        if let msg, !msg.isEmpty { commitMessage = msg }
+        else { commitError = "couldn’t draft a message — try again" }
+    }
 }
 
 // MARK: - View
@@ -59,6 +74,7 @@ final class V2GitModel: ObservableObject {
 struct V2ProjectChanges: View {
     @ObserveInjection private var inject
     @Environment(\.v2) private var v2
+    @EnvironmentObject private var appState: V2AppState
     @ObservedObject var git: V2GitModel
 
     var body: some View {
@@ -256,6 +272,14 @@ struct V2ProjectChanges: View {
                 } else {
                     Text("git commit -m").font(.system(size: 10.5, design: .monospaced)).foregroundColor(v2.faint)
                 }
+                Button { Task { await git.draftMessage(claudeBinary: appState.claudeBinary) } } label: {
+                    Text(git.drafting ? "drafting…" : "ask Claude to write message")
+                        .font(.system(size: 10.5, design: .monospaced))
+                        .foregroundColor(v2.mute)
+                        .underline()
+                }
+                .buttonStyle(.plain)
+                .disabled(git.drafting || (git.status?.staged.isEmpty ?? true))
                 Spacer(minLength: 8)
                 if let s = git.status {
                     Text(aheadLabel(s)).font(.system(size: 10.5, design: .monospaced)).foregroundColor(v2.faint)
