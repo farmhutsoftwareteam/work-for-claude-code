@@ -214,10 +214,6 @@ struct V2ProjectHome: View {
                     }
                 }
             }
-            // Cap the content column so the timestamp sits NEXT TO the title
-            // instead of floating 1000px away on a wide window (Law of
-            // Proximity). Left-aligned content column, like Mail / Linear.
-            .frame(maxWidth: 1060, alignment: .leading)
         }
     }
 

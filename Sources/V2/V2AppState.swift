@@ -170,6 +170,7 @@ final class V2AppState: ObservableObject {
         selectedProjectCwd = URL(fileURLWithPath: cwd)
         selectedProjectName = name
         activeTabId = nil
+        mainView = .chat   // leave the Usage view if we were on it
     }
 
     // MARK: - Tab management
@@ -183,6 +184,7 @@ final class V2AppState: ObservableObject {
             title: selectedProjectName.ifEmpty(cwd.lastPathComponent)
         )
         activeTabId = id
+        mainView = .chat
 
         // Re-publish per-tab StreamSession changes so v2 chrome reacts to
         // streaming/permission state transitions.
@@ -197,6 +199,7 @@ final class V2AppState: ObservableObject {
     func activate(tabId: UUID) {
         guard tabs.contains(where: { $0.id == tabId }) else { return }
         activeTabId = tabId
+        mainView = .chat
     }
 
     func close(tabId: UUID) {
@@ -306,6 +309,7 @@ final class V2AppState: ObservableObject {
             resumeIds[$0.id] == sessionId || $0.streamSession?.sessionId == sessionId
         }) {
             activeTabId = existing.id
+            mainView = .chat
             selectedProjectCwd = URL(fileURLWithPath: projectCwd)
             selectedProjectName = projectName.isEmpty
                 ? (projectCwd as NSString).lastPathComponent
@@ -315,6 +319,7 @@ final class V2AppState: ObservableObject {
         let id = terminals.openModeB(projectCwd: projectCwd, title: title.isEmpty ? projectName : title)
         resumeIds[id] = sessionId
         activeTabId = id
+        mainView = .chat
         // Keep the rail's project selection in sync with the tab we just
         // opened, so the PROJECTS highlight + the ⌘N "new chat" target
         // follow you into the resumed session's project.
