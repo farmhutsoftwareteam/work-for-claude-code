@@ -60,6 +60,9 @@ targets:
         Debug:
           PRODUCT_BUNDLE_IDENTIFIER: com.munyamakosa.work.dev
           BUNDLE_DISPLAY_NAME: Atelier Dev
+          # Inject / InjectionIII hot reload: -interposable lets the injection
+          # server swap method bodies in the running Debug build. Debug only.
+          OTHER_LDFLAGS: -Xlinker -interposable
         Release:
           PRODUCT_BUNDLE_IDENTIFIER: com.munyamakosa.work
           BUNDLE_DISPLAY_NAME: Atelier
