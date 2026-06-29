@@ -51,7 +51,12 @@ struct V2LiveComposer: View {
         .overlay(alignment: .top) {
             Rectangle().fill(v2.line).frame(height: 1)
         }
-        .onAppear { inputFocused = true }
+        .onAppear {
+            inputFocused = true
+            // Restore the draft saved for this tab (the composer's @State was
+            // torn down while the tab was off-screen).
+            if draft.isEmpty { draft = session.composerDraft }
+        }
         .task(id: session.cwd) { await loadCustomCommands() }
         // Focus once on appear, then leave the user alone. The previous
         // onChange(of: session.state) yanked focus back on every transition
@@ -105,6 +110,8 @@ struct V2LiveComposer: View {
             .onChange(of: draft) { _, _ in
                 // Keep the highlighted row in range as the filter narrows.
                 if slashActive >= slashResults.count { slashActive = 0 }
+                // Persist the draft on the session so it survives a tab switch.
+                session.composerDraft = draft
             }
             // Size to actual text content. 19pt per line approximates the
             // monospaced 13pt with default leading + the scrollview's 4pt

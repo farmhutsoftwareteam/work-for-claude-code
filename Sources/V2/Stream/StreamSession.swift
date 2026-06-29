@@ -44,6 +44,11 @@ final class StreamSession: ObservableObject {
     @Published private(set) var model: String = "claude-sonnet"
     @Published private(set) var permissionMode: String = "default"
 
+    /// Unsent composer text, persisted on the (per-tab) session so a draft
+    /// survives switching tabs and back — the composer view's @State is torn
+    /// down when its tab goes off-screen, so the draft has to live here.
+    @Published var composerDraft: String = ""
+
     /// MCP servers reported by the binary on `system/init`. Populated once the
     /// session is initialized; empty before then. Drives the right-dock MCP
     /// panel (#34).
