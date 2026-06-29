@@ -14,10 +14,21 @@ struct V2McpPanel: View {
     @EnvironmentObject private var appState: V2AppState
     @EnvironmentObject private var store: Store
     @State private var addingMCP = false
+    @State private var authing: Set<String> = []   // server names mid-auth
+    @State private var authNote: String?
 
     var body: some View {
         VStack(spacing: 0) {
             header
+            if let note = authNote {
+                Text(note)
+                    .font(.system(size: 10.5, design: .monospaced))
+                    .foregroundColor(v2.mute)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.horizontal, 18).padding(.vertical, 9)
+                    .background(v2.card)
+                    .overlay(alignment: .bottom) { Rectangle().fill(v2.line).frame(height: 1) }
+            }
             content
         }
         .sheet(isPresented: $addingMCP) {
@@ -154,13 +165,58 @@ struct V2McpPanel: View {
                     .foregroundColor(v2.faint)
             }
             Spacer()
-            Text("configured")
-                .font(.system(size: 11, design: .monospaced))
-                .foregroundColor(v2.faint)
+            // OAuth-capable servers (http/sse) get a Sign in affordance; stdio
+            // servers don't authenticate.
+            if isOAuthCapable(server.transport) {
+                authButton(server.name)
+            } else {
+                Text("configured")
+                    .font(.system(size: 11, design: .monospaced))
+                    .foregroundColor(v2.faint)
+            }
         }
         .padding(.horizontal, 18).padding(.vertical, 13)
         .frame(maxWidth: .infinity, alignment: .leading)
         .overlay(alignment: .bottom) { Rectangle().fill(v2.line).frame(height: 1) }
+    }
+
+    private func isOAuthCapable(_ t: MCPServer.Transport) -> Bool {
+        switch t { case .http, .sse: return true; default: return false }
+    }
+
+    // MARK: - Authenticate (claude mcp login)
+
+    private func authButton(_ name: String) -> some View {
+        let busy = authing.contains(name)
+        return Button { authenticate(name) } label: {
+            Text(busy ? "authenticating…" : "sign in")
+                .font(.system(size: 10.5, design: .monospaced))
+                .foregroundColor(busy ? v2.faint : v2.ink)
+                .padding(.horizontal, 9).padding(.vertical, 4)
+                .background(v2.card)
+                .overlay(Rectangle().stroke(busy ? v2.line2 : v2.ink, lineWidth: 1))
+        }
+        .buttonStyle(.plain)
+        .disabled(busy)
+        .help("Authenticate this MCP server (claude mcp login)")
+    }
+
+    private func authenticate(_ name: String) {
+        guard let binary = appState.claudeBinary else { authNote = "Can't find the claude binary."; return }
+        let cwd = projectCwd ?? NSHomeDirectory()
+        authNote = "\(name): opening your browser to authorise…"
+        authing.insert(name)
+        Task {
+            let r = await V2MCPAuth.login(claudeBinary: binary, name: name, cwd: cwd)
+            authing.remove(name)
+            if r.ok {
+                authNote = "\(name): authenticated ✓ — restart the session to reconnect it."
+                await store.load()
+            } else {
+                let detail = r.output.isEmpty ? "auth failed or timed out" : String(r.output.suffix(160))
+                authNote = "\(name): \(detail)"
+            }
+        }
     }
 
     private func scopeLabel(_ s: MCPServer.Source) -> String {
@@ -242,9 +298,13 @@ struct V2McpPanel: View {
                     .foregroundColor(v2.faint)
             }
             Spacer()
-            Text(statusLabel(status))
-                .font(.system(size: 11, design: .monospaced))
-                .foregroundColor(statusColor(isConnected: isConnected, needsAuth: needsAuth, failed: isFailed))
+            if needsAuth {
+                authButton(server.name)
+            } else {
+                Text(statusLabel(status))
+                    .font(.system(size: 11, design: .monospaced))
+                    .foregroundColor(statusColor(isConnected: isConnected, needsAuth: needsAuth, failed: isFailed))
+            }
         }
         .padding(.horizontal, 18)
         .padding(.vertical, 13)
@@ -314,5 +374,48 @@ struct V2McpPanel: View {
             return parts.dropLast().joined(separator: " · ")
         }
         return "user scope"
+    }
+}
+
+// MARK: - MCP OAuth via `claude mcp login`
+
+enum V2MCPAuth {
+    /// Run `claude mcp login <name>` in the project cwd. Default mode opens the
+    /// browser and waits for the OAuth callback, then exits. Capped at 3 min so
+    /// an abandoned flow doesn't hang forever.
+    static func login(claudeBinary: URL, name: String, cwd: String) async -> (ok: Bool, output: String) {
+        await run(claudeBinary: claudeBinary, args: ["mcp", "login", name], cwd: cwd)
+    }
+
+    static func logout(claudeBinary: URL, name: String, cwd: String) async -> (ok: Bool, output: String) {
+        await run(claudeBinary: claudeBinary, args: ["mcp", "logout", name], cwd: cwd)
+    }
+
+    private static func run(claudeBinary: URL, args: [String], cwd: String) async -> (ok: Bool, output: String) {
+        await withCheckedContinuation { cont in
+            DispatchQueue.global(qos: .userInitiated).async {
+                let p = Process()
+                p.executableURL = claudeBinary
+                p.arguments = args
+                p.currentDirectoryURL = URL(fileURLWithPath: cwd)
+                var env = ProcessInfo.processInfo.environment
+                for k in env.keys where k == "CLAUDECODE" || k.hasPrefix("CLAUDE_CODE") { env.removeValue(forKey: k) }
+                p.environment = env
+                p.standardInput = FileHandle.nullDevice   // browser flow, no TTY input
+                let out = Pipe(); let err = Pipe()
+                p.standardOutput = out; p.standardError = err
+                do { try p.run() } catch { cont.resume(returning: (false, "couldn't launch claude")); return }
+                let group = DispatchGroup()
+                var oData = Data(); var eData = Data()
+                group.enter(); DispatchQueue.global().async { oData = out.fileHandleForReading.readDataToEndOfFile(); group.leave() }
+                group.enter(); DispatchQueue.global().async { eData = err.fileHandleForReading.readDataToEndOfFile(); group.leave() }
+                if group.wait(timeout: .now() + 180) == .timedOut { p.terminate() }
+                group.wait()
+                p.waitUntilExit()
+                let combined = ((String(data: oData, encoding: .utf8) ?? "") + (String(data: eData, encoding: .utf8) ?? ""))
+                    .trimmingCharacters(in: .whitespacesAndNewlines)
+                cont.resume(returning: (p.terminationStatus == 0, combined))
+            }
+        }
     }
 }
