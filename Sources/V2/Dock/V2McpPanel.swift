@@ -212,8 +212,14 @@ struct V2McpPanel: View {
             let r = await V2MCPAuth.login(claudeBinary: binary, name: name, cwd: cwd)
             authing.remove(name)
             if r.ok {
-                authNote = "\(name): authenticated ✓ — restart the session to reconnect it."
                 await store.load()
+                // Don't make them restart by hand — reconnect the live session
+                // for them so the server just appears, folded into the session's
+                // normal loading state.
+                let reconnected = appState.reconnectSessions(inProject: cwd, afterAuthOf: name)
+                authNote = reconnected > 0
+                    ? "\(name): signed in ✓ — reconnecting your session…"
+                    : "\(name): signed in ✓ — it'll connect when you start a session."
             } else {
                 // Fall back to the visible terminal if the headless flow can't
                 // complete (e.g. a server with no loopback that needs the paste).

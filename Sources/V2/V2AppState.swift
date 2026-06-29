@@ -242,6 +242,46 @@ final class V2AppState: ObservableObject {
         mainView = .chat
     }
 
+    /// After an MCP server in `projectCwd` is authenticated, seamlessly
+    /// reconnect any LIVE session in that project so the now-authorised server
+    /// attaches — without a manual "restart" step. We stop + restart with
+    /// --resume (transcript stays on screen, claude reloads context), so the
+    /// reconnect reads as the session's normal spawn/initialize loading state
+    /// and the server just appears. Idle/terminated sessions are left alone —
+    /// they'll pick the server up whenever they next start. Returns how many
+    /// live sessions were reconnected.
+    @discardableResult
+    func reconnectSessions(inProject projectCwd: String, afterAuthOf serverName: String) -> Int {
+        guard let binary = claudeBinary else { return 0 }
+        let target = URL(fileURLWithPath: projectCwd).standardizedFileURL.path
+        var count = 0
+        for tab in tabs where tab.surface == .modeB {
+            guard let session = tab.streamSession,
+                  URL(fileURLWithPath: tab.projectCwd).standardizedFileURL.path == target
+            else { continue }
+            // Only a live session needs reconnecting.
+            switch session.state {
+            case .idle, .terminated: continue
+            default: break
+            }
+            let cwd = URL(fileURLWithPath: tab.projectCwd)
+            let resume = session.sessionId ?? resumeIds[tab.id]
+            session.stop()
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.45) {
+                session.start(
+                    cwd: cwd,
+                    claudeURL: binary,
+                    resumeId: resume,
+                    model: self.defaultSpawnModel,
+                    permissionMode: self.defaultPermissionMode
+                )
+                session.appendSystemNote("\(serverName) signed in — reconnected.")
+            }
+            count += 1
+        }
+        return count
+    }
+
     func close(tabId: UUID) {
         let wasActive = (activeTabId == tabId)
         _ = terminals?.close(tabId, force: true)
