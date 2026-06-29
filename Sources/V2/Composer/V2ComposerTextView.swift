@@ -27,6 +27,12 @@ struct V2ComposerTextView: NSViewRepresentable {
     let onSubmit: () -> Void
     let onImagePasted: (NSImage) -> Void
     let onFilesDropped: ([URL]) -> Void
+    // Slash-command popover hooks. When `popoverOpen` is true, the arrow
+    // keys / Enter / Tab / Esc drive the popover instead of the text field.
+    var popoverOpen: Bool = false
+    var onPopoverMove: (Int) -> Void = { _ in }   // -1 up, +1 down
+    var onPopoverPick: () -> Void = {}
+    var onPopoverDismiss: () -> Void = {}
 
     func makeNSView(context: Context) -> NSScrollView {
         let scroll = NSScrollView()
@@ -88,6 +94,10 @@ struct V2ComposerTextView: NSViewRepresentable {
         context.coordinator.submitCallback = onSubmit
         context.coordinator.imageCallback = onImagePasted
         context.coordinator.fileDropCallback = onFilesDropped
+        context.coordinator.popoverOpen = { popoverOpen }
+        context.coordinator.popoverMove = onPopoverMove
+        context.coordinator.popoverPick = onPopoverPick
+        context.coordinator.popoverDismiss = onPopoverDismiss
         tv.placeholderString = placeholder
 
         if tv.string != text {
@@ -119,6 +129,10 @@ struct V2ComposerTextView: NSViewRepresentable {
         var submitCallback: () -> Void = {}
         var imageCallback: (NSImage) -> Void = { _ in }
         var fileDropCallback: ([URL]) -> Void = { _ in }
+        var popoverOpen: () -> Bool = { false }
+        var popoverMove: (Int) -> Void = { _ in }
+        var popoverPick: () -> Void = {}
+        var popoverDismiss: () -> Void = {}
 
         init(text: Binding<String>, focused: Binding<Bool>) {
             self.textBinding = text
@@ -131,8 +145,32 @@ struct V2ComposerTextView: NSViewRepresentable {
             tv.needsDisplay = true   // refresh placeholder visibility
         }
 
-        /// Catch Enter / Shift+Enter / Cmd+Enter.
+        /// Catch Enter / Shift+Enter / Cmd+Enter — and, when the slash
+        /// popover is open, the arrow keys / Tab / Esc to drive it.
         func textView(_ textView: NSTextView, doCommandBy selector: Selector) -> Bool {
+            let popover = popoverOpen()
+            if popover {
+                switch selector {
+                case #selector(NSResponder.moveUp(_:)):
+                    popoverMove(-1); return true
+                case #selector(NSResponder.moveDown(_:)):
+                    popoverMove(1); return true
+                case #selector(NSResponder.insertTab(_:)):
+                    popoverPick(); return true
+                case #selector(NSResponder.cancelOperation(_:)):
+                    popoverDismiss(); return true
+                case #selector(NSResponder.insertNewline(_:)):
+                    // Enter completes the highlighted command rather than
+                    // sending, unless Shift is held (then insert a newline).
+                    let mods = NSApp.currentEvent?.modifierFlags ?? []
+                    if mods.contains(.shift) {
+                        textView.insertNewlineIgnoringFieldEditor(self); return true
+                    }
+                    popoverPick(); return true
+                default:
+                    break
+                }
+            }
             if selector == #selector(NSResponder.insertNewline(_:)) {
                 let modifiers = NSApp.currentEvent?.modifierFlags ?? []
                 if modifiers.contains(.shift) {

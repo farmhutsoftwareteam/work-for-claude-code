@@ -20,13 +20,22 @@ struct V2LiveComposer: View {
     @StateObject private var attachments = V2AttachmentStore()
     @State private var draft: String = ""
     @State private var inputFocused: Bool = false
+    @State private var slashActive: Int = 0   // highlighted row in the popover
 
     var body: some View {
         VStack(alignment: .leading, spacing: 9) {
             if !attachments.items.isEmpty {
                 attachmentStrip
             }
-            composerBox
+            // Slash-command popover floats above the composer when the draft
+            // starts with "/" and no space has been typed yet.
+            ZStack(alignment: .bottomLeading) {
+                composerBox
+                if slashOpen {
+                    slashPopover
+                        .offset(y: -(composerHeight + 36))
+                }
+            }
             helperRow
         }
         .padding(.horizontal, 26)
@@ -74,8 +83,16 @@ struct V2LiveComposer: View {
                 placeholderColor: NSColor(v2.faint),
                 onSubmit: sendCurrent,
                 onImagePasted: { image in attachments.addImage(image) },
-                onFilesDropped: { urls in attachments.addFiles(urls) }
+                onFilesDropped: { urls in attachments.addFiles(urls) },
+                popoverOpen: slashOpen,
+                onPopoverMove: moveSlashSelection,
+                onPopoverPick: pickSlashCommand,
+                onPopoverDismiss: dismissSlash
             )
+            .onChange(of: draft) { _, _ in
+                // Keep the highlighted row in range as the filter narrows.
+                if slashActive >= slashResults.count { slashActive = 0 }
+            }
             // Size to actual text content. 19pt per line approximates the
             // monospaced 13pt with default leading + the scrollview's 4pt
             // top inset. Cap at 8 lines — beyond that, the inner NSScrollView
@@ -116,6 +133,94 @@ struct V2LiveComposer: View {
         .padding(.vertical, 10)
         .background(v2.card)
         .overlay(Rectangle().stroke(v2.line2, lineWidth: 1))
+    }
+
+    // MARK: - Slash command popover
+
+    /// Open when the draft is a bare "/query" (no space yet — once a command
+    /// is completed to "/name " we close so it doesn't show "no matches").
+    private var slashOpen: Bool {
+        draft.hasPrefix("/") && !draft.contains(" ") && canType
+    }
+
+    private var slashResults: [V2SlashCommand] {
+        V2SlashCatalog.filtered(String(draft.dropFirst()))
+    }
+
+    private var slashPopover: some View {
+        VStack(spacing: 0) {
+            HStack {
+                Text("COMMANDS")
+                    .font(.system(size: 9.5, design: .monospaced)).kerning(1.2)
+                    .foregroundColor(v2.faint)
+                Spacer()
+                Text("↑↓ navigate · ⏎ complete · esc dismiss")
+                    .font(.system(size: 9.5, design: .monospaced))
+                    .foregroundColor(v2.faint)
+            }
+            .padding(.horizontal, 14).padding(.top, 7).padding(.bottom, 5)
+            .overlay(alignment: .bottom) { Rectangle().fill(v2.line).frame(height: 1) }
+
+            let results = slashResults
+            if results.isEmpty {
+                Text("no commands match")
+                    .font(.system(size: 12, design: .monospaced))
+                    .foregroundColor(v2.faint)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.horizontal, 14).padding(.vertical, 11)
+            } else {
+                ForEach(Array(results.enumerated()), id: \.element.id) { idx, cmd in
+                    Button { complete(cmd) } label: {
+                        HStack(spacing: 13) {
+                            Text("/\(cmd.name)")
+                                .font(.system(size: 13, weight: .medium, design: .monospaced))
+                                .foregroundColor(v2.ink)
+                                .frame(width: 170, alignment: .leading)
+                            Text(cmd.desc)
+                                .font(.system(size: 12, design: .monospaced))
+                                .foregroundColor(v2.mute)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                        }
+                        .padding(.horizontal, 14).padding(.vertical, 9)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .background(idx == slashActive ? v2.card : Color.clear)
+                        .overlay(alignment: .leading) {
+                            if idx == slashActive { Rectangle().fill(v2.ink).frame(width: 2) }
+                        }
+                        .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+        }
+        .background(v2.paper2)
+        .overlay(Rectangle().stroke(v2.line2, lineWidth: 1))
+        .shadow(color: .black.opacity(0.14), radius: 24, x: 0, y: -6)
+        .frame(maxWidth: .infinity)
+    }
+
+    private func moveSlashSelection(_ delta: Int) {
+        let n = slashResults.count
+        guard n > 0 else { return }
+        slashActive = (slashActive + delta + n) % n
+    }
+
+    private func pickSlashCommand() {
+        let results = slashResults
+        guard !results.isEmpty, results.indices.contains(slashActive) else { return }
+        complete(results[slashActive])
+    }
+
+    private func complete(_ cmd: V2SlashCommand) {
+        draft = "/\(cmd.name) "   // trailing space closes the popover
+        slashActive = 0
+        inputFocused = true
+    }
+
+    private func dismissSlash() {
+        // Clear the leading "/" so the popover closes but keep nothing stale.
+        if draft.hasPrefix("/") { draft = "" }
+        slashActive = 0
     }
 
     private var attachButton: some View {
@@ -185,7 +290,7 @@ struct V2LiveComposer: View {
     private var helperRow: some View {
         HStack(spacing: 18) {
             Button { session.cyclePermissionMode() } label: {
-                Text("\(permissionLabel) · shift+tab to cycle")
+                Text("/ for commands · \(permissionLabel) · shift+tab to cycle")
                     .foregroundColor(v2.faint)
             }
             .buttonStyle(.plain)
@@ -223,8 +328,8 @@ struct V2LiveComposer: View {
 
     private var placeholder: String {
         switch session.state {
-        case .idle, .terminated:    return "Ask anything…"
-        case .ready:                return "Reply…"
+        case .idle, .terminated:    return "Ask, or / for commands, or set a goal to run a loop…"
+        case .ready:                return "Reply, or / for commands…"
         case .spawning:             return "Spawning…"
         case .initializing:         return "Initializing…"
         case .working:              return "Reply, or ⎋ to interrupt…"
