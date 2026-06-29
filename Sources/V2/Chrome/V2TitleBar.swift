@@ -15,9 +15,10 @@ struct V2TitleBar: View {
     }
 
     var body: some View {
-        HStack(spacing: 16) {
-            // macOS traffic lights live in the system chrome; leave room.
-            Spacer().frame(width: 70)
+        HStack(spacing: 14) {
+            // Everything lives in the top-right corner; the left is the
+            // system's traffic-light chrome.
+            Spacer()
 
             // Theme picker: a menu showing Light / Dark / System with the
             // current mode checked — one click to any mode, instead of a
@@ -41,9 +42,7 @@ struct V2TitleBar: View {
             .fixedSize()
             .help("Theme: \(theme.label.capitalized)")
 
-            Spacer()
-
-            // Brand badge anchored to the right.
+            // Brand badge — sits just right of the theme control in the corner.
             HStack(spacing: 9) {
                 V2DovetailMark(size: 18)
                 Text("atelier")
