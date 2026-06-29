@@ -6,6 +6,40 @@
         <description>Updates for Work</description>
         <language>en</language>
         <item>
+            <title>Version 2.1.0</title>
+            <pubDate>Mon, 29 Jun 2026 20:15:00 +0000</pubDate>
+            <sparkle:version>29</sparkle:version>
+            <sparkle:shortVersionString>2.1.0</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>15.0</sparkle:minimumSystemVersion>
+            <description><![CDATA[
+                <h3>Atelier 2.1.0 — project home, git, and a real command palette</h3>
+                <h4>Project home</h4>
+                <ul>
+                    <li><b>Clicking a project opens its home</b> — a per-project dashboard with stats and a grouped <b>sessions list</b> titled by what each conversation was actually about (the first prompt, not the last "/clear").</li>
+                    <li>The session row <b>is</b> the start button — click it and the session starts (resumed, or fresh if its history is gone, with the real reason shown if it can't open).</li>
+                </ul>
+                <h4>Git, built in</h4>
+                <ul>
+                    <li>A <b>Changes</b> tab with real git: staged/unstaged files, live diffs, <b>stage / unstage</b>, and <b>commit</b> — no terminal needed.</li>
+                    <li><b>Ask Claude to write the commit message</b> from your staged diff.</li>
+                </ul>
+                <h4>Slash commands + add project</h4>
+                <ul>
+                    <li>Type <b>/</b> for a command palette — built-ins plus <b>your own commands</b> from <code>.claude/commands</code>, with <code>$ARGUMENTS</code> support.</li>
+                    <li>A prominent <b>Add project</b> flow: open a folder or <b>clone a repo</b>, with a "detected" git / CLAUDE.md / stack panel.</li>
+                </ul>
+                <h4>Polish</h4>
+                <ul>
+                    <li>A <b>context-window meter</b> (e.g. 62% · 124k/200k) sourced from Anthropic's spec; Chrome-style tabs; projects ordered by recent activity; <b>+ New session</b> just starts; full-width chat; bigger click targets; errors shown instead of silently dropped.</li>
+                </ul>
+            ]]></description>
+            <enclosure
+                url="https://work.munyamakosa.com/Work.dmg"
+                length="10951030"
+                type="application/octet-stream"
+                sparkle:edSignature="Sh+YaDy5qbl718OUZyUL97++SONr64OeIgoFYemgw4IsBKmM94ySnskpbGvXrffpB8dYCiSnKCC0EgMC8/IsAA==" />
+        </item>
+        <item>
             <title>Version 2.0.4</title>
             <pubDate>Mon, 29 Jun 2026 15:30:00 +0000</pubDate>
             <sparkle:version>28</sparkle:version>
