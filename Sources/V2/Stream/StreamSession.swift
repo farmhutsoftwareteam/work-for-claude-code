@@ -528,6 +528,28 @@ final class StreamSession: ObservableObject {
         setPermissionMode(next)
     }
 
+    // MARK: - Client slash-command support
+
+    /// Append an inline informational note to the transcript. Used by the
+    /// composer's client-handled slash commands (/cost, /help, /model,
+    /// /permissions) to surface their result in-line without sending a turn
+    /// to the agent.
+    func appendSystemNote(_ text: String) {
+        transcript.append(.systemNote(kind: .info, text: text))
+    }
+
+    /// Wipe the on-screen conversation and per-turn metrics. Does NOT touch
+    /// the underlying claude process — V2AppState.clearConversation() pairs
+    /// this with a fresh spawn so the agent's context resets too (the
+    /// faithful `/clear`).
+    func resetTranscript() {
+        transcript.removeAll()
+        preloadOmittedTurns = 0
+        latestResult = nil
+        tokensUsed = 0
+        pendingPermission = nil
+    }
+
     /// Close stdin (clean EOF) and terminate the child.
     func stop() {
         state = .closing

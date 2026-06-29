@@ -217,6 +217,32 @@ final class V2AppState: ObservableObject {
         }
     }
 
+    /// Reset the active conversation to a clean slate (the `/clear` command).
+    /// Unlike clearing only the UI, this restarts the underlying claude
+    /// process WITHOUT --resume so the agent's context is genuinely gone —
+    /// matching what `/clear` does in the terminal. The transcript is wiped
+    /// and a fresh session spawns in the same project / model / mode.
+    func clearConversation() {
+        guard let tab = activeTab,
+              let session = tab.streamSession,
+              let binary = claudeBinary else { return }
+        let cwd = URL(fileURLWithPath: tab.projectCwd)
+        // Drop any stashed resume id so the restart can't resurrect context.
+        resumeIds.removeValue(forKey: tab.id)
+        session.stop()
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.45) {
+            session.resetTranscript()
+            session.start(
+                cwd: cwd,
+                claudeURL: binary,
+                resumeId: nil,
+                model: self.defaultSpawnModel,
+                permissionMode: self.defaultPermissionMode
+            )
+            session.appendSystemNote("Conversation cleared — fresh context.")
+        }
+    }
+
     /// Start the active Mode-B tab's session if it's still idle. If the tab
     /// was opened from history we have a resume id stashed in `resumeIds`,
     /// which gets passed to claude as `--resume <id>` so the previous

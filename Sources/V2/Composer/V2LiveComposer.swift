@@ -16,11 +16,14 @@ import Inject
 struct V2LiveComposer: View {
     @ObserveInjection private var inject
     @Environment(\.v2) private var v2
+    @EnvironmentObject private var appState: V2AppState
     @ObservedObject var session: StreamSession
     @StateObject private var attachments = V2AttachmentStore()
     @State private var draft: String = ""
     @State private var inputFocused: Bool = false
     @State private var slashActive: Int = 0   // highlighted row in the popover
+    /// User-authored commands loaded from .claude/commands + ~/.claude/commands.
+    @State private var customCommands: [V2SlashCommand] = []
 
     var body: some View {
         VStack(alignment: .leading, spacing: 9) {
@@ -45,6 +48,7 @@ struct V2LiveComposer: View {
             Rectangle().fill(v2.line).frame(height: 1)
         }
         .onAppear { inputFocused = true }
+        .task(id: session.cwd) { await loadCustomCommands() }
         // Focus once on appear, then leave the user alone. The previous
         // onChange(of: session.state) yanked focus back on every transition
         // — when you clicked a rail/tab to switch projects, the new
@@ -137,14 +141,40 @@ struct V2LiveComposer: View {
 
     // MARK: - Slash command popover
 
+    /// Every command available right now: the built-in catalog plus the
+    /// user's own commands loaded off disk (project overrides personal by
+    /// name; both override a built-in of the same name).
+    private var allCommands: [V2SlashCommand] {
+        var byName: [String: V2SlashCommand] = [:]
+        for c in V2SlashCatalog.builtins { byName[c.name] = c }
+        for c in customCommands { byName[c.name] = c }
+        return Array(byName.values)
+    }
+
     /// Open when the draft is a bare "/query" (no space yet — once a command
     /// is completed to "/name " we close so it doesn't show "no matches").
     private var slashOpen: Bool {
         draft.hasPrefix("/") && !draft.contains(" ") && canType
     }
 
+    /// Filtered, category-then-name ordered results. The flat order here
+    /// matches the grouped render order, so `slashActive` indexes both.
     private var slashResults: [V2SlashCommand] {
-        V2SlashCatalog.filtered(String(draft.dropFirst()))
+        V2SlashCatalog.filtered(String(draft.dropFirst()), in: allCommands)
+    }
+
+    private var groupedResults: [(V2SlashCategory, [V2SlashCommand])] {
+        let results = slashResults
+        return V2SlashCategory.allCases
+            .sorted { $0.rank < $1.rank }
+            .compactMap { cat in
+                let items = results.filter { $0.category == cat }
+                return items.isEmpty ? nil : (cat, items)
+            }
+    }
+
+    private var highlightedCommand: V2SlashCommand? {
+        slashResults.indices.contains(slashActive) ? slashResults[slashActive] : nil
     }
 
     private var slashPopover: some View {
@@ -154,42 +184,29 @@ struct V2LiveComposer: View {
                     .font(.system(size: 9.5, design: .monospaced)).kerning(1.2)
                     .foregroundColor(v2.faint)
                 Spacer()
-                Text("↑↓ navigate · ⏎ complete · esc dismiss")
+                Text("↑↓ navigate · ⏎ run · esc dismiss")
                     .font(.system(size: 9.5, design: .monospaced))
                     .foregroundColor(v2.faint)
             }
             .padding(.horizontal, 14).padding(.top, 7).padding(.bottom, 5)
             .overlay(alignment: .bottom) { Rectangle().fill(v2.line).frame(height: 1) }
 
-            let results = slashResults
-            if results.isEmpty {
-                Text("no commands match")
+            if slashResults.isEmpty {
+                Text("no commands match · ⏎ sends it anyway")
                     .font(.system(size: 12, design: .monospaced))
                     .foregroundColor(v2.faint)
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .padding(.horizontal, 14).padding(.vertical, 11)
             } else {
-                ForEach(Array(results.enumerated()), id: \.element.id) { idx, cmd in
-                    Button { complete(cmd) } label: {
-                        HStack(spacing: 13) {
-                            Text("/\(cmd.name)")
-                                .font(.system(size: 13, weight: .medium, design: .monospaced))
-                                .foregroundColor(v2.ink)
-                                .frame(width: 170, alignment: .leading)
-                            Text(cmd.desc)
-                                .font(.system(size: 12, design: .monospaced))
-                                .foregroundColor(v2.mute)
-                                .frame(maxWidth: .infinity, alignment: .leading)
-                        }
-                        .padding(.horizontal, 14).padding(.vertical, 9)
+                ForEach(groupedResults, id: \.0) { cat, items in
+                    Text(cat.rawValue)
+                        .font(.system(size: 8.5, design: .monospaced)).kerning(1.3)
+                        .foregroundColor(v2.faint)
                         .frame(maxWidth: .infinity, alignment: .leading)
-                        .background(idx == slashActive ? v2.card : Color.clear)
-                        .overlay(alignment: .leading) {
-                            if idx == slashActive { Rectangle().fill(v2.ink).frame(width: 2) }
-                        }
-                        .contentShape(Rectangle())
+                        .padding(.horizontal, 14).padding(.top, 8).padding(.bottom, 3)
+                    ForEach(items) { cmd in
+                        commandRow(cmd)
                     }
-                    .buttonStyle(.plain)
                 }
             }
         }
@@ -199,16 +216,71 @@ struct V2LiveComposer: View {
         .frame(maxWidth: .infinity)
     }
 
+    private func commandRow(_ cmd: V2SlashCommand) -> some View {
+        let active = cmd.id == highlightedCommand?.id
+        return Button { activate(cmd) } label: {
+            HStack(spacing: 12) {
+                HStack(spacing: 6) {
+                    Text("/\(cmd.name)")
+                        .font(.system(size: 13, weight: .medium, design: .monospaced))
+                        .foregroundColor(v2.ink)
+                    if let hint = cmd.argumentHint {
+                        Text(hint)
+                            .font(.system(size: 11.5, design: .monospaced))
+                            .foregroundColor(v2.faint)
+                    }
+                }
+                .frame(width: 210, alignment: .leading)
+                Text(cmd.desc)
+                    .font(.system(size: 12, design: .monospaced))
+                    .foregroundColor(v2.mute)
+                    .lineLimit(1).truncationMode(.tail)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                Text(cmd.runTag)
+                    .font(.system(size: 10, design: .monospaced))
+                    .foregroundColor(v2.faint)
+            }
+            .padding(.horizontal, 14).padding(.vertical, 9)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(active ? v2.card : Color.clear)
+            .overlay(alignment: .leading) {
+                if active { Rectangle().fill(v2.ink).frame(width: 2) }
+            }
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+    }
+
     private func moveSlashSelection(_ delta: Int) {
         let n = slashResults.count
         guard n > 0 else { return }
         slashActive = (slashActive + delta + n) % n
     }
 
+    /// Enter / Tab while the popover is open. A command with no arguments runs
+    /// immediately; one that takes arguments completes to "/name " so you can
+    /// type them. With no match, Enter falls through and sends the literal
+    /// text (it might be a command we don't model).
     private func pickSlashCommand() {
-        let results = slashResults
-        guard !results.isEmpty, results.indices.contains(slashActive) else { return }
-        complete(results[slashActive])
+        guard let cmd = highlightedCommand else {
+            sendCurrent()
+            return
+        }
+        if cmd.takesArguments {
+            complete(cmd)
+        } else {
+            activate(cmd)
+        }
+    }
+
+    /// Clicking a row (mouse) always runs arg-less commands and completes
+    /// arg-taking ones — same rule as Enter.
+    private func activate(_ cmd: V2SlashCommand) {
+        if cmd.takesArguments {
+            complete(cmd)
+        } else {
+            run(cmd, args: "")
+        }
     }
 
     private func complete(_ cmd: V2SlashCommand) {
@@ -221,6 +293,137 @@ struct V2LiveComposer: View {
         // Clear the leading "/" so the popover closes but keep nothing stale.
         if draft.hasPrefix("/") { draft = "" }
         slashActive = 0
+    }
+
+    // MARK: - Command resolution & execution
+
+    /// If `text` is "/name [args]" and name is a known command, return it.
+    /// Returns nil for plain text or an unknown "/foo" (which we send as-is).
+    private func matchedSlashCommand(_ text: String) -> (V2SlashCommand, String)? {
+        guard text.hasPrefix("/") else { return nil }
+        let body = String(text.dropFirst())
+        let name = String(body.prefix(while: { $0 != " " })).lowercased()
+        guard !name.isEmpty else { return nil }
+        guard let cmd = allCommands.first(where: { $0.name.lowercased() == name }) else { return nil }
+        let args = String(body.dropFirst(name.count)).trimmingCharacters(in: .whitespacesAndNewlines)
+        return (cmd, args)
+    }
+
+    /// Run a command end-to-end: client actions execute in-app, prompt
+    /// commands expand their template and send a real turn.
+    private func run(_ cmd: V2SlashCommand, args: String) {
+        slashActive = 0
+        switch cmd.kind {
+        case .client(let action):
+            runClient(action, args: args)
+            draft = ""
+            inputFocused = true
+        case .prompt(let body, _):
+            // Prompt commands send a real turn — hold them while one is in
+            // flight, same as a normal message (don't interleave turns).
+            guard !isWorking else { return }
+            let expanded = V2CommandRegistry.expand(body, args: args)
+            guard !expanded.isEmpty else { draft = ""; return }
+            draft = ""
+            attachments.clear()
+            session.send(text: expanded)
+            inputFocused = true
+        }
+    }
+
+    private func runClient(_ action: V2ClientCommand, args: String) {
+        switch action {
+        case .clear:
+            appState.clearConversation()
+        case .cost:
+            session.appendSystemNote(costSummary())
+        case .model:
+            applyModelCommand(args)
+        case .permissions:
+            applyPermissionCommand(args)
+        case .help:
+            session.appendSystemNote(helpText())
+        }
+    }
+
+    private func costSummary() -> String {
+        let tokens = V2Format.count(session.tokensUsed)
+        guard let r = session.latestResult else {
+            return "cost · \(tokens) tokens this session · no completed turn yet"
+        }
+        let cost = V2Format.usd(r.totalCostUsd ?? 0)
+        let turns = r.numTurns ?? 0
+        let secs = Double(r.durationMs ?? 0) / 1000
+        return "cost · \(cost) · \(turns) turn\(turns == 1 ? "" : "s") · \(tokens) tokens · \(String(format: "%.1f", secs))s"
+    }
+
+    private func applyModelCommand(_ args: String) {
+        let query = args.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        guard !query.isEmpty else {
+            let list = appState.discoveredModels.isEmpty
+                ? session.model
+                : appState.discoveredModels.map { "\($0.displayName) (\($0.id))" }.joined(separator: ", ")
+            session.appendSystemNote("model · current: \(session.model) · available: \(list) · type /model <name>")
+            return
+        }
+        // Match a discovered model by id or display name; else treat the
+        // typed value as a raw model id and pass it straight through.
+        let match = appState.discoveredModels.first {
+            $0.id.lowercased().contains(query) || $0.displayName.lowercased().contains(query)
+        }
+        let target = match?.id ?? args.trimmingCharacters(in: .whitespacesAndNewlines)
+        session.setModel(target)
+        appState.defaultSpawnModel = target
+        session.appendSystemNote("model → \(target)")
+    }
+
+    private func applyPermissionCommand(_ args: String) {
+        let query = args.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        guard !query.isEmpty else {
+            session.appendSystemNote(
+                "permissions · current: \(session.permissionMode) · options: plan, default, acceptEdits, bypassPermissions · type /permissions <mode>")
+            return
+        }
+        // Forgiving matching: "bypass" → bypassPermissions, "accept"/"edit" →
+        // acceptEdits, prefix match otherwise.
+        let mode: String?
+        if query.hasPrefix("bypass") { mode = "bypassPermissions" }
+        else if query.hasPrefix("accept") || query.contains("edit") { mode = "acceptEdits" }
+        else { mode = StreamSession.permissionModes.first { $0.lowercased().hasPrefix(query) } }
+        guard let resolved = mode else {
+            session.appendSystemNote("permissions · unknown mode “\(args)” · options: plan, default, acceptEdits, bypassPermissions")
+            return
+        }
+        // Route through app state so bypassPermissions restarts the session
+        // (it's launch-only) while the others switch live.
+        appState.changePermissionMode(resolved)
+        session.appendSystemNote("permissions → \(resolved)")
+    }
+
+    private func helpText() -> String {
+        var lines = ["Commands — type / in the composer."]
+        for cat in V2SlashCategory.allCases.sorted(by: { $0.rank < $1.rank }) {
+            let cmds = allCommands.filter { $0.category == cat }.sorted { $0.name < $1.name }
+            guard !cmds.isEmpty else { continue }
+            lines.append("")
+            lines.append(cat.rawValue)
+            for c in cmds {
+                let hint = c.argumentHint.map { " \($0)" } ?? ""
+                lines.append("  /\(c.name)\(hint) — \(c.desc) [\(c.runTag)]")
+            }
+        }
+        lines.append("")
+        lines.append("“app” runs here in Atelier · “→ agent” / “project” / “user” send a prompt to Claude.")
+        return lines.joined(separator: "\n")
+    }
+
+    private func loadCustomCommands() async {
+        let root = appState.activeTab.map { URL(fileURLWithPath: $0.projectCwd) }
+            ?? session.cwd.map { URL(fileURLWithPath: $0) }
+        let loaded = await Task.detached(priority: .utility) {
+            V2CommandRegistry.load(projectRoot: root)
+        }.value
+        await MainActor.run { self.customCommands = loaded }
     }
 
     private var attachButton: some View {
@@ -391,6 +594,13 @@ struct V2LiveComposer: View {
     // MARK: - Send
 
     private func sendCurrent() {
+        // A "/name [args]" submit for a known command runs the command
+        // instead of sending the literal text to the agent. Unknown "/foo"
+        // and plain text fall through to a normal turn.
+        if let (cmd, args) = matchedSlashCommand(draft.trimmingCharacters(in: .whitespacesAndNewlines)) {
+            run(cmd, args: args)
+            return
+        }
         guard canSend else { return }
         let body = draft
         let prefix = attachments.outboundPrefix()
