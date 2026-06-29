@@ -24,42 +24,53 @@ struct V2RootView: View {
     }
 
     var body: some View {
-        VStack(spacing: 0) {
-            V2TitleBar(themeRaw: $themeRaw)
+        ZStack {
+            VStack(spacing: 0) {
+                V2TitleBar(themeRaw: $themeRaw)
 
-            HStack(spacing: 0) {
-                V2LeftRail()
-                    .frame(width: 264)
+                HStack(spacing: 0) {
+                    V2LeftRail()
+                        .frame(width: 264)
 
-                Group {
-                    switch appState.mainView {
-                    case .chat:
-                        VStack(spacing: 0) {
-                            V2SessionTabs()
-                            V2SessionHeader(dockPanel: $dockPanel)
+                    Group {
+                        switch appState.mainView {
+                        case .chat:
+                            VStack(spacing: 0) {
+                                V2SessionTabs()
+                                V2SessionHeader(dockPanel: $dockPanel)
 
-                            mainBody
+                                mainBody
 
-                            composerOrControls
+                                composerOrControls
+                            }
+                        case .usage:
+                            V2UsageView()
                         }
-                    case .usage:
-                        V2UsageView()
                     }
-                }
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-                .background(palette.paper)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .background(palette.paper)
 
-                V2RightDock(panel: $dockPanel)
-                    // Width comes from the dock itself (40pt collapsed,
-                    // 360pt expanded). Animate the swap so the transcript
-                    // smoothly reflows when the dock opens/closes.
-                    .animation(
-                        .spring(response: 0.28, dampingFraction: 0.86),
-                        value: appState.dockCollapsed
-                    )
+                    V2RightDock(panel: $dockPanel)
+                        // Width comes from the dock itself (40pt collapsed,
+                        // 360pt expanded). Animate the swap so the transcript
+                        // smoothly reflows when the dock opens/closes.
+                        .animation(
+                            .spring(response: 0.28, dampingFraction: 0.86),
+                            value: appState.dockCollapsed
+                        )
+                }
+                .frame(maxHeight: .infinity)
             }
-            .frame(maxHeight: .infinity)
+
+            // Window-level permission modal — dims the whole window and
+            // floats the request front-and-centre so it can't be missed.
+            if let session = appState.activeSession, session.pendingPermission != nil {
+                V2PermissionModal(session: session)
+                    .transition(.opacity)
+                    .zIndex(100)
+            }
         }
+        .animation(.easeOut(duration: 0.15), value: appState.activeSession?.pendingPermission?.id)
         .background(palette.paper)
         .environment(\.v2, palette)
         .environmentObject(appState)
@@ -113,13 +124,11 @@ struct V2RootView: View {
                     .background(Color.black)
             case .modeB:
                 if let session = tab.streamSession {
-                    VStack(spacing: 0) {
-                        V2LiveTranscript(session: session)
-                        V2LivePermissionCard(session: session)
-                            .padding(.horizontal, 36)
-                            .padding(.bottom, session.pendingPermission == nil ? 0 : 16)
-                    }
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    // Permission request is now a window-level modal overlay
+                    // (see body's ZStack) rather than an inline card that was
+                    // easy to scroll past / miss entirely.
+                    V2LiveTranscript(session: session)
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
                 } else {
                     invalidStateView
                 }

@@ -1,8 +1,35 @@
-// Inline permission card bound to a real StreamSession. Surfaces when the
-// session is `awaitingPermission` and a pendingPermission is set.
+// Permission UI bound to a real StreamSession. Surfaces when the session is
+// `awaitingPermission` and a pendingPermission is set.
+//
+// V2PermissionModal is the window-level presentation (dimmed backdrop +
+// centred card) used by V2RootView. V2LivePermissionCard is the bare card
+// it wraps, kept separate so it can also be embedded inline if needed.
 
 import SwiftUI
 import Inject
+
+/// Full-window modal: vibrancy backdrop + centred permission card. Replaces
+/// the old inline card that users scrolled past without noticing — a tool
+/// request now blocks the surface until you Approve or Deny.
+struct V2PermissionModal: View {
+    @Environment(\.v2) private var v2
+    @ObservedObject var session: StreamSession
+
+    var body: some View {
+        ZStack {
+            Rectangle()
+                .fill(.ultraThinMaterial)
+                .overlay(Color.black.opacity(0.18))
+                .ignoresSafeArea()
+                // Intentionally NOT tap-to-dismiss — a permission request
+                // must be explicitly resolved, not dismissed by a misclick.
+
+            V2LivePermissionCard(session: session)
+                .frame(width: 520)
+                .shadow(color: .black.opacity(0.32), radius: 40, x: 0, y: 20)
+        }
+    }
+}
 
 struct V2LivePermissionCard: View {
     @ObserveInjection private var inject

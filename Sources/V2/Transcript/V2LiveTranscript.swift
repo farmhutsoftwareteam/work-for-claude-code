@@ -10,6 +10,8 @@ struct V2LiveTranscript: View {
     @Environment(\.v2) private var v2
     @ObservedObject var session: StreamSession
 
+    private let bottomAnchorID = "v2-transcript-bottom"
+
     var body: some View {
         ScrollViewReader { proxy in
             ScrollView {
@@ -37,23 +39,55 @@ struct V2LiveTranscript: View {
                     if session.state == .working {
                         V2LoadingSkeleton()
                     }
+
+                    // Zero-height anchor pinned to the very bottom. We scroll
+                    // to THIS rather than the last transcript item, so
+                    // streaming text (which mutates the last item in place
+                    // without changing transcript.count) still keeps the view
+                    // pinned, and the result footer / loading skeleton stay
+                    // visible while a reply streams in.
+                    Color.clear
+                        .frame(height: 1)
+                        .id(bottomAnchorID)
                 }
                 .padding(.horizontal, 36)
                 .padding(.top, 30)
                 .padding(.bottom, 24)
                 .frame(maxWidth: 1100, alignment: .leading)
             }
-            .onChange(of: session.transcript.count) { _, _ in
-                if let last = session.transcript.last {
-                    withAnimation(.easeOut(duration: 0.2)) {
-                        proxy.scrollTo(last.id, anchor: .bottom)
-                    }
+            // scrollKey changes on every signal that grows the content: new
+            // item, streaming growth of the last text block, state change,
+            // result arrival. The old onChange watched only transcript.count,
+            // so it never fired while a single reply streamed in token-by-token.
+            .onChange(of: scrollKey) { _, _ in
+                withAnimation(.easeOut(duration: 0.18)) {
+                    proxy.scrollTo(bottomAnchorID, anchor: .bottom)
                 }
+            }
+            .onAppear {
+                // Jump to the bottom when a tab first shows — matters for
+                // resumed sessions that open with preloaded history.
+                proxy.scrollTo(bottomAnchorID, anchor: .bottom)
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(v2.paper)
         .enableInjection()
+    }
+
+    /// Cheap signature of everything that should trigger an auto-scroll.
+    /// Includes the last block's character count so streaming growth (which
+    /// leaves transcript.count untouched) still moves the view.
+    private var scrollKey: String {
+        let lastLen: Int
+        if case .assistantBlock(.text(let s)) = session.transcript.last {
+            lastLen = s.count
+        } else {
+            lastLen = 0
+        }
+        let working = session.state == .working ? 1 : 0
+        let hasResult = session.latestResult == nil ? 0 : 1
+        return "\(session.transcript.count)-\(lastLen)-\(working)-\(hasResult)-\(session.isRetrying ? 1 : 0)"
     }
 
     @ViewBuilder

@@ -199,6 +199,13 @@ final class V2AppState: ObservableObject {
         let id = terminals.openModeB(projectCwd: projectCwd, title: title.isEmpty ? projectName : title)
         resumeIds[id] = sessionId
         activeTabId = id
+        // Keep the rail's project selection in sync with the tab we just
+        // opened, so the PROJECTS highlight + the ⌘N "new chat" target
+        // follow you into the resumed session's project.
+        selectedProjectCwd = URL(fileURLWithPath: projectCwd)
+        selectedProjectName = projectName.isEmpty
+            ? (projectCwd as NSString).lastPathComponent
+            : projectName
 
         if let session = terminals.tabs.first(where: { $0.id == id })?.streamSession {
             session.objectWillChange

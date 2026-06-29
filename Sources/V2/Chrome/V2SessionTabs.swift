@@ -11,40 +11,39 @@ struct V2SessionTabs: View {
     @EnvironmentObject private var terminals: TerminalsController
 
     var body: some View {
-        // No strip at all when the current project has no tabs — the main
-        // body's empty state ("Pick a project, then ⌘N for a new tab")
-        // covers the start-a-session affordance. A lonely 40pt-tall strip
-        // with just a floating `+` button felt heavy and noisy.
-        if visibleTabs.isEmpty {
+        // Global tab strip: EVERY open chat is a visible tab, regardless of
+        // which project the rail is focused on — same model as browser tabs
+        // and every modern chat app. The previous per-project filter hid
+        // tabs from other projects, so opening a chat in project B made your
+        // project-A tab "disappear" from the strip — it felt like the new
+        // chat had REPLACED the old one even though both were still alive.
+        // Each chip carries a small project sub-label so you always know
+        // which project a tab belongs to.
+        if allTabs.isEmpty {
             EmptyView()
         } else {
-            HStack(spacing: 0) {
-                // Only tabs in the project the user is currently focused on.
-                // Showing every project's tabs in one strip made it
-                // impossible to know which project you were in — clicking
-                // a project in the rail would highlight it but the strip
-                // kept showing the foreign tab from the previous project
-                // as the active one.
-                ForEach(visibleTabs) { tab in
-                    V2TabChip(
-                        tab: tab,
-                        isActive: tab.id == appState.activeTabId,
-                        onActivate: { appState.activate(tabId: tab.id) },
-                        onClose: { appState.close(tabId: tab.id) }
-                    )
-                }
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 0) {
+                    ForEach(allTabs) { tab in
+                        V2TabChip(
+                            tab: tab,
+                            isActive: tab.id == appState.activeTabId,
+                            showProject: multipleProjectsOpen,
+                            onActivate: { appState.activate(tabId: tab.id) },
+                            onClose: { appState.close(tabId: tab.id) }
+                        )
+                    }
 
-                Button { appState.newTab() } label: {
-                    Image(systemName: "plus")
-                        .font(.system(size: 11, weight: .regular))
-                        .foregroundColor(v2.faint)
-                        .padding(.horizontal, 12)
-                        .frame(maxHeight: .infinity)
+                    Button { appState.newTab() } label: {
+                        Image(systemName: "plus")
+                            .font(.system(size: 11, weight: .regular))
+                            .foregroundColor(v2.faint)
+                            .padding(.horizontal, 12)
+                            .frame(maxHeight: .infinity)
+                    }
+                    .buttonStyle(.plain)
+                    .help("New chat in \(appState.selectedProjectName.isEmpty ? "this project" : appState.selectedProjectName) (⌘N)")
                 }
-                .buttonStyle(.plain)
-                .help("New tab")
-
-                Spacer()
             }
             .frame(height: 40)
             .background(v2.paper2)
@@ -56,12 +55,13 @@ struct V2SessionTabs: View {
         }
     }
 
-    /// Tabs scoped to the rail's currently selected project. Falls back to
-    /// the full list when no project is selected (defensive — should rarely
-    /// happen since V2RootView selects the first project on appear).
-    private var visibleTabs: [TerminalTab] {
-        guard let cwd = appState.selectedProjectCwd?.path else { return terminals.tabs }
-        return terminals.tabs.filter { $0.projectCwd == cwd }
+    /// All open tabs across every project — nothing is hidden.
+    private var allTabs: [TerminalTab] { terminals.tabs }
+
+    /// Show the per-tab project label only when tabs span more than one
+    /// project — no need to repeat the same project name on every chip.
+    private var multipleProjectsOpen: Bool {
+        Set(terminals.tabs.map { $0.projectCwd }).count > 1
     }
 }
 
@@ -69,6 +69,7 @@ private struct V2TabChip: View {
     @Environment(\.v2) private var v2
     let tab: TerminalTab
     let isActive: Bool
+    var showProject: Bool = false
     let onActivate: () -> Void
     let onClose: () -> Void
     @State private var hover = false
@@ -85,9 +86,18 @@ private struct V2TabChip: View {
         //     reserved space so layout doesn't shift when it appears
         HStack(spacing: 9) {
             stateDot
-            Text(tab.title)
-                .font(.system(size: 12, design: .monospaced))
-                .foregroundColor(isActive ? v2.ink : v2.mute)
+            VStack(alignment: .leading, spacing: 1) {
+                Text(tab.title)
+                    .font(.system(size: 12, design: .monospaced))
+                    .foregroundColor(isActive ? v2.ink : v2.mute)
+                    .lineLimit(1)
+                if showProject {
+                    Text(projectLabel)
+                        .font(.system(size: 9, design: .monospaced))
+                        .foregroundColor(v2.faint)
+                        .lineLimit(1)
+                }
+            }
             closeSlot
         }
         .padding(.horizontal, 16)
@@ -100,6 +110,10 @@ private struct V2TabChip: View {
             }
         }
         .onHover { hover = $0 }
+    }
+
+    private var projectLabel: String {
+        (tab.projectCwd as NSString).lastPathComponent
     }
 
     /// Always reserves space — when not hovering the X is hidden but the
