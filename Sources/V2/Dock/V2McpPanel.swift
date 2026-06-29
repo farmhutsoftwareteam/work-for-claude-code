@@ -40,8 +40,8 @@ struct V2McpPanel: View {
                     .font(.system(size: 15, weight: .medium))
                     .kerning(-0.15)
                 Spacer()
-                if let session = appState.activeSession, !session.mcpServers.isEmpty {
-                    Text("\(session.mcpServers.count)")
+                if serverCount > 0 {
+                    Text("\(serverCount)")
                         .font(.system(size: 10.5, design: .monospaced))
                         .foregroundColor(v2.faint)
                 }
@@ -75,47 +75,111 @@ struct V2McpPanel: View {
 
     @ViewBuilder
     private var content: some View {
-        if let session = appState.activeSession {
-            switch session.state {
-            case .idle, .terminated:
-                idleState
-            case .spawning, .initializing:
-                initializingState
-            default:
-                liveContent(for: session)
-            }
+        if let session = appState.activeSession, isInitializing(session.state) {
+            initializingState
+        } else if let session = appState.activeSession, isRunning(session.state), !session.mcpServers.isEmpty {
+            liveContent(for: session)
         } else {
-            noTabState
+            // No live session data — show what's CONFIGURED for this project
+            // (.mcp.json + ~/.claude.json local + global) so the project home
+            // reflects reality instead of looking empty.
+            configuredContent
         }
     }
 
-    // MARK: - States
-
-    private var noTabState: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text("No active tab.")
-                .font(.system(size: 12, design: .monospaced))
-                .foregroundColor(v2.mute)
-            Text("Open a tab to see the MCP servers Claude loads for it.")
-                .font(.system(size: 10.5, design: .monospaced))
-                .foregroundColor(v2.faint)
-        }
-        .padding(18)
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+    private func isInitializing(_ s: StreamSession.LifecycleState) -> Bool {
+        switch s { case .spawning, .initializing: return true; default: return false }
+    }
+    private func isRunning(_ s: StreamSession.LifecycleState) -> Bool {
+        switch s { case .working, .ready, .awaitingPermission: return true; default: return false }
     }
 
-    private var idleState: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text("Session not running.")
-                .font(.system(size: 12, design: .monospaced))
-                .foregroundColor(v2.mute)
-            Text("MCP servers are reported by Claude on `system/init` — start the session to see what it loaded.")
-                .font(.system(size: 10.5, design: .monospaced))
-                .lineSpacing(10.5 * 0.5)
+    // MARK: - Configured servers (from project + user config)
+
+    private var projectCwd: String? {
+        appState.selectedProjectCwd?.path ?? appState.activeTab?.projectCwd
+    }
+
+    /// MCPs configured for this project — `<cwd>/.mcp.json` (team, "project"),
+    /// `~/.claude.json projects.<cwd>` (private, "local"), and the top-level
+    /// global servers that load everywhere. Deduped by name (project first).
+    private var configuredServers: [MCPServer] {
+        var out: [MCPServer] = []
+        var seen = Set<String>()
+        func add(_ list: [MCPServer]) { for s in list where seen.insert(s.name).inserted { out.append(s) } }
+        if let cwd = projectCwd {
+            add(store.projectMCPs[cwd] ?? [])
+            add(store.localUserMCPs[cwd] ?? [])
+        }
+        add(store.standaloneMCPs)
+        return out
+    }
+
+    private var serverCount: Int {
+        if let s = appState.activeSession, isRunning(s.state), !s.mcpServers.isEmpty { return s.mcpServers.count }
+        return configuredServers.count
+    }
+
+    private var configuredContent: some View {
+        let servers = configuredServers
+        return ScrollView {
+            VStack(alignment: .leading, spacing: 0) {
+                if servers.isEmpty {
+                    Text("No MCP servers configured for this project.")
+                        .font(.system(size: 11.5, design: .monospaced))
+                        .foregroundColor(v2.mute)
+                        .padding(.horizontal, 18).padding(.vertical, 20)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                } else {
+                    ForEach(servers, id: \.id) { configuredRow($0) }
+                }
+                Text("From .mcp.json (project) and ~/.claude.json (local + user). Start a session to see live connection status.")
+                    .font(.system(size: 10.5, design: .monospaced))
+                    .lineSpacing(10.5 * 0.6)
+                    .foregroundColor(v2.faint)
+                    .padding(.horizontal, 18).padding(.vertical, 14)
+            }
+            .padding(.vertical, 8)
+        }
+    }
+
+    private func configuredRow(_ server: MCPServer) -> some View {
+        HStack(spacing: 11) {
+            Rectangle().stroke(v2.line2, lineWidth: 1).frame(width: 11, height: 11)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(server.name)
+                    .font(.system(size: 13.5, weight: .medium)).kerning(-0.13)
+                Text("\(scopeLabel(server.source)) · \(transportLabel(server.transport))")
+                    .font(.system(size: 10, design: .monospaced))
+                    .foregroundColor(v2.faint)
+            }
+            Spacer()
+            Text("configured")
+                .font(.system(size: 11, design: .monospaced))
                 .foregroundColor(v2.faint)
         }
-        .padding(18)
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        .padding(.horizontal, 18).padding(.vertical, 13)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .overlay(alignment: .bottom) { Rectangle().fill(v2.line).frame(height: 1) }
+    }
+
+    private func scopeLabel(_ s: MCPServer.Source) -> String {
+        switch s {
+        case .global:        return "user"
+        case .localUser:     return "local"
+        case .project:       return "project"
+        case .plugin(let n): return "plugin · \(n)"
+        }
+    }
+
+    private func transportLabel(_ t: MCPServer.Transport) -> String {
+        switch t {
+        case .stdio(let cmd, _): return (cmd as NSString).lastPathComponent
+        case .http:              return "http"
+        case .sse:               return "sse"
+        case .sdk:               return "sdk"
+        case .unknown(let type): return type
+        }
     }
 
     private var initializingState: some View {
