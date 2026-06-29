@@ -556,10 +556,36 @@ struct V2LiveComposer: View {
 
             Spacer()
 
-            Text(modelStatus)
+            contextMeter
         }
         .font(.system(size: 10.5, design: .monospaced))
         .foregroundColor(v2.faint)
+    }
+
+    /// Model + how full the context window is. The bar + percentage answer
+    /// "how much room is left before I should /clear or /compact".
+    private var contextMeter: some View {
+        let frac = session.contextFraction
+        let high = frac >= 0.85
+        let pct = Int((frac * 100).rounded())
+        let used = V2Format.count(session.contextTokens)
+        let window = V2Format.count(session.contextWindow)
+        return HStack(spacing: 8) {
+            Text(session.model).foregroundColor(v2.faint)
+            ZStack(alignment: .leading) {
+                Rectangle().fill(v2.line2).frame(width: 46, height: 4)
+                Rectangle()
+                    .fill(high ? v2.del : v2.ink)
+                    .frame(width: 46 * max(0, min(1, frac)), height: 4)
+            }
+            if session.contextTokens > 0 {
+                Text("\(pct)% · \(used)/\(window)")
+                    .foregroundColor(high ? v2.del : v2.faint)
+            } else {
+                Text("context idle").foregroundColor(v2.faint)
+            }
+        }
+        .help("Context window: \(used) of \(window) tokens used (\(pct)%). /clear resets it, /compact summarises.")
     }
 
     // MARK: - Image picker
@@ -632,10 +658,6 @@ struct V2LiveComposer: View {
         case "auto":              return "auto"
         default:                  return "default permissions"
         }
-    }
-
-    private var modelStatus: String {
-        "\(session.model) · \(V2Format.count(session.tokensUsed)) tokens"
     }
 
     // MARK: - Sizing

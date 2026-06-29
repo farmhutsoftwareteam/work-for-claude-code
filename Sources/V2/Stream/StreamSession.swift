@@ -81,6 +81,23 @@ final class StreamSession: ObservableObject {
     /// Total tokens used this session, summed from result.usage.
     @Published private(set) var tokensUsed: Int = 0
 
+    /// Tokens currently occupying the context window (prompt size of the last
+    /// completed turn). Drives the composer's context meter. Zero until the
+    /// first turn completes; reset by resetTranscript().
+    @Published private(set) var contextTokens: Int = 0
+
+    /// The active model's context window. Opus/Sonnet/Haiku are 200k; the
+    /// 1M-context beta variants (model id carries "1m") get 1,000,000.
+    var contextWindow: Int {
+        model.lowercased().contains("1m") ? 1_000_000 : 200_000
+    }
+
+    /// Fraction of the context window in use, 0…1.
+    var contextFraction: Double {
+        guard contextWindow > 0 else { return 0 }
+        return min(1, Double(contextTokens) / Double(contextWindow))
+    }
+
     /// Set true while an `api_retry` is in flight.
     @Published private(set) var isRetrying: Bool = false
 
@@ -547,6 +564,7 @@ final class StreamSession: ObservableObject {
         preloadOmittedTurns = 0
         latestResult = nil
         tokensUsed = 0
+        contextTokens = 0
         pendingPermission = nil
     }
 
@@ -603,6 +621,15 @@ final class StreamSession: ObservableObject {
         case .result(let r):
             latestResult = r
             tokensUsed = r.usage?.total ?? tokensUsed
+            // Context occupancy = the prompt side of the last turn (system +
+            // tools + full history, incl. cached). This is what fills the
+            // window — output isn't counted until it becomes history next
+            // turn. Held across turns (not zeroed on send) so the meter
+            // doesn't flicker to 0 mid-turn.
+            if let u = r.usage {
+                let prompt = (u.inputTokens ?? 0) + (u.cacheReadInputTokens ?? 0) + (u.cacheCreationInputTokens ?? 0)
+                if prompt > 0 { contextTokens = prompt }
+            }
             isRetrying = false
             lastRetry = nil
             // Result = current turn done. Session stays alive for the next
