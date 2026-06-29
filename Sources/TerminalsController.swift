@@ -152,6 +152,18 @@ final class TerminalsController: ObservableObject {
         ))
     }
 
+    /// Open a Mode-A terminal running `claude mcp login <server>`. MCP OAuth
+    /// needs a real TTY for the paste-the-redirect-URL step — a headless pipe
+    /// fails with "stdin isn't a terminal" — so we run it in an embedded PTY.
+    @discardableResult
+    func openMCPLogin(projectCwd: String, serverName: String) -> UUID {
+        let command = "cd \(shellQuote(projectCwd)) && \(shellQuote(Self.claudeBinary)) mcp login \(shellQuote(serverName))"
+        return spawn(command: command, tab: TerminalTab(
+            projectCwd: projectCwd,
+            title: "sign in · \(serverName)"
+        ))
+    }
+
     // MARK: - Mode-B entry points (v2-redesign)
 
     /// Create a new Mode-B tab in the given project. No PTY is spawned — the

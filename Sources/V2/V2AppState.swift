@@ -231,6 +231,17 @@ final class V2AppState: ObservableObject {
         mainView = .chat
     }
 
+    /// Open `claude mcp login <server>` in an embedded terminal tab so the
+    /// OAuth flow gets a real TTY. Activates it so the user lands on the
+    /// terminal and can complete sign-in there.
+    func openMCPLogin(serverName: String) {
+        guard let terminals else { return }
+        let cwd = selectedProjectCwd?.path ?? activeTab?.projectCwd ?? NSHomeDirectory()
+        let id = terminals.openMCPLogin(projectCwd: cwd, serverName: serverName)
+        activeTabId = id
+        mainView = .chat
+    }
+
     func close(tabId: UUID) {
         let wasActive = (activeTabId == tabId)
         _ = terminals?.close(tabId, force: true)
