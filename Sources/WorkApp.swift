@@ -147,13 +147,14 @@ struct WorkApp: App {
             }
         }
 
-        // Atelier v2 (preview) — the default surface as of 2.0.0. The legacy
-        // WindowGroup above stays so SwiftUI has something to auto-open on
-        // launch (Window scenes can't auto-open), and V2AutoOpen
-        // miniaturises it immediately. Both scenes share the same Store /
-        // TerminalsController / Update state — separate Scene = separate
-        // SwiftUI environment, so we wire them explicitly here.
-        Window("Atelier v2 (preview)", id: "v2-preview") {
+        // Atelier — the main surface. The legacy WindowGroup above stays so
+        // SwiftUI has something to auto-open on launch (Window scenes can't
+        // auto-open), and V2AutoOpen miniaturises it immediately. Both scenes
+        // share the same Store / TerminalsController / Update state — separate
+        // Scene = separate SwiftUI environment, so we wire them explicitly
+        // here. (Window id kept as "v2-preview" so saved window frames carry
+        // over from earlier builds.)
+        Window("Atelier", id: "v2-preview") {
             V2RootView()
                 .environmentObject(store)
                 .environmentObject(updateState)
