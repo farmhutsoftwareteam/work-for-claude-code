@@ -83,14 +83,40 @@ struct V2TitleBar: View {
             // macOS traffic lights live in the system chrome; leave room.
             Spacer().frame(width: 70)
 
-            // The +/house/sidebar icons that used to live here were dead UI —
-            // copied from the design comp but never wired (`{ }` actions on
-            // all three). They also rendered at slightly different optical
-            // sizes because SF Symbols ('plus', 'house', 'sidebar.left') are
-            // not the same glyph weight at the same font size. Dropping them
-            // until we actually have somewhere meaningful for them to go.
+            // Status cluster on the left (theme + counts). Brand moves to
+            // the right edge so the wordmark anchors the window like a
+            // bookend instead of competing with the traffic lights.
+            Button {
+                themeRaw = theme.next.rawValue
+            } label: {
+                Image(systemName: theme.icon)
+                    .font(.system(size: 13))
+                    .foregroundColor(v2.mute)
+                    .frame(width: 28, height: 28)
+            }
+            .buttonStyle(.plain)
+            .help("Theme: \(theme.label) (click to cycle)")
 
-            // Brand badge.
+            let segments = statusSegments
+            if !segments.isEmpty {
+                HStack(spacing: 6) {
+                    ForEach(Array(segments.enumerated()), id: \.offset) { idx, segment in
+                        Text(segment.text)
+                            .font(.system(size: 11, design: .monospaced))
+                            .foregroundColor(v2.faint)
+                            .help(segment.help)
+                        if idx < segments.count - 1 {
+                            Text("·")
+                                .font(.system(size: 11, design: .monospaced))
+                                .foregroundColor(v2.line2)
+                        }
+                    }
+                }
+            }
+
+            Spacer()
+
+            // Brand badge anchored to the right.
             HStack(spacing: 9) {
                 V2DovetailMark(size: 18)
                 Text("atelier")
@@ -98,39 +124,6 @@ struct V2TitleBar: View {
                     .kerning(-0.16)
             }
             .foregroundColor(v2.ink)
-
-            Spacer()
-
-            // Right cluster.
-            HStack(spacing: 12) {
-                Button {
-                    themeRaw = theme.next.rawValue
-                } label: {
-                    Image(systemName: theme.icon)
-                        .font(.system(size: 13))
-                        .foregroundColor(v2.mute)
-                        .frame(width: 28, height: 28)
-                }
-                .buttonStyle(.plain)
-                .help("Theme: \(theme.label) (click to cycle)")
-
-                let segments = statusSegments
-                if !segments.isEmpty {
-                    HStack(spacing: 6) {
-                        ForEach(Array(segments.enumerated()), id: \.offset) { idx, segment in
-                            Text(segment.text)
-                                .font(.system(size: 11, design: .monospaced))
-                                .foregroundColor(v2.faint)
-                                .help(segment.help)
-                            if idx < segments.count - 1 {
-                                Text("·")
-                                    .font(.system(size: 11, design: .monospaced))
-                                    .foregroundColor(v2.line2)
-                            }
-                        }
-                    }
-                }
-            }
         }
         .padding(.horizontal, 16)
         .frame(height: 46)

@@ -104,6 +104,25 @@ struct V2LeftRail: View {
         appState.searchQuery = ""
     }
 
+    /// Open NSOpenPanel, register the chosen folder as a project, switch
+    /// the rail to it, and open a fresh Mode-B tab so the user can start
+    /// chatting in that directory immediately. ⌘O triggers this too.
+    private func openFolderAsProject() {
+        let panel = NSOpenPanel()
+        panel.canChooseFiles = false
+        panel.canChooseDirectories = true
+        panel.allowsMultipleSelection = false
+        panel.message = "Pick a folder to work in. Claude will run rooted there."
+        panel.prompt = "Open"
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+
+        let path = url.path
+        guard let project = store.registerProject(at: path) else { return }
+        appState.selectProject(cwd: project.cwd, name: project.displayName)
+        appState.newTab()
+        appState.startActiveSession()
+    }
+
     @ViewBuilder
     private var railTabs: some View {
         HStack(spacing: 0) {
@@ -149,7 +168,7 @@ struct V2LeftRail: View {
     }
 
     private var projectsHeader: some View {
-        HStack {
+        HStack(spacing: 8) {
             Text("PROJECTS")
                 .font(.system(size: 10, weight: .regular, design: .monospaced))
                 .kerning(1.2)
@@ -158,6 +177,16 @@ struct V2LeftRail: View {
             Text("\(filtered.count)")
                 .font(.system(size: 10, design: .monospaced))
                 .foregroundColor(v2.faint)
+            Button(action: openFolderAsProject) {
+                Image(systemName: "plus")
+                    .font(.system(size: 10, weight: .medium))
+                    .foregroundColor(v2.mute)
+                    .frame(width: 16, height: 16)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .help("Open a folder as a new project (⌘O)")
+            .keyboardShortcut("o", modifiers: .command)
         }
         .padding(.horizontal, 14)
         .padding(.bottom, 6)

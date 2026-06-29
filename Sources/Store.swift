@@ -94,6 +94,62 @@ final class Store: ObservableObject {
 
     // MARK: - Full reload
 
+    /// Register a directory as a Claude project. Idempotent — no-op if the
+    /// path is already tracked. Inserts at the top of the sidebar, marks it
+    /// `selectedProject` so the load() merge logic preserves it, and writes
+    /// to `~/.claude.json` so the project sticks across app restarts even
+    /// before Claude writes any JSONL for it. Used by both v1's AddProjectSheet
+    /// and v2's left rail.
+    @MainActor
+    func registerProject(at path: String) -> Project? {
+        let fm = FileManager.default
+        var isDir: ObjCBool = false
+        guard fm.fileExists(atPath: path, isDirectory: &isDir), isDir.boolValue else {
+            return nil
+        }
+
+        if let existing = projects.first(where: { $0.cwd == path }) {
+            selectedProject = existing
+            persistProjectRegistration(path: path)
+            return existing
+        }
+
+        let displayName = (path as NSString).lastPathComponent
+        let project = Project(
+            id: path,
+            cwd: path,
+            displayName: displayName,
+            sessions: [],
+            isActive: false
+        )
+        projects.insert(project, at: 0)
+        selectedProject = project
+        persistProjectRegistration(path: path)
+        return project
+    }
+
+    /// Append the project path to `~/.claude.json` `projects` map with
+    /// sensible defaults so Claude treats it as a known cwd next launch.
+    private func persistProjectRegistration(path: String) {
+        let url = FileManager.default.homeDirectoryForCurrentUser
+            .appendingPathComponent(".claude.json")
+        guard let data = try? Data(contentsOf: url),
+              var root = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+            return
+        }
+        var projectsMap = (root["projects"] as? [String: Any]) ?? [:]
+        if projectsMap[path] == nil {
+            projectsMap[path] = [
+                "allowedTools": [],
+                "hasTrustDialogAccepted": true
+            ] as [String: Any]
+            root["projects"] = projectsMap
+            if let out = try? JSONSerialization.data(withJSONObject: root, options: [.prettyPrinted]) {
+                try? out.write(to: url, options: .atomic)
+            }
+        }
+    }
+
     func load() async {
         // Prevent concurrent loads stomping each other's isLoading flag. If a
         // previous load has been wedged for >30s (e.g. hung file read), clear
