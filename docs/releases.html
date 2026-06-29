@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Changelog - Atelier</title>
-    <meta name="description" content="Every release of Atelier, dated and itemised. Latest: v1.4.1 (june 23, 2026).">
+    <meta name="description" content="Every release of Atelier, dated and itemised. Latest: v2.0.0 (june 29, 2026).">
     <link rel="canonical" href="https://work.munyamakosa.com/releases.html">
     <link rel="alternate" type="application/rss+xml" title="Atelier appcast" href="https://work.munyamakosa.com/appcast.xml">
 
@@ -184,13 +184,45 @@
         </div>
 
         
+    <article id="v2-0-0" class="release-article" style="display:grid;grid-template-columns:200px 1fr;gap:40px;padding:38px 0;border-bottom:1px solid var(--line);">
+      <div>
+        <div style="font-family:var(--helv);font-weight:500;font-size:22px;letter-spacing:-.01em;">
+          <a href="#v2-0-0" style="color:var(--ink);text-decoration:none;">v2.0.0</a>
+        </div>
+        <div style="font-family:var(--mono);font-size:11px;color:var(--mute);margin-top:6px;">2026 · jun 29</div>
+        <div style="display:inline-block;font-family:var(--mono);font-size:10px;letter-spacing:.08em;text-transform:uppercase;border:1px solid var(--line2);padding:3px 8px;margin-top:12px;">latest</div>
+        <div style="font-family:var(--mono);font-size:10px;color:var(--mute);margin-top:10px;">macOS 15.0+</div>
+      </div>
+      <div class="release-body" style="font-family:var(--helv);font-size:16px;line-height:1.6;color:rgba(27,28,30,.82);">
+        <h3>Atelier 2.0 — the v2 chat surface ships</h3>
+        <p>The native chat surface we've been building on <code>v2-redesign</code> is now the default. Atelier opens directly into v2; the legacy v1 chrome is still around (minimised in the Dock) if you need it for any editor we haven't yet ported.</p>
+        <h4>New in v2</h4>
+        <ul>
+          <li><b>Native chat against <code>claude -p --output-format stream-json</code></b> — token-by-token streaming, live permission card, tool-use / thinking blocks, markdown rendering, ⇧⏎ for newline.</li>
+          <li><b>History rail</b> — scrub past sessions across every project, bucketed Today / Yesterday / This week / Older. Click any row to resume with the last 40 turns preloaded into the transcript before claude even spawns.</li>
+          <li><b>Image + file attachments</b> — paperclip, paste from clipboard (⌘V), or drag in from Finder. Claude reads them via @-path references, and Read of attached files is auto-allowed (no permission prompt for files you just picked).</li>
+          <li><b>Inline model picker</b> in the session header. The catalog is discovered from your real session history — no hardcoded version list. Default model lives in <code>@AppStorage("v2.defaultSpawnModel")</code> (currently <code>claude-opus-4-8</code>).</li>
+          <li><b>Usage view</b> — month / 30-day / year / all-time stats with by-model and by-project breakdowns, recent-sessions table, and an estimated-spend column.</li>
+          <li><b>Collapsible right dock</b> defaults to a 40pt strip so per-session panels (loop, harness, agents, MCP) don't burn 360pt of screen full-time.</li>
+          <li><b>Open any folder as a project</b> — ⌘O or the <code>+</code> next to the PROJECTS rail header.</li>
+        </ul>
+        <h4>Quality + reliability</h4>
+        <ul>
+          <li>Initialize handshake on spawn — sessions no longer hang on "Initializing".</li>
+          <li>Subprocess orphan + stderr-deadlock fix in the loop / harness orchestrators.</li>
+          <li>Tab + project switching click bugs (nested-button dead zones, focus-stealing composer) eliminated.</li>
+          <li>Render-time perf: rail sort + history aggregation now cache across renders.</li>
+        </ul>
+        <h4>Known still-in-progress</h4>
+        <p>v2 is labelled "preview" in the window title because we're still grinding through the audit list. Some surfaces (Plugins / Skills CRUD, Marketplace) still route to the v1 Extensions tab. v1 stays accessible in the Dock as a fallback if you hit anything we haven't ported yet.</p>
+      </div>
+    </article>
     <article id="v1-4-1" class="release-article" style="display:grid;grid-template-columns:200px 1fr;gap:40px;padding:38px 0;border-bottom:1px solid var(--line);">
       <div>
         <div style="font-family:var(--helv);font-weight:500;font-size:22px;letter-spacing:-.01em;">
           <a href="#v1-4-1" style="color:var(--ink);text-decoration:none;">v1.4.1</a>
         </div>
         <div style="font-family:var(--mono);font-size:11px;color:var(--mute);margin-top:6px;">2026 · jun 23</div>
-        <div style="display:inline-block;font-family:var(--mono);font-size:10px;letter-spacing:.08em;text-transform:uppercase;border:1px solid var(--line2);padding:3px 8px;margin-top:12px;">latest</div>
         <div style="font-family:var(--mono);font-size:10px;color:var(--mute);margin-top:10px;">macOS 15.0+</div>
       </div>
       <div class="release-body" style="font-family:var(--helv);font-size:16px;line-height:1.6;color:rgba(27,28,30,.82);">
