@@ -279,18 +279,33 @@ struct V2LeftRail: View {
         for project in store.projects {
             hasher.combine(project.id)
             hasher.combine(project.isActive)
+            // Include recency so the list re-sorts when a project's last
+            // activity changes (new session / message), not just on add.
+            hasher.combine(projectRecency(project))
         }
         return hasher.finalize()
+    }
+
+    /// Most-recent activity for a project (latest session). Projects with no
+    /// sessions sink to the bottom.
+    private func projectRecency(_ p: Project) -> Date {
+        p.sessions.map(\.lastActivity).max() ?? .distantPast
     }
 
     private func refreshProjectsIfNeeded() {
         let sig = projectsSignature
         if sig != lastProjectSignature || sortedProjects.isEmpty {
-            sortedProjects = store.projects.sorted { l, r in
-                // Live projects first, then alphabetical.
-                if l.isActive != r.isActive { return l.isActive }
-                return l.displayName.localizedCaseInsensitiveCompare(r.displayName) == .orderedAscending
-            }
+            // Precompute recency once per project, then sort: live projects
+            // first, then most-recently-active on top, name as the final
+            // tiebreak.
+            sortedProjects = store.projects
+                .map { (p: $0, r: projectRecency($0)) }
+                .sorted { l, r in
+                    if l.p.isActive != r.p.isActive { return l.p.isActive }
+                    if l.r != r.r { return l.r > r.r }
+                    return l.p.displayName.localizedCaseInsensitiveCompare(r.p.displayName) == .orderedAscending
+                }
+                .map(\.p)
             lastProjectSignature = sig
         }
     }
