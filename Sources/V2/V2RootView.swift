@@ -307,7 +307,9 @@ struct V2RootView: View {
                 Button { appState.startActiveSession() } label: {
                     HStack(spacing: 9) {
                         Image(systemName: "play.fill").font(.system(size: 11))
-                        Text("Start session in \(tab.title)")
+                        Text(session.endError != nil
+                             ? "Start a fresh session in \(tab.title)"
+                             : "Start session in \(tab.title)")
                             .font(.system(size: 12, design: .monospaced))
                     }
                     .foregroundColor(palette.paper)
@@ -327,7 +329,12 @@ struct V2RootView: View {
                 Spacer()
             }
 
-            if case .terminated(let reason) = session.state {
+            if let err = session.endError {
+                Text(err)
+                    .font(.system(size: 10.5, design: .monospaced))
+                    .foregroundColor(palette.del)
+                    .lineLimit(2)
+            } else if case .terminated(let reason) = session.state {
                 Text("Last session ended: \(reason)")
                     .font(.system(size: 10.5, design: .monospaced))
                     .foregroundColor(palette.faint)

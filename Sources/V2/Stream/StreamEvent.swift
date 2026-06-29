@@ -223,9 +223,10 @@ struct ResultEvent: Decodable, Sendable {
     let isError: Bool?
     let result: String?
     let usage: Usage?
+    let errors: [String]?
 
     enum CodingKeys: String, CodingKey {
-        case subtype, result, usage
+        case subtype, result, usage, errors
         case sessionId = "session_id"
         case totalCostUsd = "total_cost_usd"
         case numTurns = "num_turns"

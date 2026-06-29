@@ -99,6 +99,11 @@ final class StreamSession: ObservableObject {
     /// click registers and the UI never looks frozen.
     @Published private(set) var isResuming = false
 
+    /// Human-facing reason the session couldn't open / ended badly (e.g. the
+    /// conversation's history was deleted). Shown to the user with a "start
+    /// fresh" option instead of a cryptic "stream closed". nil = no error.
+    @Published private(set) var endError: String?
+
     /// Set true while an `api_retry` is in flight.
     @Published private(set) var isRetrying: Bool = false
 
@@ -228,9 +233,10 @@ final class StreamSession: ObservableObject {
         pendingPermission = nil
         state = .spawning
         // Remember how we launched (for the resume fallback) and reset the
-        // "saw a live event" tracker for this spawn.
+        // "saw a live event" tracker + any prior error for this spawn.
         launchContext = LaunchContext(cwd: cwd, claudeURL: claudeURL, model: model, permissionMode: permissionMode)
         sawLiveEvent = false
+        endError = nil
 
         // Resolve the permission mode for this spawn: explicit arg →
         // persisted default → "acceptEdits". Persisting it here (and in
@@ -402,19 +408,15 @@ final class StreamSession: ObservableObject {
         case .terminated, .closing, .idle:
             break
         case .spawning, .initializing, .ready, .working, .awaitingPermission:
-            // A resume that died before any event (session already running, or
-            // its transcript was cleaned up) can't be restored — restart fresh
-            // ONCE so the click still lands in a live session, never a dead end.
-            if resumeFallbackArmed, !sawLiveEvent, let ctx = launchContext {
-                resumeFallbackArmed = false
-                isResuming = false
-                state = .terminated(reason: "stream closed")
-                appendSystemNote("Couldn't restore that conversation — started a fresh session here.")
-                start(cwd: ctx.cwd, claudeURL: ctx.claudeURL, resumeId: nil,
-                      model: ctx.model, permissionMode: ctx.permissionMode)
-            } else {
-                state = .terminated(reason: "stream closed")
+            // A resume that died before any event at all (e.g. the session is
+            // running elsewhere) — give the user a reason, not a blank "stream
+            // closed". (The error-result path sets endError itself.)
+            if resumeFallbackArmed, !sawLiveEvent, endError == nil {
+                endError = "Couldn't open this conversation — it may be running in another window."
             }
+            resumeFallbackArmed = false
+            isResuming = false
+            state = .terminated(reason: "stream closed")
         }
     }
 
@@ -671,6 +673,17 @@ final class StreamSession: ObservableObject {
             handleStreamEvent(s)
         case .result(let r):
             latestResult = r
+            // An error result (e.g. resuming a session whose transcript was
+            // deleted → "No conversation found") — capture a friendly reason
+            // so the UI can explain it and offer a fresh start.
+            if r.isError == true {
+                let raw = r.errors?.first ?? r.result
+                if let raw, raw.contains("No conversation found") {
+                    endError = "This conversation's history is no longer available — it may have been cleared."
+                } else {
+                    endError = raw ?? "Claude ended with an error" + (r.subtype.map { " (\($0))" } ?? "") + "."
+                }
+            }
             tokensUsed = r.usage?.total ?? tokensUsed
             // Context occupancy = the prompt side of the last turn (system +
             // tools + full history, incl. cached). This is what fills the

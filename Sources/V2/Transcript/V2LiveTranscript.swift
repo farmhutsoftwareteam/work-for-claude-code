@@ -184,10 +184,23 @@ struct V2LiveTranscript: View {
 
     private var emptyState: some View {
         VStack(alignment: .leading, spacing: 12) {
-            V2DovetailMark(size: 28).foregroundColor(v2.faint)
-            Text(emptyHint)
-                .font(.system(size: 13, design: .monospaced))
-                .foregroundColor(v2.faint)
+            if let err = session.endError {
+                Text("⚠ Couldn’t open this conversation")
+                    .font(.system(size: 14, weight: .medium))
+                    .foregroundColor(v2.ink)
+                Text(err)
+                    .font(.system(size: 12.5, design: .monospaced))
+                    .foregroundColor(v2.mute)
+                    .fixedSize(horizontal: false, vertical: true)
+                Text("Start a fresh session below to keep working in this project.")
+                    .font(.system(size: 11.5, design: .monospaced))
+                    .foregroundColor(v2.faint)
+            } else {
+                V2DovetailMark(size: 28).foregroundColor(v2.faint)
+                Text(emptyHint)
+                    .font(.system(size: 13, design: .monospaced))
+                    .foregroundColor(v2.faint)
+            }
         }
         .padding(.vertical, 40)
     }

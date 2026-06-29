@@ -294,13 +294,23 @@ final class V2AppState: ObservableObject {
         guard let tab = activeTab,
               tab.surface == .modeB,
               let session = tab.streamSession,
-              let binary = claudeBinary,
-              session.state == .idle else { return }
+              let binary = claudeBinary else { return }
+        // Works from .idle AND .terminated — clicking Start on an ended
+        // session must actually restart it (the old .idle-only guard made the
+        // button a no-op after a failed resume, which felt frozen).
+        switch session.state {
+        case .idle, .terminated: break
+        default: return
+        }
+        // If the previous attempt failed to resume (history gone, etc.), start
+        // FRESH — re-resuming the same dead id would just fail again.
+        let resume = session.endError == nil ? resumeIds[tab.id] : nil
+        if session.endError != nil { resumeIds.removeValue(forKey: tab.id) }
         let cwd = URL(fileURLWithPath: tab.projectCwd)
         session.start(
             cwd: cwd,
             claudeURL: binary,
-            resumeId: resumeIds[tab.id],
+            resumeId: resume,
             model: defaultSpawnModel,
             permissionMode: defaultPermissionMode
         )
