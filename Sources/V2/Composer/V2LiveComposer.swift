@@ -41,6 +41,18 @@ struct V2LiveComposer: View {
         // — when you clicked a rail/tab to switch projects, the new
         // composer's onChange fired as its session reached .ready and
         // stole focus right back, which felt like the click had failed.
+        //
+        // ⎋ to interrupt — the placeholder + helper row have always
+        // advertised this, but it was never actually wired; only the Stop
+        // button worked. Hidden zero-size button in the responder chain
+        // makes the escape key interrupt the running turn.
+        .background(
+            Button("Interrupt") { if isWorking { session.interrupt() } }
+                .keyboardShortcut(.escape, modifiers: [])
+                .opacity(0)
+                .frame(width: 0, height: 0)
+                .disabled(!isWorking)
+        )
         .enableInjection()
     }
 
@@ -229,7 +241,12 @@ struct V2LiveComposer: View {
     }
 
     private var canSend: Bool {
-        guard canType else { return false }
+        // Don't allow a send while a turn is in flight — pressing Enter
+        // mid-stream used to fire a SECOND user turn into the same session,
+        // interleaving with the reply that was still streaming, even though
+        // the visible button said "Stop". You can keep typing your next
+        // message (canType stays true); it sends once the turn finishes.
+        guard canType, !isWorking else { return false }
         let trimmed = draft.trimmingCharacters(in: .whitespacesAndNewlines)
         return !trimmed.isEmpty || !attachments.items.isEmpty
     }

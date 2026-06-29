@@ -129,6 +129,11 @@ struct V2RootView: View {
                     // easy to scroll past / miss entirely.
                     V2LiveTranscript(session: session)
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
+                        // Key by tab so each tab keeps its own scroll
+                        // position — without this, switching tabs reuses the
+                        // same transcript view identity and the scroll state
+                        // bleeds between conversations.
+                        .id(tab.id)
                 } else {
                     invalidStateView
                 }
@@ -154,7 +159,12 @@ struct V2RootView: View {
                     default:
                         // .spawning / .initializing / .working / .ready /
                         // .awaitingPermission / .closing all show composer.
+                        // Key by tab so the draft text + pending attachments
+                        // are per-tab. Without this, the composer keeps one
+                        // @State across tab switches and your half-typed
+                        // message (and attachments) bleed into other tabs.
                         V2LiveComposer(session: session)
+                            .id(tab.id)
                     }
                 }
             }
