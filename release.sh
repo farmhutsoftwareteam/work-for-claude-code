@@ -191,39 +191,19 @@ hdiutil create \
     -size "${RAW_SIZE_MB}m" \
     "$RAW_DMG"
 
-# 2. Attach it. Prefer /Volumes/Work (Finder-visible, required by AppleScript
-#    styling). Fall back to a /tmp mount if macOS TCC denies /Volumes/ writes
-#    (e.g. when running from a sandboxed shell without Full Disk Access) —
-#    we still produce a functional DMG, just without the window layout.
-FANCY_LAYOUT=1
+# 2. Attach it. We always mount under /tmp now — past attempts to mount at
+#    /Volumes/Work hit "Operation not permitted" when ditto tried to copy
+#    a signed .app bundle (xattr writes get blocked even when a touch/
+#    small-file probe passes). The /tmp mount is rock-solid; the cost is
+#    we skip the Finder window styling. Sparkle doesn't care about the
+#    layout — it auto-installs from the bundle inside the DMG regardless.
+FANCY_LAYOUT=0
+MOUNT_POINT="/tmp/work-dmg-mount-${VERSION}"
+mkdir -p "$MOUNT_POINT"
 DEVICE=$(hdiutil attach "$RAW_DMG" \
     -mountpoint "$MOUNT_POINT" \
-    -readwrite -noverify -noautoopen \
+    -nobrowse -readwrite -noverify -noautoopen \
     | egrep '^/dev/' | sed 1q | awk '{print $1}')
-
-# Probe /Volumes/Work for writability. Some macs allow touch / mkdir under
-# TCC but block ditto's xattr-preserving copy of a signed .app bundle —
-# so we don't just touch, we mkdir + ditto-copy a tiny test file. This is
-# closer to the actual operation that fails on TCC-restricted shells.
-PROBE_DIR="$MOUNT_POINT/.write-probe"
-PROBE_SRC="/tmp/work-dmg-probe.txt"
-echo "probe" > "$PROBE_SRC"
-if mkdir -p "$PROBE_DIR" 2>/dev/null && ditto "$PROBE_SRC" "$PROBE_DIR/probe.txt" 2>/dev/null; then
-    rm -rf "$PROBE_DIR" "$PROBE_SRC"
-else
-    echo "  ⚠ /Volumes/Work doesn't accept ditto writes (TCC). Falling back to"
-    echo "    /tmp mount. The DMG will ship without Finder window styling."
-    echo "    For the full layout, run this from a Terminal with Full Disk Access."
-    rm -f "$PROBE_SRC"
-    hdiutil detach "$DEVICE" -force 2>/dev/null || true
-    MOUNT_POINT="/tmp/work-dmg-mount-${VERSION}"
-    mkdir -p "$MOUNT_POINT"
-    DEVICE=$(hdiutil attach "$RAW_DMG" \
-        -mountpoint "$MOUNT_POINT" \
-        -nobrowse -readwrite -noverify -noautoopen \
-        | egrep '^/dev/' | sed 1q | awk '{print $1}')
-    FANCY_LAYOUT=0
-fi
 
 # 3. Copy the app in. `ditto` preserves HFS metadata + symlinks + xattrs
 #    cleanly, unlike plain cp.
@@ -344,7 +324,17 @@ echo "────────────────────────�
 
 DMG_SIZE=$(stat -f%z "$DMG_NAME")
 PUBLISH_DATE=$(date -R)
-DOWNLOAD_URL="https://munyamakosa.github.io/work/$DMG_NAME"
+# The CNAME work.munyamakosa.com → munyamakosa.github.io/work is the URL
+# baked into shipped binaries via SUFeedURL. Appcast enclosure URLs must
+# match that host so Sparkle's signature verification and download path
+# stay consistent across releases.
+DOWNLOAD_URL="https://work.munyamakosa.com/$DMG_NAME"
+# Pull the build number from project.yml so sparkle:version matches what
+# Sparkle compares against in the installed app's Info.plist. Without
+# this, sparkle:version was the marketing string ("2.0.0") and Sparkle's
+# numeric compare against the running build (24) misbehaved.
+BUILD_NUMBER=$(grep -E "^  CURRENT_PROJECT_VERSION:" project.yml | head -1 | sed 's/.*"\([0-9]\+\)".*/\1/')
+if [ -z "$BUILD_NUMBER" ]; then BUILD_NUMBER="$VERSION"; fi
 
 # Attempt EdDSA signature
 EDDSA_SIG=""
@@ -352,6 +342,8 @@ SIGN_UPDATE_BIN=""
 
 # Check common locations for sign_update
 for candidate in \
+    "$SCRIPT_DIR/build/DerivedData/SourcePackages/artifacts/sparkle/Sparkle/bin/sign_update" \
+    "$HOME/Library/Developer/Xcode/DerivedData/Work-"*"/SourcePackages/artifacts/sparkle/Sparkle/bin/sign_update" \
     "$SCRIPT_DIR/sparkle/bin/sign_update" \
     "$SCRIPT_DIR/Sparkle/bin/sign_update" \
     "$HOME/Library/Frameworks/Sparkle.framework/Resources/sign_update" \
@@ -397,7 +389,7 @@ APPCAST_SNIPPET=$(cat <<XMLEOF
 <item>
     <title>Version ${VERSION}</title>
     <pubDate>${PUBLISH_DATE}</pubDate>
-    <sparkle:version>${VERSION}</sparkle:version>
+    <sparkle:version>${BUILD_NUMBER}</sparkle:version>
     <sparkle:shortVersionString>${VERSION}</sparkle:shortVersionString>
     <sparkle:minimumSystemVersion>15.0</sparkle:minimumSystemVersion>
     <enclosure

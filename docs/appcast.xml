@@ -6,6 +6,41 @@
         <description>Updates for Work</description>
         <language>en</language>
         <item>
+            <title>Version 2.0.0</title>
+            <pubDate>Mon, 29 Jun 2026 13:30:00 +0000</pubDate>
+            <sparkle:version>24</sparkle:version>
+            <sparkle:shortVersionString>2.0.0</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>15.0</sparkle:minimumSystemVersion>
+            <description><![CDATA[
+                <h3>Atelier 2.0 — the v2 chat surface ships</h3>
+                <p>The native chat surface we've been building on <code>v2-redesign</code> is now the default. Atelier opens directly into v2; the legacy v1 chrome is still around (minimised in the Dock) if you need it for any editor we haven't yet ported.</p>
+                <h4>New in v2</h4>
+                <ul>
+                    <li><b>Native chat against <code>claude -p --output-format stream-json</code></b> — token-by-token streaming, live permission card, tool-use / thinking blocks, markdown rendering, ⇧⏎ for newline.</li>
+                    <li><b>History rail</b> — scrub past sessions across every project, bucketed Today / Yesterday / This week / Older. Click any row to resume with full context preloaded into the transcript.</li>
+                    <li><b>Image + file attachments</b> — paperclip button, paste from clipboard (⌘V), or drag in from Finder. Claude reads them via @-path references.</li>
+                    <li><b>Inline model picker</b> in the session header; default model lives in <code>@AppStorage("v2.defaultSpawnModel")</code> (currently <code>claude-opus-4-8</code>). The model catalog is discovered from your real session history — no hardcoded version list.</li>
+                    <li><b>Usage view</b> — month / 30-day / year / all-time stats with by-model and by-project breakdowns, recent-sessions table, and an estimated-spend column.</li>
+                    <li><b>Collapsible right dock</b> defaults to a 40pt strip so per-session panels (loop, harness, agents, MCP) don't burn 360pt of screen full-time.</li>
+                    <li><b>Open any folder as a project</b> — ⌘O or the + next to the PROJECTS rail header.</li>
+                </ul>
+                <h4>Quality + reliability</h4>
+                <ul>
+                    <li>Initialize handshake on spawn — sessions no longer hang on "Initializing".</li>
+                    <li>Subprocess orphan + stderr-deadlock fix in the loop/harness orchestrators.</li>
+                    <li>Tab + project switching click bugs (nested-button dead zones, focus-stealing composer) all eliminated.</li>
+                    <li>Render-time perf: rail sort + history aggregation now cache across renders.</li>
+                </ul>
+                <h4>Known still-in-progress</h4>
+                <p>v2 is labelled "preview" in the window title because we're still grinding through the audit list. Some surfaces (Plugins / Skills CRUD, Marketplace) still route to the v1 Extensions tab.</p>
+            ]]></description>
+            <enclosure
+                url="https://work.munyamakosa.com/Work.dmg"
+                length="7666371"
+                type="application/octet-stream"
+                sparkle:edSignature="nwcBOn/eg6ZBYzygMD9H1f110nJL15kwsbX10eWxmggYDGF4PLD61c+O3+COgew0hQWNoRj/vTK7YqPbOS7VDA==" />
+        </item>
+        <item>
             <title>Version 1.4.1</title>
             <pubDate>Mon, 23 Jun 2026 17:51:00 +0000</pubDate>
             <sparkle:version>23</sparkle:version>
