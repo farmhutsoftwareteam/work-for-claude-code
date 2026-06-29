@@ -279,22 +279,10 @@ struct V2RootView: View {
                         .foregroundColor(palette.del)
                 }
             }
-
-            if appState.selectedProjectCwd != nil {
-                Button { appState.newTab() } label: {
-                    HStack(spacing: 9) {
-                        Image(systemName: "plus")
-                        Text("New tab in \(appState.selectedProjectName)")
-                    }
-                    .font(.system(size: 12, design: .monospaced))
-                    .foregroundColor(palette.paper)
-                    .padding(.horizontal, 16)
-                    .padding(.vertical, 10)
-                    .background(palette.ink)
-                }
-                .buttonStyle(.plain)
-                .keyboardShortcut("n", modifiers: .command)
-            }
+            // (A selected project now routes to V2ProjectHome, which carries
+            // its own "+ New session" / ⌘N — so this empty state only shows
+            // with NO project selected. The old "New tab" button here was
+            // unreachable and has been removed.)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(palette.paper)

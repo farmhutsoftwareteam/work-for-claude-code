@@ -48,7 +48,7 @@ struct V2LeftRail: View {
             .frame(minWidth: 560, minHeight: 600)
         }
         .onAppear { refreshProjectsIfNeeded() }
-        .onChange(of: projectsSignature) { _, _ in refreshProjectsIfNeeded() }
+        .onChange(of: projectsSignature) { _, newSig in refreshProjectsIfNeeded(signature: newSig) }
         .enableInjection()
     }
 
@@ -287,13 +287,19 @@ struct V2LeftRail: View {
     }
 
     /// Most-recent activity for a project (latest session). Projects with no
-    /// sessions sink to the bottom.
+    /// sessions sink to the bottom. O(1): `Store.buildProjects` keeps each
+    /// project's `sessions` sorted by `lastActivity` descending, so the first
+    /// element is the most recent — avoids a per-render scan + array allocation
+    /// over every session of every project (this runs inside
+    /// `projectsSignature`, which SwiftUI evaluates on every body pass).
     private func projectRecency(_ p: Project) -> Date {
-        p.sessions.map(\.lastActivity).max() ?? .distantPast
+        p.sessions.first?.lastActivity ?? .distantPast
     }
 
-    private func refreshProjectsIfNeeded() {
-        let sig = projectsSignature
+    private func refreshProjectsIfNeeded(signature: Int? = nil) {
+        // Reuse the signature onChange already computed instead of hashing the
+        // whole project set a second time.
+        let sig = signature ?? projectsSignature
         if sig != lastProjectSignature || sortedProjects.isEmpty {
             // Precompute recency once per project, then sort: live projects
             // first, then most-recently-active on top, name as the final

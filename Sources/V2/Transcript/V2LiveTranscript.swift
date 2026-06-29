@@ -18,13 +18,22 @@ struct V2LiveTranscript: View {
                 VStack(alignment: .leading, spacing: 26) {
                     if session.transcript.isEmpty {
                         emptyState
+                    } else if let err = session.endError {
+                        // Resume/turn failed but history was preloaded — show
+                        // the reason as a banner (the empty-state branch covers
+                        // the no-history case).
+                        errorBanner(err)
                     }
                     if session.preloadOmittedTurns > 0 {
                         earlierMessagesHint
                     }
-                    ForEach(session.transcript) { item in
+                    // Index-keyed identity: the transcript is append-only with
+                    // the last text block mutated in place while streaming.
+                    // Content-hash ids changed every token (tearing down and
+                    // rebuilding the streaming row + resetting text selection);
+                    // a stable index keeps the row alive as its text grows.
+                    ForEach(Array(session.transcript.enumerated()), id: \.offset) { _, item in
                         row(for: item)
-                            .id(item.id)
                     }
 
                     if session.isRetrying {
@@ -180,6 +189,20 @@ struct V2LiveTranscript: View {
         let n = session.preloadOmittedTurns
         if n == 1 { return "1 EARLIER MESSAGE NOT SHOWN" }
         return "\(n) EARLIER MESSAGES NOT SHOWN"
+    }
+
+    private func errorBanner(_ text: String) -> some View {
+        HStack(alignment: .top, spacing: 9) {
+            Image(systemName: "exclamationmark.triangle")
+                .font(.system(size: 11)).foregroundColor(v2.del).padding(.top, 1)
+            Text(text)
+                .font(.system(size: 12, design: .monospaced)).foregroundColor(v2.del)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .padding(.horizontal, 12).padding(.vertical, 10)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(v2.delBg)
+        .overlay(alignment: .leading) { Rectangle().fill(v2.del).frame(width: 2) }
     }
 
     private var emptyState: some View {

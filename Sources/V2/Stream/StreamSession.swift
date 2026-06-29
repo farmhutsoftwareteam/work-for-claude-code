@@ -123,12 +123,10 @@ final class StreamSession: ObservableObject {
     private var process: Process?
     private var inputWriter: StreamInputWriter?
 
-    // Resume fallback: if a resumed spawn dies before producing a single event
-    // (session already running, or its transcript was cleaned up), we restart
-    // once as a fresh session so clicking a session always lands live — never
-    // on a "Start session" button.
-    private struct LaunchContext { let cwd: URL; let claudeURL: URL; let model: String?; let permissionMode: String? }
-    private var launchContext: LaunchContext?
+    // Resume liveness tracking: if a resumed spawn dies before producing any
+    // substantive event (session already running, or its transcript was
+    // cleaned up), handleStreamEnd surfaces a friendly endError instead of a
+    // blank "stream closed".
     private var resumeFallbackArmed = false
     private var sawLiveEvent = false
     private var eventConsumer: Task<Void, Never>?
@@ -194,6 +192,10 @@ final class StreamSession: ObservableObject {
     /// starts the process. `isResuming` is true for the read window so the UI
     /// shows a loading indicator instead of looking stuck.
     func resume(cwd: URL, claudeURL: URL, sessionId: String, model: String? = nil, permissionMode: String? = nil) {
+        // Re-entrancy guard: a double-click must not schedule two preloads
+        // (which would append the history twice before start() no-ops).
+        guard !isResuming else { return }
+        switch state { case .idle, .terminated: break; default: return }
         isResuming = true
         resumeFallbackArmed = true   // if the resume spawn dies silently, start fresh
         let cwdPath = cwd.path
@@ -232,9 +234,7 @@ final class StreamSession: ObservableObject {
         lastRetry = nil
         pendingPermission = nil
         state = .spawning
-        // Remember how we launched (for the resume fallback) and reset the
-        // "saw a live event" tracker + any prior error for this spawn.
-        launchContext = LaunchContext(cwd: cwd, claudeURL: claudeURL, model: model, permissionMode: permissionMode)
+        // Reset the "saw a live event" tracker + any prior error for this spawn.
         sawLiveEvent = false
         endError = nil
 
@@ -416,6 +416,11 @@ final class StreamSession: ObservableObject {
             }
             resumeFallbackArmed = false
             isResuming = false
+            // Don't leave a retry banner or permission card hovering over a
+            // dead session.
+            isRetrying = false
+            lastRetry = nil
+            pendingPermission = nil
             state = .terminated(reason: "stream closed")
         }
     }
@@ -638,10 +643,17 @@ final class StreamSession: ObservableObject {
     /// Internal so XCTest can replay captured NDJSON through the dispatch
     /// without actually spawning a child process.
     func handle(event: StreamEvent) {
-        // Any event proves the resume spawned successfully → disarm the
-        // fresh-start fallback.
-        sawLiveEvent = true
-        resumeFallbackArmed = false
+        // A SUBSTANTIVE event proves the resume produced real session data →
+        // disarm the fresh-start fallback. Don't count control responses (our
+        // own `initialize` handshake reply lands first and would otherwise
+        // suppress the "couldn't open — running elsewhere" message).
+        switch event {
+        case .system, .assistant, .user, .streamEvent, .result:
+            sawLiveEvent = true
+            resumeFallbackArmed = false
+        case .controlRequest, .controlResponse, .unknown:
+            break
+        }
         switch event {
         case .system(let sys):
             handleSystem(sys)
@@ -704,6 +716,9 @@ final class StreamSession: ObservableObject {
             // message → .ready (not .idle, which would re-trigger the Start
             // CTA in the UI).
             if state == .working || state == .awaitingPermission {
+                // A result arriving while a permission card is up means the
+                // turn finished — clear the stale card so it can't get stuck.
+                if state == .awaitingPermission { pendingPermission = nil }
                 state = .ready
             }
         case .controlRequest(let req):

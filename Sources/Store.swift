@@ -10,6 +10,17 @@ final class Store: ObservableObject {
     @Published var selectedSessionForViewing: Session?
     @Published var isLoading = false
 
+    /// User-supplied display names for projects, keyed by cwd. Re-applied on
+    /// every `load()` so a custom name survives the 30s reload that rebuilds
+    /// projects from disk (where displayName is derived from the path).
+    @Published var projectNameOverrides: [String: String] = [:]
+
+    /// In-flight guards for the per-row lazy reads so fast scrolling (or a
+    /// reload that just cleared firstPrompt/slug) doesn't issue duplicate
+    /// 300KB/4KB head reads for the same session before the first completes.
+    private var pendingFirstPromptLoads: Set<String> = []
+    private var pendingSlugLoads: Set<String> = []
+
     // Extensions data (global)
     @Published var plugins: [ClaudePlugin] = []
     @Published var standaloneSkills: [ClaudeSkill] = []
@@ -128,6 +139,23 @@ final class Store: ObservableObject {
         return project
     }
 
+    /// Record a user-supplied display name for a project and apply it now so
+    /// the rail and home update immediately. The override is re-applied on
+    /// every `load()` so it isn't lost when projects are rebuilt from disk.
+    /// Passing an empty name clears any existing override.
+    func setProjectName(_ name: String, for cwd: String) {
+        let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        if trimmed.isEmpty {
+            projectNameOverrides[cwd] = nil
+        } else {
+            projectNameOverrides[cwd] = trimmed
+            if let pi = projects.firstIndex(where: { $0.cwd == cwd }) {
+                projects[pi].displayName = trimmed
+                if selectedProject?.cwd == cwd { selectedProject = projects[pi] }
+            }
+        }
+    }
+
     /// Append the project path to `~/.claude.json` `projects` map with
     /// sensible defaults so Claude treats it as a known cwd next launch.
     private func persistProjectRegistration(path: String) {
@@ -173,7 +201,42 @@ final class Store: ObservableObject {
             return Self.buildProjects(from: entries, active: active, knownPaths: knownPaths)
         }.value
         let prevSelected = selectedProject
+        let prevProjects = projects
         var merged = built
+
+        // Preserve lazily-loaded firstPrompt/slug across reloads. buildProjects
+        // rebuilds Sessions from disk with these fields nil; without this, every
+        // 30s reload would blank project-home titles back to their fallbacks
+        // until each row re-appears and re-reads its JSONL head.
+        var priorLazyFields: [String: (firstPrompt: String?, slug: String?)] = [:]
+        for project in prevProjects {
+            for s in project.sessions where s.firstPrompt != nil || s.slug != nil {
+                priorLazyFields[s.id] = (s.firstPrompt, s.slug)
+            }
+        }
+        if !priorLazyFields.isEmpty {
+            for pi in merged.indices {
+                for si in merged[pi].sessions.indices {
+                    guard let prior = priorLazyFields[merged[pi].sessions[si].id] else { continue }
+                    if merged[pi].sessions[si].firstPrompt == nil {
+                        merged[pi].sessions[si].firstPrompt = prior.firstPrompt
+                    }
+                    if merged[pi].sessions[si].slug == nil {
+                        merged[pi].sessions[si].slug = prior.slug
+                    }
+                }
+            }
+        }
+
+        // Re-apply user-set project name overrides (path-derived displayName
+        // would otherwise clobber them on every reload).
+        if !projectNameOverrides.isEmpty {
+            for pi in merged.indices {
+                if let name = projectNameOverrides[merged[pi].cwd], !name.isEmpty {
+                    merged[pi].displayName = name
+                }
+            }
+        }
         // Preserve an ephemeral project (one the user just opened via
         // "Open directory…" that hasn't had a Claude JSONL written for it
         // yet, so it wouldn't show up in `built`). Write a fresh empty-shell
@@ -369,6 +432,9 @@ final class Store: ObservableObject {
 
     func loadSlug(for session: Session) async {
         guard session.slug == nil else { return }
+        guard !pendingSlugLoads.contains(session.id) else { return }
+        pendingSlugLoads.insert(session.id)
+        defer { pendingSlugLoads.remove(session.id) }
         await refreshSlug(for: session)
     }
 
@@ -404,6 +470,9 @@ final class Store: ObservableObject {
 
     func loadFirstPrompt(for session: Session) async {
         guard session.firstPrompt == nil else { return }
+        guard !pendingFirstPromptLoads.contains(session.id) else { return }
+        pendingFirstPromptLoads.insert(session.id)
+        defer { pendingFirstPromptLoads.remove(session.id) }
         let dir = claudeDir
         let sessionId = session.id
         let cwd = session.projectCwd
@@ -435,7 +504,12 @@ final class Store: ObservableObject {
         // Large window so a long continuation-summary preamble (one giant
         // user line) doesn't crowd out the real first prompt that follows it.
         let data = fh.readData(ofLength: 300_000)
-        guard let text = String(data: data, encoding: .utf8) else { return nil }
+        // Lossy decode: a fixed-byte cut can split a multibyte sequence (emoji,
+        // CJK) at the tail. `String(data:encoding:.utf8)` would return nil for
+        // the WHOLE buffer in that case, blanking an otherwise-valid head. The
+        // lossy decode replaces only the broken tail byte(s); the truncated
+        // final line fails JSON parsing and is skipped anyway.
+        let text = String(decoding: data, as: UTF8.self)
 
         for line in text.split(separator: "\n") {
             guard let lineData = line.data(using: .utf8),

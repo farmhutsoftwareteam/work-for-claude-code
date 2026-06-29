@@ -345,16 +345,23 @@ struct V2LiveComposer: View {
     private func matchedSlashCommand(_ text: String) -> (V2SlashCommand, String)? {
         guard text.hasPrefix("/") else { return nil }
         let body = String(text.dropFirst())
-        let name = String(body.prefix(while: { $0 != " " })).lowercased()
+        let prefix = String(body.prefix(while: { $0 != " " }))
+        let name = prefix.lowercased()
         guard !name.isEmpty else { return nil }
         guard let cmd = allCommands.first(where: { $0.name.lowercased() == name }) else { return nil }
-        let args = String(body.dropFirst(name.count)).trimmingCharacters(in: .whitespacesAndNewlines)
+        // Slice args by the ORIGINAL prefix length (lowercasing can change the
+        // grapheme count for some scripts).
+        let args = String(body.dropFirst(prefix.count)).trimmingCharacters(in: .whitespacesAndNewlines)
         return (cmd, args)
     }
 
     /// Run a command end-to-end: client actions execute in-app, prompt
     /// commands expand their template and send a real turn.
     private func run(_ cmd: V2SlashCommand, args: String) {
+        // Prompt commands send a real turn — hold them while one is in flight
+        // (don't interleave turns). Bail BEFORE clearing the chip/args so a
+        // command picked mid-stream survives instead of silently vanishing.
+        if case .prompt = cmd.kind, isWorking { return }
         slashActive = 0
         activeCommand = nil
         switch cmd.kind {
@@ -363,9 +370,6 @@ struct V2LiveComposer: View {
             draft = ""
             inputFocused = true
         case .prompt(let body, _):
-            // Prompt commands send a real turn — hold them while one is in
-            // flight, same as a normal message (don't interleave turns).
-            guard !isWorking else { return }
             let expanded = V2CommandRegistry.expand(body, args: args)
             guard !expanded.isEmpty else { draft = ""; return }
             draft = ""

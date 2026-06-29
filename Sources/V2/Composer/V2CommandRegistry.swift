@@ -126,13 +126,17 @@ enum V2CommandRegistry {
     /// positional words. Leftover placeholders collapse to empty.
     static func expand(_ template: String, args: String) -> String {
         let trimmed = args.trimmingCharacters(in: .whitespacesAndNewlines)
-        var out = template.replacingOccurrences(of: "$ARGUMENTS", with: trimmed)
         let words = trimmed.split(separator: " ").map(String.init)
-        for i in 1...9 {
+        // Substitute positionals against the TEMPLATE first (high → low so $1
+        // doesn't eat the leading digit of $10), THEN inject $ARGUMENTS — so a
+        // literal "$1" inside the user's args isn't re-substituted.
+        var out = template
+        for i in stride(from: 9, through: 1, by: -1) {
             let token = "$\(i)"
             guard out.contains(token) else { continue }
             out = out.replacingOccurrences(of: token, with: i <= words.count ? words[i - 1] : "")
         }
+        out = out.replacingOccurrences(of: "$ARGUMENTS", with: trimmed)
         return out.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 }

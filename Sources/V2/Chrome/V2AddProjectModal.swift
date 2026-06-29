@@ -21,6 +21,11 @@ final class V2AddProjectModel: ObservableObject {
     @Published var detected: Detected?
     @Published var scanning = false
 
+    /// The default model to spawn for this add. Seeded from the app default and
+    /// applied to `appState.defaultSpawnModel` only on a successful add — so
+    /// browsing the menu (or cancelling) no longer rewrites the global default.
+    @Published var selectedModel = ""
+
     // Clone repo
     @Published var repoURL = ""
     @Published var cloneBase = NSHomeDirectory() + "/dev"
@@ -39,6 +44,7 @@ final class V2AddProjectModel: ObservableObject {
 
     var repoName: String {
         var s = repoURL.trimmingCharacters(in: .whitespacesAndNewlines)
+        while s.hasSuffix("/") { s = String(s.dropLast()) }   // strip trailing slash(es) first
         if s.hasSuffix(".git") { s = String(s.dropLast(4)) }
         let last = s.split(whereSeparator: { $0 == "/" || $0 == ":" }).last.map(String.init) ?? ""
         return last.isEmpty ? "repo" : last
@@ -114,6 +120,9 @@ struct V2AddProjectModal: View {
                 .ignoresSafeArea()
                 .onTapGesture(perform: onClose)
             card
+        }
+        .onAppear {
+            if model.selectedModel.isEmpty { model.selectedModel = appState.defaultSpawnModel }
         }
         .enableInjection()
     }
@@ -208,11 +217,11 @@ struct V2AddProjectModal: View {
                 field(label: "default model") {
                     Menu {
                         ForEach(modelOptions, id: \.self) { m in
-                            Button(m) { appState.defaultSpawnModel = m }
+                            Button(m) { model.selectedModel = m }
                         }
                     } label: {
                         HStack {
-                            Text(appState.defaultSpawnModel).font(.system(size: 12.5, design: .monospaced)).foregroundColor(v2.ink)
+                            Text(effectiveModel).font(.system(size: 12.5, design: .monospaced)).foregroundColor(v2.ink)
                             Spacer()
                             Image(systemName: "chevron.down").font(.system(size: 9)).foregroundColor(v2.mute)
                         }
@@ -350,7 +359,12 @@ struct V2AddProjectModal: View {
             model.error = "That folder couldn't be registered."
             return
         }
-        appState.selectProject(cwd: project.cwd, name: model.name.isEmpty ? project.displayName : model.name)
+        let name = model.name.trimmingCharacters(in: .whitespacesAndNewlines)
+        // Persist the typed name so it survives reloads and shows in the rail —
+        // not just in the transient header label.
+        if !name.isEmpty { store.setProjectName(name, for: project.cwd) }
+        applySelectedModel()
+        appState.selectProject(cwd: project.cwd, name: name.isEmpty ? project.displayName : name)
         onClose()
     }
 
@@ -363,6 +377,7 @@ struct V2AddProjectModal: View {
                                       branch: model.branch.trimmingCharacters(in: .whitespacesAndNewlines))
             model.cloning = false
             if let path = r.path, let project = store.registerProject(at: path) {
+                applySelectedModel()
                 appState.selectProject(cwd: project.cwd, name: project.displayName)
                 onClose()
             } else {
@@ -371,12 +386,25 @@ struct V2AddProjectModal: View {
         }
     }
 
+    /// Commit the model picked in the dialog to the app default — only ever
+    /// called from a successful add, so cancelling leaves the default untouched.
+    private func applySelectedModel() {
+        let m = model.selectedModel
+        if !m.isEmpty { appState.defaultSpawnModel = m }
+    }
+
     // MARK: Helpers
+
+    /// The model shown/used in the dialog: the in-dialog pick, falling back to
+    /// the current app default until the user has touched the menu.
+    private var effectiveModel: String {
+        model.selectedModel.isEmpty ? appState.defaultSpawnModel : model.selectedModel
+    }
 
     private var modelOptions: [String] {
         let discovered = appState.discoveredModels.map(\.id)
         var seen = Set<String>(), out: [String] = []
-        for m in [appState.defaultSpawnModel] + discovered where seen.insert(m).inserted { out.append(m) }
+        for m in [effectiveModel] + discovered where seen.insert(m).inserted { out.append(m) }
         return out
     }
 

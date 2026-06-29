@@ -147,7 +147,11 @@ final class V2AppState: ObservableObject {
     /// capability the Models API doesn't report as a separate entry), so it's
     /// the one documented constant here; everything else comes from the API.
     func contextWindow(for modelId: String) -> Int? {
-        if modelId.lowercased().contains("1m") { return 1_000_000 }
+        // Match the 1M beta as a delimited token ("…[1m]", "…-1m"), not a bare
+        // "1m" substring that could match an unrelated id and shadow the
+        // provider-sourced value.
+        let lc = modelId.lowercased()
+        if lc.contains("[1m]") || lc.hasSuffix("-1m") || lc.hasSuffix("_1m") { return 1_000_000 }
         return modelContextWindows[modelId]
     }
 

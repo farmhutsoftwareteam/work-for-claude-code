@@ -45,22 +45,33 @@ enum V2Git {
     /// Run a git command in `cwd`. Returns (stdout, exitCode). Off the main
     /// thread; reads the pipe to EOF before waiting so large diffs can't
     /// deadlock on a full pipe buffer.
-    static func run(_ args: [String], cwd: String) async -> (out: String, code: Int32) {
+    static func run(_ args: [String], cwd: String) async -> (out: String, err: String, code: Int32) {
         await withCheckedContinuation { cont in
             DispatchQueue.global(qos: .userInitiated).async {
                 guard FileManager.default.isExecutableFile(atPath: gitPath) else {
-                    cont.resume(returning: ("", 127)); return
+                    cont.resume(returning: ("", "git not found", 127)); return
                 }
                 let p = Process()
                 p.executableURL = URL(fileURLWithPath: gitPath)
                 p.arguments = ["-C", cwd] + args
-                let out = Pipe()
-                p.standardOutput = out
-                p.standardError = Pipe()
-                do { try p.run() } catch { cont.resume(returning: ("", 127)); return }
-                let data = out.fileHandleForReading.readDataToEndOfFile()
+                let outPipe = Pipe(); let errPipe = Pipe()
+                p.standardOutput = outPipe; p.standardError = errPipe
+                do { try p.run() } catch { cont.resume(returning: ("", "couldn't launch git", 127)); return }
+                // Drain BOTH pipes concurrently. Reading only stdout to EOF can
+                // deadlock if git fills the ~64KB stderr buffer first (e.g. a
+                // repo emitting per-file warnings) — it blocks writing stderr,
+                // never exits, never EOFs stdout.
+                let group = DispatchGroup()
+                var outData = Data(); var errData = Data()
+                group.enter(); DispatchQueue.global().async { outData = outPipe.fileHandleForReading.readDataToEndOfFile(); group.leave() }
+                group.enter(); DispatchQueue.global().async { errData = errPipe.fileHandleForReading.readDataToEndOfFile(); group.leave() }
+                group.wait()
                 p.waitUntilExit()
-                cont.resume(returning: (String(data: data, encoding: .utf8) ?? "", p.terminationStatus))
+                cont.resume(returning: (
+                    String(data: outData, encoding: .utf8) ?? "",
+                    String(data: errData, encoding: .utf8) ?? "",
+                    p.terminationStatus
+                ))
             }
         }
     }
@@ -91,7 +102,10 @@ enum V2Git {
             let x = String(chars[0])   // index (staged)
             let y = String(chars[1])   // worktree (unstaged)
             var path = String(line.dropFirst(3))
-            if let arrow = path.range(of: " -> ") { path = String(path[arrow.upperBound...]) }  // rename → new
+            // Only rename/copy lines carry "old -> new"; don't split a file
+            // literally named "a -> b".
+            if (x == "R" || x == "C" || y == "R" || y == "C"),
+               let arrow = path.range(of: " -> ") { path = String(path[arrow.upperBound...]) }
 
             if x == "?" && y == "?" {
                 unstaged.append(GitFile(path: path, staged: false, status: "?", untracked: true))
@@ -220,7 +234,10 @@ enum V2Git {
     @discardableResult
     static func commit(cwd: String, message: String) async -> (ok: Bool, output: String) {
         let r = await run(["commit", "-m", message], cwd: cwd)
-        return (r.code == 0, r.out)
+        // On failure surface stderr (hook output, GPG errors) — git puts the
+        // reason there, and stdout is usually empty.
+        let detail = r.code == 0 ? r.out : (r.err.isEmpty ? r.out : r.err)
+        return (r.code == 0, detail)
     }
 
     /// Draft a commit message by running `claude -p` over the staged diff.
@@ -247,11 +264,17 @@ enum V2Git {
                     env.removeValue(forKey: k)
                 }
                 p.environment = env
-                let out = Pipe()
+                let out = Pipe(); let errPipe = Pipe()
                 p.standardOutput = out
-                p.standardError = Pipe()
+                p.standardError = errPipe
                 do { try p.run() } catch { cont.resume(returning: nil); return }
-                let data = out.fileHandleForReading.readDataToEndOfFile()
+                // Drain both pipes concurrently so a chatty stderr can't
+                // deadlock the stdout read.
+                let group = DispatchGroup()
+                var data = Data()
+                group.enter(); DispatchQueue.global().async { data = out.fileHandleForReading.readDataToEndOfFile(); group.leave() }
+                group.enter(); DispatchQueue.global().async { _ = errPipe.fileHandleForReading.readDataToEndOfFile(); group.leave() }
+                group.wait()
                 p.waitUntilExit()
                 var s = String(data: data, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines)
                 // Strip wrapping backticks/quotes if the model added them.

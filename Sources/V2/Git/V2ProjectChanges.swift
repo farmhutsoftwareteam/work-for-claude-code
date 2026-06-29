@@ -23,11 +23,18 @@ final class V2GitModel: ObservableObject {
     func load(cwd: String) async {
         if cwd != self.cwd { self.cwd = cwd; selected = nil; diff = []; commitMessage = ""; commitError = nil }
         loading = true
-        isRepo = await V2Git.isRepo(cwd: cwd)
-        status = isRepo ? await V2Git.status(cwd: cwd) : nil
+        let repo = await V2Git.isRepo(cwd: cwd)
+        guard self.cwd == cwd else { return }   // a newer load (different project) superseded us
+        isRepo = repo
+        let st = isRepo ? await V2Git.status(cwd: cwd) : nil
+        guard self.cwd == cwd else { return }
+        status = st
         loading = false
         let all = (status?.staged ?? []) + (status?.unstaged ?? [])
-        if let sel = selected, let still = all.first(where: { $0.id == sel.id }) {
+        // Re-find the selection by PATH (not id): staging flips a file's id
+        // from "U:path" to "S:path", and matching on id would lose it and jump
+        // to the top of the list.
+        if let sel = selected, let still = all.first(where: { $0.path == sel.path }) {
             await select(still)
         } else if let first = all.first {
             await select(first)
@@ -38,7 +45,10 @@ final class V2GitModel: ObservableObject {
 
     func select(_ file: GitFile) async {
         selected = file
-        diff = await V2Git.diff(cwd: cwd, path: file.path, staged: file.staged, untracked: file.untracked)
+        let d = await V2Git.diff(cwd: cwd, path: file.path, staged: file.staged, untracked: file.untracked)
+        // Guard against a slower earlier diff landing after a newer selection.
+        guard selected?.id == file.id else { return }
+        diff = d
     }
 
     func stage(_ file: GitFile) async { await V2Git.stage(cwd: cwd, path: file.path); await load(cwd: cwd) }
@@ -56,12 +66,14 @@ final class V2GitModel: ObservableObject {
 
     /// Draft the commit message with Claude from the staged diff.
     func draftMessage(claudeBinary: URL?) async {
+        guard !drafting else { return }   // a second tap mustn't spawn a 2nd claude
         guard let bin = claudeBinary else { commitError = "claude binary not found"; return }
         guard !(status?.staged.isEmpty ?? true) else { commitError = "stage changes first"; return }
+        // Flip the flag BEFORE the first await so the button disables immediately.
+        drafting = true; commitError = nil
         let staged = await V2Git.run(["diff", "--cached"], cwd: cwd).out
             .trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !staged.isEmpty else { commitError = "nothing staged to summarise"; return }
-        drafting = true; commitError = nil
+        guard !staged.isEmpty else { drafting = false; commitError = "nothing staged to summarise"; return }
         let msg = await V2Git.generateCommitMessage(claudeBinary: bin, diff: staged)
         drafting = false
         if let msg, !msg.isEmpty { commitMessage = msg }

@@ -262,7 +262,22 @@ final class ComposerNSTextView: NSTextView {
     }
 
     override func performDragOperation(_ sender: NSDraggingInfo) -> Bool {
-        return handlePasteboard(sender.draggingPasteboard)
+        let pb = sender.draggingPasteboard
+        // In-memory image data (e.g. a screenshot dragged from Preview).
+        if let images = pb.readObjects(forClasses: [NSImage.self], options: nil) as? [NSImage],
+           let first = images.first, first.isValid {
+            coordinator?.imageCallback(first)
+            return true
+        }
+        // Finder drag: accept ALL file URLs, not just images — the composer
+        // attaches docs/pdfs/text too (the attach panel allows them). The
+        // image-only filter stays on the PASTE path (handlePasteboard) so a
+        // ⌘V of a copied file URL doesn't hijack a normal text paste.
+        if let urls = pb.readObjects(forClasses: [NSURL.self], options: nil) as? [URL] {
+            let files = urls.filter { $0.isFileURL }
+            if !files.isEmpty { coordinator?.fileDropCallback(files); return true }
+        }
+        return false
     }
 
     static func isImageExtension(_ ext: String) -> Bool {
