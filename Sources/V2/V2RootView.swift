@@ -14,6 +14,10 @@ struct V2RootView: View {
     @AppStorage("v2.theme") private var themeRaw: String = V2ThemeChoice.system.rawValue
     @Environment(\.colorScheme) private var systemColorScheme
     @State private var dockPanel: V2DockPanel = .loop
+    /// Phase-4 dogfood: ⌘⌃A opens the self-contained ACP-backed chat surface
+    /// as an overlay. Off by default; the shipping StreamSession chat is
+    /// untouched whether this is open or not.
+    @State private var showACPPreview = false
 
     private var theme: V2ThemeChoice {
         V2ThemeChoice(rawValue: themeRaw) ?? .system
@@ -69,6 +73,24 @@ struct V2RootView: View {
                     .transition(.opacity)
                     .zIndex(100)
             }
+
+            // Phase-4 ACP dogfood surface (⌘⌃A). Full-bleed overlay over the
+            // whole window so it's a clean isolated test of the ACP path.
+            if showACPPreview {
+                V2ACPChatView(
+                    cwd: appState.selectedProjectCwd ?? URL(fileURLWithPath: NSHomeDirectory()),
+                    projectName: appState.selectedProjectName,
+                    onClose: { showACPPreview = false }
+                )
+                .environment(\.v2, palette)
+                .transition(.opacity)
+                .zIndex(200)
+            }
+
+            // Hidden ⌘⌃A toggle.
+            Button("Toggle ACP preview") { showACPPreview.toggle() }
+                .keyboardShortcut("a", modifiers: [.command, .control])
+                .opacity(0).frame(width: 0, height: 0)
         }
         .animation(.easeOut(duration: 0.15), value: appState.activeSession?.pendingPermission?.id)
         .background(palette.paper)
