@@ -448,6 +448,35 @@ fi
 echo ""
 
 # ─────────────────────────────────────────────────────────────────────────────
+# Step 12: Stage the DMG into docs/ for the Vercel site
+# work.munyamakosa.com (and atelier.munyamakosa.com) serve the DMG from the
+# docs/ Vercel project, NOT from the GitHub release. The appcast's enclosure
+# length + edSignature are computed against THIS exact build, so docs/Work.dmg
+# MUST be the same bytes. Forgetting this copy means Sparkle downloads a stale
+# binary whose hash doesn't match the signature → "update is improperly
+# signed" and the update silently fails. Copy it here so it can never drift.
+# ─────────────────────────────────────────────────────────────────────────────
+echo "──────────────────────────────────────────────────────────────"
+echo "  Step 12: Staging DMG into docs/"
+echo "──────────────────────────────────────────────────────────────"
+DOCS_DIR="$SCRIPT_DIR/docs"
+if [ -d "$DOCS_DIR" ]; then
+    cp "$DMG_NAME" "$DOCS_DIR/$DMG_NAME"
+    COPIED_SIZE=$(stat -f%z "$DOCS_DIR/$DMG_NAME")
+    SRC_SIZE=$(stat -f%z "$DMG_NAME")
+    if [ "$COPIED_SIZE" = "$SRC_SIZE" ]; then
+        echo "✓ Copied $DMG_NAME → docs/ ($COPIED_SIZE bytes — matches appcast enclosure length)."
+    else
+        echo "⚠ docs/ copy size ($COPIED_SIZE) != source ($SRC_SIZE) — investigate before deploying."
+    fi
+    echo "  Deploy it with:  (cd docs && vercel --prod --yes)"
+else
+    echo "⚠ docs/ not found at $DOCS_DIR — skipping. Copy $DMG_NAME to your"
+    echo "  Pages/Vercel source manually so it matches the appcast signature."
+fi
+echo ""
+
+# ─────────────────────────────────────────────────────────────────────────────
 # Done
 # ─────────────────────────────────────────────────────────────────────────────
 echo "============================================================"
@@ -459,11 +488,14 @@ echo "  • $DMG_NAME ($(du -h "$DMG_NAME" | cut -f1) — notarized & stapled)"
 echo ""
 echo "Next steps:"
 echo "  1. Add the appcast XML snippet above to docs/appcast.xml"
-echo "  2. Re-run scripts/build-releases.js to regenerate docs/releases.html"
-echo "  3. Copy $DMG_NAME into docs/, then 'cd docs && vercel --prod --yes'"
+echo "  2. Add a v${VERSION} <article> to docs/releases.html (top of the list)"
+echo "  3. Deploy the site:  (cd docs && vercel --prod --yes)"
+echo "     (docs/$DMG_NAME was already staged in Step 12 — no manual copy needed)"
 echo "  4. git commit + push the version bump, appcast, releases.html, and"
 echo "     release-notes/v${VERSION}.md"
-echo "  5. If the GH release step skipped above, run the command it printed"
+echo "  5. Verify live size matches the appcast:"
+echo "     curl -sI https://work.munyamakosa.com/$DMG_NAME | grep -i content-length"
+echo "  6. If the GH release step skipped above, run the command it printed"
 echo ""
 echo "────────────────────────────────────────────────────────────"
 echo "  Keychain Profile Setup (one-time)"
