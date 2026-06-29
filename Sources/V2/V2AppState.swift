@@ -324,6 +324,19 @@ final class V2AppState: ObservableObject {
             selectedProjectName = projectName.isEmpty
                 ? (projectCwd as NSString).lastPathComponent
                 : projectName
+            // The row IS the start button: if that tab's session has ended (or
+            // never started), clicking it (re)starts it rather than dropping
+            // you on a dead "stream closed" + Start CTA.
+            if let session = existing.streamSession, let binary = claudeBinary {
+                switch session.state {
+                case .idle, .terminated:
+                    session.resume(cwd: URL(fileURLWithPath: projectCwd), claudeURL: binary,
+                                   sessionId: sessionId, model: defaultSpawnModel,
+                                   permissionMode: defaultPermissionMode)
+                default:
+                    break
+                }
+            }
             return
         }
         let id = terminals.openModeB(projectCwd: projectCwd, title: title.isEmpty ? projectName : title)

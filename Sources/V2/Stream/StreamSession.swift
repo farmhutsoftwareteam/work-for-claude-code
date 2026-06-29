@@ -117,6 +117,15 @@ final class StreamSession: ObservableObject {
 
     private var process: Process?
     private var inputWriter: StreamInputWriter?
+
+    // Resume fallback: if a resumed spawn dies before producing a single event
+    // (session already running, or its transcript was cleaned up), we restart
+    // once as a fresh session so clicking a session always lands live — never
+    // on a "Start session" button.
+    private struct LaunchContext { let cwd: URL; let claudeURL: URL; let model: String?; let permissionMode: String? }
+    private var launchContext: LaunchContext?
+    private var resumeFallbackArmed = false
+    private var sawLiveEvent = false
     private var eventConsumer: Task<Void, Never>?
     private var stderrConsumer: Task<Void, Never>?
     /// Strong references to the pipe FileHandles so the OS keeps firing
@@ -181,6 +190,7 @@ final class StreamSession: ObservableObject {
     /// shows a loading indicator instead of looking stuck.
     func resume(cwd: URL, claudeURL: URL, sessionId: String, model: String? = nil, permissionMode: String? = nil) {
         isResuming = true
+        resumeFallbackArmed = true   // if the resume spawn dies silently, start fresh
         let cwdPath = cwd.path
         Task { [weak self] in
             let preload = await Task.detached(priority: .userInitiated) {
@@ -217,6 +227,10 @@ final class StreamSession: ObservableObject {
         lastRetry = nil
         pendingPermission = nil
         state = .spawning
+        // Remember how we launched (for the resume fallback) and reset the
+        // "saw a live event" tracker for this spawn.
+        launchContext = LaunchContext(cwd: cwd, claudeURL: claudeURL, model: model, permissionMode: permissionMode)
+        sawLiveEvent = false
 
         // Resolve the permission mode for this spawn: explicit arg →
         // persisted default → "acceptEdits". Persisting it here (and in
@@ -388,7 +402,19 @@ final class StreamSession: ObservableObject {
         case .terminated, .closing, .idle:
             break
         case .spawning, .initializing, .ready, .working, .awaitingPermission:
-            state = .terminated(reason: "stream closed")
+            // A resume that died before any event (session already running, or
+            // its transcript was cleaned up) can't be restored — restart fresh
+            // ONCE so the click still lands in a live session, never a dead end.
+            if resumeFallbackArmed, !sawLiveEvent, let ctx = launchContext {
+                resumeFallbackArmed = false
+                isResuming = false
+                state = .terminated(reason: "stream closed")
+                appendSystemNote("Couldn't restore that conversation — started a fresh session here.")
+                start(cwd: ctx.cwd, claudeURL: ctx.claudeURL, resumeId: nil,
+                      model: ctx.model, permissionMode: ctx.permissionMode)
+            } else {
+                state = .terminated(reason: "stream closed")
+            }
         }
     }
 
@@ -610,6 +636,10 @@ final class StreamSession: ObservableObject {
     /// Internal so XCTest can replay captured NDJSON through the dispatch
     /// without actually spawning a child process.
     func handle(event: StreamEvent) {
+        // Any event proves the resume spawned successfully → disarm the
+        // fresh-start fallback.
+        sawLiveEvent = true
+        resumeFallbackArmed = false
         switch event {
         case .system(let sys):
             handleSystem(sys)
