@@ -24,6 +24,10 @@ struct V2LiveComposer: View {
     @State private var slashActive: Int = 0   // highlighted row in the popover
     /// User-authored commands loaded from .claude/commands + ~/.claude/commands.
     @State private var customCommands: [V2SlashCommand] = []
+    /// The command picked for an arguments-taking command. While set, the
+    /// composer is in "command mode": a locked chip shows the command and the
+    /// text field holds only its arguments.
+    @State private var activeCommand: V2SlashCommand?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 9) {
@@ -78,10 +82,14 @@ struct V2LiveComposer: View {
                 .foregroundColor(v2.mute)
                 .padding(.top, 6)
 
+            if let cmd = activeCommand {
+                commandChip(cmd).padding(.top, 3)
+            }
+
             V2ComposerTextView(
                 text: $draft,
                 focused: $inputFocused,
-                placeholder: placeholder,
+                placeholder: composerPlaceholder,
                 isEnabled: canType,
                 foregroundColor: NSColor(v2.ink),
                 placeholderColor: NSColor(v2.faint),
@@ -91,7 +99,8 @@ struct V2LiveComposer: View {
                 popoverOpen: slashOpen,
                 onPopoverMove: moveSlashSelection,
                 onPopoverPick: pickSlashCommand,
-                onPopoverDismiss: dismissSlash
+                onPopoverDismiss: dismissSlash,
+                onBackspaceAtStart: backspaceAtStart
             )
             .onChange(of: draft) { _, _ in
                 // Keep the highlighted row in range as the filter narrows.
@@ -154,7 +163,7 @@ struct V2LiveComposer: View {
     /// Open when the draft is a bare "/query" (no space yet — once a command
     /// is completed to "/name " we close so it doesn't show "no matches").
     private var slashOpen: Bool {
-        draft.hasPrefix("/") && !draft.contains(" ") && canType
+        activeCommand == nil && draft.hasPrefix("/") && !draft.contains(" ") && canType
     }
 
     /// Filtered, category-then-name ordered results. The flat order here
@@ -266,33 +275,67 @@ struct V2LiveComposer: View {
             sendCurrent()
             return
         }
-        if cmd.takesArguments {
-            complete(cmd)
-        } else {
-            activate(cmd)
-        }
+        activate(cmd)
     }
 
-    /// Clicking a row (mouse) always runs arg-less commands and completes
-    /// arg-taking ones — same rule as Enter.
+    /// Selecting a command: an arg-less one fires immediately; one that takes
+    /// arguments enters "command mode" — the name locks into a chip and the
+    /// field clears to hold only the arguments.
     private func activate(_ cmd: V2SlashCommand) {
         if cmd.takesArguments {
-            complete(cmd)
+            beginCommand(cmd)
         } else {
             run(cmd, args: "")
         }
     }
 
-    private func complete(_ cmd: V2SlashCommand) {
-        draft = "/\(cmd.name) "   // trailing space closes the popover
+    private func beginCommand(_ cmd: V2SlashCommand) {
+        activeCommand = cmd
+        draft = ""
         slashActive = 0
         inputFocused = true
+    }
+
+    /// Pop the locked command chip. The text already typed stays in the
+    /// field, becoming a plain message. Called by the ✕ and by backspace at
+    /// the start of an empty field.
+    private func removeActiveCommand() {
+        activeCommand = nil
+        inputFocused = true
+    }
+
+    private func backspaceAtStart() -> Bool {
+        guard activeCommand != nil else { return false }
+        removeActiveCommand()
+        return true
     }
 
     private func dismissSlash() {
         // Clear the leading "/" so the popover closes but keep nothing stale.
         if draft.hasPrefix("/") { draft = "" }
         slashActive = 0
+    }
+
+    /// The locked command token shown at the head of the composer in command
+    /// mode. Inverse (ink fill / paper text) so it reads as committed.
+    private func commandChip(_ cmd: V2SlashCommand) -> some View {
+        HStack(spacing: 6) {
+            Text("/\(cmd.name)")
+                .font(.system(size: 12, weight: .medium, design: .monospaced))
+                .foregroundColor(v2.paper)
+            Button(action: removeActiveCommand) {
+                Image(systemName: "xmark")
+                    .font(.system(size: 8, weight: .bold))
+                    .foregroundColor(v2.paper.opacity(0.8))
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .help("Remove command (⌫ at start)")
+        }
+        .padding(.horizontal, 8)
+        .padding(.vertical, 4)
+        .background(v2.ink)
+        .fixedSize()
     }
 
     // MARK: - Command resolution & execution
@@ -313,6 +356,7 @@ struct V2LiveComposer: View {
     /// commands expand their template and send a real turn.
     private func run(_ cmd: V2SlashCommand, args: String) {
         slashActive = 0
+        activeCommand = nil
         switch cmd.kind {
         case .client(let action):
             runClient(action, args: args)
@@ -492,11 +536,16 @@ struct V2LiveComposer: View {
 
     private var helperRow: some View {
         HStack(spacing: 18) {
-            Button { session.cyclePermissionMode() } label: {
-                Text("/ for commands · \(permissionLabel) · shift+tab to cycle")
+            if activeCommand != nil {
+                Text("⌫ at start removes the command · ⏎ runs it")
                     .foregroundColor(v2.faint)
+            } else {
+                Button { session.cyclePermissionMode() } label: {
+                    Text("/ for commands · \(permissionLabel) · shift+tab to cycle")
+                        .foregroundColor(v2.faint)
+                }
+                .buttonStyle(.plain)
             }
-            .buttonStyle(.plain)
 
             Text("⇧⏎ newline · ⌘V paste image")
                 .foregroundColor(v2.faint)
@@ -529,6 +578,16 @@ struct V2LiveComposer: View {
 
     // MARK: - State
 
+    /// Placeholder the text field actually shows — the command's argument
+    /// hint while in command mode, otherwise the session-state prompt.
+    private var composerPlaceholder: String {
+        if let cmd = activeCommand {
+            if let hint = cmd.argumentHint { return "\(hint) — ⏎ to run /\(cmd.name)" }
+            return "⏎ to run /\(cmd.name)"
+        }
+        return placeholder
+    }
+
     private var placeholder: String {
         switch session.state {
         case .idle, .terminated:    return "Ask, or / for commands, or set a goal to run a loop…"
@@ -555,6 +614,9 @@ struct V2LiveComposer: View {
         // the visible button said "Stop". You can keep typing your next
         // message (canType stays true); it sends once the turn finishes.
         guard canType, !isWorking else { return false }
+        // In command mode, arguments are optional — the command can run with
+        // an empty field, so Send stays enabled.
+        if activeCommand != nil { return true }
         let trimmed = draft.trimmingCharacters(in: .whitespacesAndNewlines)
         return !trimmed.isEmpty || !attachments.items.isEmpty
     }
@@ -594,6 +656,11 @@ struct V2LiveComposer: View {
     // MARK: - Send
 
     private func sendCurrent() {
+        // In command mode the chip holds the command; the field is its args.
+        if let cmd = activeCommand {
+            run(cmd, args: draft)
+            return
+        }
         // A "/name [args]" submit for a known command runs the command
         // instead of sending the literal text to the agent. Unknown "/foo"
         // and plain text fall through to a normal turn.

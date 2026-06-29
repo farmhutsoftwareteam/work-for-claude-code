@@ -33,6 +33,10 @@ struct V2ComposerTextView: NSViewRepresentable {
     var onPopoverMove: (Int) -> Void = { _ in }   // -1 up, +1 down
     var onPopoverPick: () -> Void = {}
     var onPopoverDismiss: () -> Void = {}
+    // Backspace with the caret at the very start of an empty field. Returns
+    // true if it was handled (e.g. it popped the active command chip), in
+    // which case the delete is swallowed.
+    var onBackspaceAtStart: () -> Bool = { false }
 
     func makeNSView(context: Context) -> NSScrollView {
         let scroll = NSScrollView()
@@ -98,6 +102,7 @@ struct V2ComposerTextView: NSViewRepresentable {
         context.coordinator.popoverMove = onPopoverMove
         context.coordinator.popoverPick = onPopoverPick
         context.coordinator.popoverDismiss = onPopoverDismiss
+        context.coordinator.backspaceAtStart = onBackspaceAtStart
         tv.placeholderString = placeholder
 
         if tv.string != text {
@@ -133,6 +138,7 @@ struct V2ComposerTextView: NSViewRepresentable {
         var popoverMove: (Int) -> Void = { _ in }
         var popoverPick: () -> Void = {}
         var popoverDismiss: () -> Void = {}
+        var backspaceAtStart: () -> Bool = { false }
 
         init(text: Binding<String>, focused: Binding<Bool>) {
             self.textBinding = text
@@ -148,6 +154,12 @@ struct V2ComposerTextView: NSViewRepresentable {
         /// Catch Enter / Shift+Enter / Cmd+Enter — and, when the slash
         /// popover is open, the arrow keys / Tab / Esc to drive it.
         func textView(_ textView: NSTextView, doCommandBy selector: Selector) -> Bool {
+            // Backspace at the very start of an empty field pops the active
+            // command chip (if any) instead of doing nothing.
+            if selector == #selector(NSResponder.deleteBackward(_:)) {
+                let r = textView.selectedRange()
+                if r.location == 0, r.length == 0, backspaceAtStart() { return true }
+            }
             let popover = popoverOpen()
             if popover {
                 switch selector {
