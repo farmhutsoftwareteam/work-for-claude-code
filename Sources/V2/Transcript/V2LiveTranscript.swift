@@ -57,7 +57,9 @@ struct V2LiveTranscript: View {
                 .padding(.horizontal, 36)
                 .padding(.top, 30)
                 .padding(.bottom, 24)
-                .frame(maxWidth: 1100, alignment: .leading)
+                // Full-width transcript: no readability cap, so the content
+                // spans the whole pane and meets the scrollbar at the edge.
+                .frame(maxWidth: .infinity, alignment: .leading)
             }
             // scrollKey changes on every signal that grows the content: new
             // item, streaming growth of the last text block, state change,
