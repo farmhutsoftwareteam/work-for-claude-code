@@ -6,6 +6,8 @@
 // CRUD surface over ~/.claude.json). This panel is read-mostly + at-a-glance.
 
 import SwiftUI
+import AppKit
+import Darwin
 import Inject
 
 struct V2McpPanel: View {
@@ -14,10 +16,21 @@ struct V2McpPanel: View {
     @EnvironmentObject private var appState: V2AppState
     @EnvironmentObject private var store: Store
     @State private var addingMCP = false
+    @State private var authing: Set<String> = []   // servers mid sign-in
+    @State private var authNote: String?
 
     var body: some View {
         VStack(spacing: 0) {
             header
+            if let note = authNote {
+                Text(note)
+                    .font(.system(size: 10.5, design: .monospaced))
+                    .foregroundColor(v2.mute)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.horizontal, 18).padding(.vertical, 9)
+                    .background(v2.card)
+                    .overlay(alignment: .bottom) { Rectangle().fill(v2.line).frame(height: 1) }
+            }
             content
         }
         .sheet(isPresented: $addingMCP) {
@@ -176,18 +189,39 @@ struct V2McpPanel: View {
     // MARK: - Authenticate (claude mcp login)
 
     private func authButton(_ name: String) -> some View {
-        // Open `claude mcp login` in a real terminal — OAuth needs a TTY for
-        // the paste-the-URL step, so a headless pipe can't complete it.
-        Button { appState.openMCPLogin(serverName: name) } label: {
-            Text("sign in")
+        let busy = authing.contains(name)
+        return Button { authenticate(name) } label: {
+            Text(busy ? "signing in…" : "sign in")
                 .font(.system(size: 10.5, design: .monospaced))
-                .foregroundColor(v2.ink)
+                .foregroundColor(busy ? v2.faint : v2.ink)
                 .padding(.horizontal, 9).padding(.vertical, 4)
                 .background(v2.card)
-                .overlay(Rectangle().stroke(v2.ink, lineWidth: 1))
+                .overlay(Rectangle().stroke(busy ? v2.line2 : v2.ink, lineWidth: 1))
         }
         .buttonStyle(.plain)
-        .help("Sign in to this MCP server — opens `claude mcp login` in a terminal")
+        .disabled(busy)
+        .help("Sign in to this MCP server (OAuth in your browser)")
+    }
+
+    private func authenticate(_ name: String) {
+        guard let binary = appState.claudeBinary else { authNote = "Can't find the claude binary."; return }
+        let cwd = projectCwd ?? NSHomeDirectory()
+        authing.insert(name)
+        authNote = "\(name): opening your browser — authorise there to finish."
+        Task {
+            let r = await V2MCPAuth.login(claudeBinary: binary, name: name, cwd: cwd)
+            authing.remove(name)
+            if r.ok {
+                authNote = "\(name): authenticated ✓ — restart the session to reconnect it."
+                await store.load()
+            } else {
+                // Fall back to the visible terminal if the headless flow can't
+                // complete (e.g. a server with no loopback that needs the paste).
+                let reason = r.output.isEmpty ? "couldn't complete sign-in" : String(r.output.suffix(140))
+                authNote = "\(name): \(reason) — opening a terminal to finish manually."
+                appState.openMCPLogin(serverName: name)
+            }
+        }
     }
 
     private func scopeLabel(_ s: MCPServer.Source) -> String {
@@ -345,5 +379,94 @@ struct V2McpPanel: View {
             return parts.dropLast().joined(separator: " · ")
         }
         return "user scope"
+    }
+}
+
+// MARK: - MCP OAuth via `claude mcp login` (hidden PTY)
+
+enum V2MCPAuth {
+    /// Run `claude mcp login <name> --no-browser` attached to a HIDDEN
+    /// pseudo-terminal — the CLI's TTY check passes, but nothing is rendered.
+    /// We parse the authorization URL it prints and open the browser ourselves;
+    /// the CLI's localhost loopback captures the callback and the process exits
+    /// 0 on success. No paste, no visible terminal. Capped by `timeout`.
+    static func login(claudeBinary: URL, name: String, cwd: String, timeout: TimeInterval = 180) async -> (ok: Bool, output: String) {
+        await withCheckedContinuation { cont in
+            DispatchQueue.global(qos: .userInitiated).async {
+                var master: Int32 = 0, slave: Int32 = 0
+                guard openpty(&master, &slave, nil, nil, nil) == 0 else {
+                    cont.resume(returning: (false, "couldn't allocate a terminal")); return
+                }
+                let p = Process()
+                p.executableURL = claudeBinary
+                p.arguments = ["mcp", "login", name, "--no-browser"]
+                p.currentDirectoryURL = URL(fileURLWithPath: cwd)
+                var env = ProcessInfo.processInfo.environment
+                for k in env.keys where k == "CLAUDECODE" || k.hasPrefix("CLAUDE_CODE") { env.removeValue(forKey: k) }
+                env["TERM"] = "xterm-256color"
+                p.environment = env
+                let slaveFH = FileHandle(fileDescriptor: slave, closeOnDealloc: false)
+                p.standardInput = slaveFH
+                p.standardOutput = slaveFH
+                p.standardError = slaveFH
+                do { try p.run() } catch {
+                    close(master); close(slave)
+                    cont.resume(returning: (false, "couldn't launch claude")); return
+                }
+                close(slave)   // child owns it; closing here lets master EOF on exit
+                let masterFH = FileHandle(fileDescriptor: master, closeOnDealloc: false)
+
+                let group = DispatchGroup()
+                var outData = Data()
+                var openedURL = false
+                group.enter()
+                DispatchQueue.global().async {
+                    var buffer = ""
+                    while true {
+                        let chunk = masterFH.availableData
+                        if chunk.isEmpty { break }            // EOF — child closed slave
+                        outData.append(chunk)
+                        if !openedURL, let s = String(data: chunk, encoding: .utf8) {
+                            buffer += s
+                            if let url = extractAuthURL(buffer) {
+                                openedURL = true
+                                DispatchQueue.main.async { NSWorkspace.shared.open(url) }
+                            }
+                        }
+                    }
+                    group.leave()
+                }
+                if group.wait(timeout: .now() + timeout) == .timedOut {
+                    p.terminate()
+                    group.wait()
+                }
+                p.waitUntilExit()
+                close(master)
+                let clean = stripANSI(String(data: outData, encoding: .utf8) ?? "")
+                    .trimmingCharacters(in: .whitespacesAndNewlines)
+                cont.resume(returning: (p.terminationStatus == 0, clean))
+            }
+        }
+    }
+
+    private static func extractAuthURL(_ s: String) -> URL? {
+        // Pull every https URL out of the (possibly prefixed/wrapped) output and
+        // pick the OAuth one. Matches "Open this URL: https://…/authorize?…".
+        guard let re = try? NSRegularExpression(pattern: "https://[^\\s\"'<>]+") else { return nil }
+        let ns = s as NSString
+        let matches = re.matches(in: s, range: NSRange(location: 0, length: ns.length))
+        for m in matches {
+            let str = ns.substring(with: m.range).trimmingCharacters(in: CharacterSet(charactersIn: ".,)]"))
+            let lower = str.lowercased()
+            if lower.contains("authorize") || lower.contains("oauth") || lower.contains("/auth"),
+               let u = URL(string: str) {
+                return u
+            }
+        }
+        return nil
+    }
+
+    private static func stripANSI(_ s: String) -> String {
+        s.replacingOccurrences(of: "\u{1B}\\[[0-9;?]*[A-Za-z]", with: "", options: .regularExpression)
     }
 }
