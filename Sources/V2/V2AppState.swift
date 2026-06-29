@@ -188,11 +188,21 @@ final class V2AppState: ObservableObject {
 
         // Re-publish per-tab StreamSession changes so v2 chrome reacts to
         // streaming/permission state transitions.
-        if let session = terminals.tabs.first(where: { $0.id == id })?.streamSession {
-            session.objectWillChange
-                .receive(on: RunLoop.main)
-                .sink { [weak self] _ in self?.objectWillChange.send() }
-                .store(in: &cancellables)
+        guard let session = terminals.tabs.first(where: { $0.id == id })?.streamSession else { return }
+        session.objectWillChange
+            .receive(on: RunLoop.main)
+            .sink { [weak self] _ in self?.objectWillChange.send() }
+            .store(in: &cancellables)
+
+        // Just start it. "New session" means a session — not a tab that then
+        // makes you click a second "Start session" button.
+        if let binary = claudeBinary {
+            session.start(
+                cwd: cwd,
+                claudeURL: binary,
+                model: defaultSpawnModel,
+                permissionMode: defaultPermissionMode
+            )
         }
     }
 
