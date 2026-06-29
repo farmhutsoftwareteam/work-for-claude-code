@@ -162,10 +162,10 @@ final class StreamSession: ObservableObject {
     /// to replay that session's history before the new turn — claude will
     /// stream its prior messages out of stdout in addition to handling new
     /// user turns.
-    func start(cwd: URL, claudeURL: URL, resumeId: String? = nil) {
+    func start(cwd: URL, claudeURL: URL, resumeId: String? = nil, model: String? = nil) {
         guard state == .idle else { return }
         state = .spawning
-        log.info("StreamSession.start cwd=\(cwd.path, privacy: .public) binary=\(claudeURL.path, privacy: .public) resume=\(resumeId ?? "-", privacy: .public)")
+        log.info("StreamSession.start cwd=\(cwd.path, privacy: .public) binary=\(claudeURL.path, privacy: .public) resume=\(resumeId ?? "-", privacy: .public) model=\(model ?? "-", privacy: .public)")
 
         let process = Process()
         process.executableURL = claudeURL
@@ -180,6 +180,13 @@ final class StreamSession: ObservableObject {
             args.append("--resume")
             args.append(resumeId)
             self.sessionId = resumeId
+        }
+        if let model, !model.isEmpty {
+            args.append("--model")
+            args.append(model)
+            // Reflect optimistically so the chip + footer pill don't read
+            // "claude" for the first few frames before system/init lands.
+            self.model = model
         }
         process.arguments = args
         process.currentDirectoryURL = cwd

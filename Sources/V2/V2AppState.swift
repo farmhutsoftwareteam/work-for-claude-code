@@ -47,6 +47,11 @@ final class V2AppState: ObservableObject {
     /// picker falls back to the active session's model when empty.
     @Published private(set) var discoveredModels: [V2DiscoveredModel] = []
 
+    /// Default model passed to `claude --model X` on every new spawn. The
+    /// user can still flip models mid-session via V2ModelPicker; this
+    /// just sets the initial model for fresh sessions and resumes.
+    @AppStorage("v2.defaultSpawnModel") var defaultSpawnModel: String = "claude-opus-4-8"
+
     /// Set once by V2RootView on first appear.
     weak var terminals: TerminalsController?
 
@@ -172,7 +177,12 @@ final class V2AppState: ObservableObject {
               let binary = claudeBinary,
               session.state == .idle else { return }
         let cwd = URL(fileURLWithPath: tab.projectCwd)
-        session.start(cwd: cwd, claudeURL: binary, resumeId: resumeIds[tab.id])
+        session.start(
+            cwd: cwd,
+            claudeURL: binary,
+            resumeId: resumeIds[tab.id],
+            model: defaultSpawnModel
+        )
     }
 
     /// Open a tab that resumes a known claude session. Used by V2HistoryRail
@@ -206,7 +216,8 @@ final class V2AppState: ObservableObject {
             session.start(
                 cwd: URL(fileURLWithPath: projectCwd),
                 claudeURL: binary,
-                resumeId: sessionId
+                resumeId: sessionId,
+                model: defaultSpawnModel
             )
         }
     }
