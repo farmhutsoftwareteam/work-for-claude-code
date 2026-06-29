@@ -162,26 +162,14 @@ final class V2AppState: ObservableObject {
     // MARK: - Project selection
 
     func selectProject(cwd: String, name: String) {
-        // Switching the rail's project should switch the main column too.
-        // Previously selectProject only set selectedProjectCwd (the "where
-        // ⌘N spawns" target) and left activeTabId pointing at a tab from a
-        // different project — the rail highlight moved but the chat stayed
-        // on the old project, which felt broken.
-        //
-        // Behaviour now:
-        //   • if this project has an open tab → activate its most-recent
-        //     one so the user lands back where they were
-        //   • else → clear activeTabId so the main column shows the empty
-        //     state ("pick a project, then ⌘N") and the composer disappears
+        // Clicking a project in the rail ALWAYS lands on its project home —
+        // the overview/dashboard — never jumping into an open chat. The model
+        // is clean: the rail picks the project (→ home), the tab strip holds
+        // open conversations (click a tab to return to one). Clearing
+        // activeTabId is what routes the main column to V2ProjectHome.
         selectedProjectCwd = URL(fileURLWithPath: cwd)
         selectedProjectName = name
-
-        let projectTabs = tabs.filter { $0.projectCwd == cwd }
-        if let mostRecent = projectTabs.sorted(by: { $0.createdAt > $1.createdAt }).first {
-            activeTabId = mostRecent.id
-        } else {
-            activeTabId = nil
-        }
+        activeTabId = nil
     }
 
     // MARK: - Tab management
