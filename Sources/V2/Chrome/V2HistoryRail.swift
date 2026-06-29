@@ -15,10 +15,20 @@ struct V2HistoryRail: View {
     @EnvironmentObject private var store: Store
     @EnvironmentObject private var appState: V2AppState
 
+    // Cached snapshot of all history entries across all projects. Recomputed
+    // only when store.projects changes — not on every render. Previously
+    // V2HistoryEntry.collect (a flatMap + map + sort across thousands of
+    // sessions) ran on EVERY SwiftUI render, which made the rail noticeably
+    // chunky as the user typed into the search box.
+    @State private var cachedAll: [V2HistoryEntry] = []
+    @State private var cachedGroups: [V2HistoryGroup] = []
+    @State private var lastProjectSignature: Int = 0
+
     var body: some View {
         ScrollView {
             LazyVStack(alignment: .leading, spacing: 0) {
-                if entries.isEmpty {
+                let groups = filteredGroups
+                if groups.isEmpty {
                     emptyState
                 } else {
                     ForEach(groups, id: \.label) { group in
@@ -39,7 +49,52 @@ struct V2HistoryRail: View {
             .padding(.horizontal, 8)
             .padding(.bottom, 8)
         }
+        .onAppear { refreshIfNeeded() }
+        .onChange(of: projectSignature) { _, _ in
+            cachedAll = V2HistoryEntry.collect(from: store.projects)
+            cachedGroups = V2HistoryEntry.bucket(cachedAll)
+            lastProjectSignature = projectSignature
+        }
         .enableInjection()
+    }
+
+    /// Cheap signature that changes when the project set actually changes —
+    /// avoids deep equality on every render.
+    private var projectSignature: Int {
+        var hasher = Hasher()
+        hasher.combine(store.projects.count)
+        for project in store.projects {
+            hasher.combine(project.id)
+            hasher.combine(project.sessions.count)
+        }
+        return hasher.finalize()
+    }
+
+    private func refreshIfNeeded() {
+        let sig = projectSignature
+        if sig != lastProjectSignature || cachedAll.isEmpty {
+            cachedAll = V2HistoryEntry.collect(from: store.projects)
+            cachedGroups = V2HistoryEntry.bucket(cachedAll)
+            lastProjectSignature = sig
+        }
+    }
+
+    /// Filter is cheap relative to collect — runs on the cached set on
+    /// every search-query change but doesn't re-walk Store.projects.
+    private var filteredEntries: [V2HistoryEntry] {
+        let q = appState.searchQuery.trimmingCharacters(in: .whitespaces).lowercased()
+        guard !q.isEmpty else { return cachedAll }
+        return cachedAll.filter {
+            $0.title.lowercased().contains(q)
+                || $0.projectName.lowercased().contains(q)
+                || $0.sessionId.lowercased().contains(q)
+        }
+    }
+
+    private var filteredGroups: [V2HistoryGroup] {
+        let q = appState.searchQuery.trimmingCharacters(in: .whitespaces).lowercased()
+        if q.isEmpty { return cachedGroups }
+        return V2HistoryEntry.bucket(filteredEntries)
     }
 
     private func groupHeader(_ label: String) -> some View {
@@ -65,20 +120,6 @@ struct V2HistoryRail: View {
         .frame(maxWidth: .infinity)
     }
 
-    private var entries: [V2HistoryEntry] {
-        let all = V2HistoryEntry.collect(from: store.projects)
-        let q = appState.searchQuery.trimmingCharacters(in: .whitespaces).lowercased()
-        guard !q.isEmpty else { return all }
-        return all.filter {
-            $0.title.lowercased().contains(q)
-                || $0.projectName.lowercased().contains(q)
-                || $0.sessionId.lowercased().contains(q)
-        }
-    }
-
-    private var groups: [V2HistoryGroup] {
-        V2HistoryEntry.bucket(entries)
-    }
 }
 
 // MARK: - Row

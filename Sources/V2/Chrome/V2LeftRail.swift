@@ -14,6 +14,13 @@ struct V2LeftRail: View {
     @State private var showingHooksEditor = false
     @State private var showingMCPSheet = false
 
+    // Sorted projects cached so we don't re-sort on every render. Sort is
+    // O(n log n) over Store.projects (typically ~80 entries here), running
+    // on every keystroke into the search field used to add measurable
+    // jank. Recomputed only when the project set actually changes.
+    @State private var sortedProjects: [Project] = []
+    @State private var lastProjectSignature: Int = 0
+
     var body: some View {
         VStack(spacing: 0) {
             searchBox
@@ -37,6 +44,8 @@ struct V2LeftRail: View {
             .environmentObject(store)
             .frame(minWidth: 560, minHeight: 600)
         }
+        .onAppear { refreshProjectsIfNeeded() }
+        .onChange(of: projectsSignature) { _, _ in refreshProjectsIfNeeded() }
         .enableInjection()
     }
 
@@ -229,15 +238,33 @@ struct V2LeftRail: View {
     }
 
     private var filtered: [Project] {
+        // Sort is cached, filter runs against the cached list — cheap.
         let q = appState.searchQuery.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-        let sorted = store.projects.sorted { l, r in
-            // Live projects first, then alphabetical.
-            if l.isActive != r.isActive { return l.isActive }
-            return l.displayName.localizedCaseInsensitiveCompare(r.displayName) == .orderedAscending
-        }
-        guard !q.isEmpty else { return sorted }
-        return sorted.filter {
+        guard !q.isEmpty else { return sortedProjects }
+        return sortedProjects.filter {
             $0.displayName.lowercased().contains(q) || $0.cwd.lowercased().contains(q)
+        }
+    }
+
+    private var projectsSignature: Int {
+        var hasher = Hasher()
+        hasher.combine(store.projects.count)
+        for project in store.projects {
+            hasher.combine(project.id)
+            hasher.combine(project.isActive)
+        }
+        return hasher.finalize()
+    }
+
+    private func refreshProjectsIfNeeded() {
+        let sig = projectsSignature
+        if sig != lastProjectSignature || sortedProjects.isEmpty {
+            sortedProjects = store.projects.sorted { l, r in
+                // Live projects first, then alphabetical.
+                if l.isActive != r.isActive { return l.isActive }
+                return l.displayName.localizedCaseInsensitiveCompare(r.displayName) == .orderedAscending
+            }
+            lastProjectSignature = sig
         }
     }
 
