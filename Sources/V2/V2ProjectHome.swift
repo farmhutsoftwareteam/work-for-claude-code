@@ -15,6 +15,7 @@ struct V2ProjectHome: View {
     @Environment(\.v2) private var v2
     @EnvironmentObject private var store: Store
     @EnvironmentObject private var appState: V2AppState
+    @StateObject private var git = V2GitModel()
     @State private var tab: Tab = .sessions
 
     private enum Tab { case sessions, changes }
@@ -27,13 +28,14 @@ struct V2ProjectHome: View {
             Group {
                 switch tab {
                 case .sessions: sessionsBody
-                case .changes:  changesStub
+                case .changes:  changesView
                 }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .background(v2.paper)
+        .task(id: cwd) { await git.load(cwd: cwd) }
         .enableInjection()
     }
 
@@ -98,6 +100,7 @@ struct V2ProjectHome: View {
 
     private var subline: String {
         var parts = [cwd]
+        if let branch = git.status?.branch, branch != "—" { parts.append(branch) }
         if let last = entries.first?.relativeTime { parts.append("last active \(last) ago") }
         return parts.joined(separator: " · ")
     }
@@ -135,11 +138,34 @@ struct V2ProjectHome: View {
     private var tabBar: some View {
         HStack(spacing: 0) {
             tabButton("Sessions", .sessions, badge: nil)
-            tabButton("Changes", .changes, badge: nil)
+            tabButton("Changes", .changes, badge: changeBadge)
             Spacer()
+            if let g = gitIndicator {
+                HStack(spacing: 7) {
+                    Circle().fill(v2.ink).frame(width: 6, height: 6)
+                    Text(g).font(.system(size: 11, design: .monospaced)).foregroundColor(v2.faint)
+                }
+            }
         }
         .padding(.horizontal, 20)
         .overlay(alignment: .bottom) { Rectangle().fill(v2.line).frame(height: 1) }
+    }
+
+    private var changeBadge: String? {
+        let n = git.status?.changeCount ?? 0
+        return n > 0 ? "\(n)" : nil
+    }
+
+    private var gitIndicator: String? {
+        guard let s = git.status, s.branch != "—" else { return nil }
+        var label = s.branch
+        if s.ahead > 0 || s.behind > 0 {
+            var arrows: [String] = []
+            if s.ahead > 0 { arrows.append("↑\(s.ahead)") }
+            if s.behind > 0 { arrows.append("↓\(s.behind)") }
+            label += " · " + arrows.joined(separator: " ")
+        }
+        return label
     }
 
     private func tabButton(_ title: String, _ which: Tab, badge: String?) -> some View {
@@ -277,17 +303,9 @@ struct V2ProjectHome: View {
         NSWorkspace.shared.activateFileViewerSelecting([URL(fileURLWithPath: cwd)])
     }
 
-    // MARK: - Changes (stub — Phase 3)
+    // MARK: - Changes (real git)
 
-    private var changesStub: some View {
-        VStack(spacing: 10) {
-            Text("Changes")
-                .font(.system(size: 14, weight: .medium))
-                .foregroundColor(v2.mute)
-            Text("Git file list, diff view & commit — coming in the next pass.")
-                .font(.system(size: 12, design: .monospaced))
-                .foregroundColor(v2.faint)
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    private var changesView: some View {
+        V2ProjectChanges(git: git)
     }
 }

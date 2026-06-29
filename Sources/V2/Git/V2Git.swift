@@ -1,0 +1,194 @@
+// Git integration for the project-home Changes tab. No library — we shell out
+// to `git` in the project's directory, exactly like the app already spawns
+// `claude`. Read-only status/diff plus the explicit user actions stage,
+// unstage, and commit. (Destructive ops like discard are intentionally left
+// out of v1 until there's a confirm flow.)
+
+import Foundation
+
+// MARK: - Models
+
+struct GitFile: Identifiable, Equatable, Sendable {
+    let path: String
+    let staged: Bool        // which section it belongs to
+    let status: String      // single-char index/worktree code: M A D R ? …
+    let untracked: Bool
+    var added: Int = 0
+    var deleted: Int = 0
+    var id: String { (staged ? "S:" : "U:") + path }
+}
+
+struct GitStatus: Sendable {
+    var branch: String
+    var upstream: String?
+    var ahead: Int
+    var behind: Int
+    var staged: [GitFile]
+    var unstaged: [GitFile]
+    var changeCount: Int { staged.count + unstaged.count }
+}
+
+enum DiffLineKind: Sendable { case context, add, del, hunk }
+
+struct DiffLine: Identifiable, Sendable {
+    let id: Int
+    let kind: DiffLineKind
+    let text: String
+}
+
+// MARK: - Service
+
+enum V2Git {
+
+    private static let gitPath = "/usr/bin/git"
+
+    /// Run a git command in `cwd`. Returns (stdout, exitCode). Off the main
+    /// thread; reads the pipe to EOF before waiting so large diffs can't
+    /// deadlock on a full pipe buffer.
+    static func run(_ args: [String], cwd: String) async -> (out: String, code: Int32) {
+        await withCheckedContinuation { cont in
+            DispatchQueue.global(qos: .userInitiated).async {
+                guard FileManager.default.isExecutableFile(atPath: gitPath) else {
+                    cont.resume(returning: ("", 127)); return
+                }
+                let p = Process()
+                p.executableURL = URL(fileURLWithPath: gitPath)
+                p.arguments = ["-C", cwd] + args
+                let out = Pipe()
+                p.standardOutput = out
+                p.standardError = Pipe()
+                do { try p.run() } catch { cont.resume(returning: ("", 127)); return }
+                let data = out.fileHandleForReading.readDataToEndOfFile()
+                p.waitUntilExit()
+                cont.resume(returning: (String(data: data, encoding: .utf8) ?? "", p.terminationStatus))
+            }
+        }
+    }
+
+    /// True if `cwd` is inside a git work tree.
+    static func isRepo(cwd: String) async -> Bool {
+        let r = await run(["rev-parse", "--is-inside-work-tree"], cwd: cwd)
+        return r.code == 0 && r.out.trimmingCharacters(in: .whitespacesAndNewlines) == "true"
+    }
+
+    /// Full working-tree status: branch, ahead/behind, staged + unstaged files
+    /// with per-file line counts.
+    static func status(cwd: String) async -> GitStatus? {
+        let r = await run(["status", "--porcelain", "-b", "-uall"], cwd: cwd)
+        guard r.code == 0 else { return nil }
+
+        var branch = "—", upstream: String?, ahead = 0, behind = 0
+        var staged: [GitFile] = [], unstaged: [GitFile] = []
+
+        for raw in r.out.split(separator: "\n", omittingEmptySubsequences: false) {
+            let line = String(raw)
+            if line.hasPrefix("## ") {
+                (branch, upstream, ahead, behind) = parseBranch(String(line.dropFirst(3)))
+                continue
+            }
+            guard line.count >= 3 else { continue }
+            let chars = Array(line)
+            let x = String(chars[0])   // index (staged)
+            let y = String(chars[1])   // worktree (unstaged)
+            var path = String(line.dropFirst(3))
+            if let arrow = path.range(of: " -> ") { path = String(path[arrow.upperBound...]) }  // rename → new
+
+            if x == "?" && y == "?" {
+                unstaged.append(GitFile(path: path, staged: false, status: "?", untracked: true))
+                continue
+            }
+            if x != " " && x != "?" {
+                staged.append(GitFile(path: path, staged: true, status: x, untracked: false))
+            }
+            if y != " " && y != "?" {
+                unstaged.append(GitFile(path: path, staged: false, status: y, untracked: false))
+            }
+        }
+
+        let stagedCounts = await numstat(cwd: cwd, cached: true)
+        let unstagedCounts = await numstat(cwd: cwd, cached: false)
+        staged = staged.map { var f = $0; if let c = stagedCounts[f.path] { f.added = c.0; f.deleted = c.1 }; return f }
+        unstaged = unstaged.map { var f = $0; if let c = unstagedCounts[f.path] { f.added = c.0; f.deleted = c.1 }; return f }
+
+        return GitStatus(branch: branch, upstream: upstream, ahead: ahead, behind: behind,
+                         staged: staged, unstaged: unstaged)
+    }
+
+    private static func parseBranch(_ s: String) -> (String, String?, Int, Int) {
+        // "main...origin/main [ahead 2, behind 1]"  |  "main"  |  "HEAD (no branch)"
+        var branch = s, upstream: String?, ahead = 0, behind = 0
+        if let bracket = branch.range(of: " [") {
+            let inside = branch[bracket.upperBound...].dropLast()  // "ahead 2, behind 1]"
+            for part in inside.split(separator: ",") {
+                let t = part.trimmingCharacters(in: .whitespaces)
+                if t.hasPrefix("ahead ") { ahead = Int(t.dropFirst(6)) ?? 0 }
+                if t.hasPrefix("behind ") { behind = Int(t.dropFirst(7)) ?? 0 }
+            }
+            branch = String(branch[..<bracket.lowerBound])
+        }
+        if let sep = branch.range(of: "...") {
+            upstream = String(branch[sep.upperBound...])
+            branch = String(branch[..<sep.lowerBound])
+        }
+        return (branch, upstream, ahead, behind)
+    }
+
+    /// path → (added, deleted) from `git diff [--cached] --numstat`.
+    private static func numstat(cwd: String, cached: Bool) async -> [String: (Int, Int)] {
+        var args = ["diff", "--numstat"]
+        if cached { args.insert("--cached", at: 1) }
+        let r = await run(args, cwd: cwd)
+        var map: [String: (Int, Int)] = [:]
+        for line in r.out.split(separator: "\n") {
+            let cols = line.split(separator: "\t", maxSplits: 2)
+            guard cols.count == 3 else { continue }
+            map[String(cols[2])] = (Int(cols[0]) ?? 0, Int(cols[1]) ?? 0)
+        }
+        return map
+    }
+
+    /// Parsed unified diff for one file.
+    static func diff(cwd: String, path: String, staged: Bool, untracked: Bool) async -> [DiffLine] {
+        let args: [String]
+        if untracked {
+            args = ["diff", "--no-index", "--", "/dev/null", path]   // exits 1 with output
+        } else if staged {
+            args = ["diff", "--cached", "--", path]
+        } else {
+            args = ["diff", "--", path]
+        }
+        let r = await run(args, cwd: cwd)
+        var lines: [DiffLine] = []
+        var i = 0
+        for raw in r.out.split(separator: "\n", omittingEmptySubsequences: false) {
+            let line = String(raw)
+            if line.hasPrefix("diff --git") || line.hasPrefix("index ")
+                || line.hasPrefix("--- ") || line.hasPrefix("+++ ")
+                || line.hasPrefix("new file") || line.hasPrefix("deleted file")
+                || line.hasPrefix("similarity") || line.hasPrefix("rename ")
+                || line.hasPrefix("\\ No newline") { continue }
+            let kind: DiffLineKind
+            if line.hasPrefix("@@") { kind = .hunk }
+            else if line.hasPrefix("+") { kind = .add }
+            else if line.hasPrefix("-") { kind = .del }
+            else { kind = .context }
+            lines.append(DiffLine(id: i, kind: kind, text: line))
+            i += 1
+        }
+        return lines
+    }
+
+    // MARK: - Mutations (explicit user actions only)
+
+    static func stage(cwd: String, path: String) async {
+        _ = await run(["add", "--", path], cwd: cwd)
+    }
+    static func unstage(cwd: String, path: String) async {
+        _ = await run(["restore", "--staged", "--", path], cwd: cwd)
+    }
+    @discardableResult
+    static func commit(cwd: String, message: String) async -> (ok: Bool, output: String) {
+        let r = await run(["commit", "-m", message], cwd: cwd)
+        return (r.code == 0, r.out)
+    }
+}
