@@ -6,6 +6,37 @@
         <description>Updates for Work</description>
         <language>en</language>
         <item>
+            <title>Version 2.0.4</title>
+            <pubDate>Mon, 29 Jun 2026 15:30:00 +0000</pubDate>
+            <sparkle:version>28</sparkle:version>
+            <sparkle:shortVersionString>2.0.4</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>15.0</sparkle:minimumSystemVersion>
+            <description><![CDATA[
+                <h3>Atelier 2.0.4 — permissions that stick, full state visibility, retry</h3>
+                <h4>Permissions</h4>
+                <ul>
+                    <li><b>Default is now "accept edits"</b> — claude edits files without a prompt per edit, still asks for riskier tools. Dial up to bypass or down to plan / default anytime.</li>
+                    <li><b>Your choice sticks</b> across new tabs, restarts, and resumed sessions — it no longer silently resets to per-call prompting every spawn.</li>
+                    <li><b>Change it mid-conversation</b> — applies to the live session immediately and saves as the default for next time.</li>
+                </ul>
+                <h4>See all of claude's states</h4>
+                <ul>
+                    <li>Stop-hook output, informational notices, and other system events now appear as subtle inline notes instead of being silently dropped.</li>
+                    <li><b>Connection errors are visible</b> — auto-retries show a "retrying (n/N)" banner instead of looking like a hung session.</li>
+                </ul>
+                <h4>No more dead air + retry</h4>
+                <ul>
+                    <li>Sending shows an immediate "Working…" cue and auto-scrolls to it; the transcript follows streaming replies all the way down.</li>
+                    <li>A <b>retry</b> button on the result footer re-sends your last message.</li>
+                </ul>
+            ]]></description>
+            <enclosure
+                url="https://work.munyamakosa.com/Work.dmg"
+                length="9919023"
+                type="application/octet-stream"
+                sparkle:edSignature="f2wnmIL/dFuoMPL28buggrOtNRWeAODSR6wcy27gND5PZCQxJZGGzPpfnkktrBjND/bf4nbUVoQ9kCc7S91JDQ==" />
+        </item>
+        <item>
             <title>Version 2.0.3</title>
             <pubDate>Mon, 29 Jun 2026 14:27:00 +0000</pubDate>
             <sparkle:version>27</sparkle:version>
