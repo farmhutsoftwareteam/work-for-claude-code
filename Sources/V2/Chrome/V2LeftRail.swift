@@ -390,12 +390,18 @@ struct V2RowPressStyle: ButtonStyle {
         let configuration: Configuration
         var body: some View {
             configuration.label
+                // Force the styled row to fill its width and make the ENTIRE
+                // rectangle the hit target — a custom ButtonStyle doesn't
+                // inherit the label's contentShape, so without this only the
+                // text/glyphs were clickable.
+                .frame(maxWidth: .infinity, alignment: .leading)
                 .overlay(configuration.isPressed ? v2.ink.opacity(0.10) : Color.clear)
                 .overlay(alignment: .leading) {
                     if configuration.isPressed {
                         Rectangle().fill(v2.ink).frame(width: 2)
                     }
                 }
+                .contentShape(Rectangle())
         }
     }
 }
