@@ -161,13 +161,11 @@ struct V2McpPanel: View {
         let needsAuth = oauth && store.mcpNeedsAuth.contains(server.name)
         let signedIn = oauth && !needsAuth   // OAuth-capable and NOT in needs-auth cache
         return HStack(spacing: 11) {
-            // Filled square = ready to use (stdio or signed-in OAuth); hollow =
-            // needs sign-in. Mirrors the live serverRow's state square.
-            if needsAuth {
-                Rectangle().stroke(v2.line2, lineWidth: 1).frame(width: 11, height: 11)
-            } else {
-                Rectangle().fill(v2.ink).frame(width: 11, height: 11)
-            }
+            // Brand glyph, dimmed when the server still needs sign-in.
+            V2ServiceLogo(name: server.name,
+                          host: V2ServiceLogo.host(of: server.transport),
+                          size: 17,
+                          tint: needsAuth ? v2.faint : v2.ink)
             VStack(alignment: .leading, spacing: 2) {
                 Text(server.name)
                     .font(.system(size: 13.5, weight: .medium)).kerning(-0.13)
@@ -311,12 +309,14 @@ struct V2McpPanel: View {
     private func serverRow(_ server: MCPServerInfo) -> some View {
         let status = (server.status ?? "unknown").lowercased()
         let isConnected = status == "connected" || status == "ready"
-        let isPending = status == "pending"
         let needsAuth = status == "needs-auth"
         let isFailed = status == "failed" || status == "error"
 
         return HStack(spacing: 11) {
-            stateSquare(connected: isConnected, pending: isPending, failed: isFailed, needsAuth: needsAuth)
+            // Brand glyph tinted by live status: ink = connected, faint =
+            // pending/needs-auth, red = failed.
+            V2ServiceLogo(name: server.name, size: 17,
+                          tint: isConnected ? v2.ink : (isFailed ? v2.del : v2.faint))
 
             VStack(alignment: .leading, spacing: 2) {
                 Text(displayName(server.name))
@@ -341,27 +341,6 @@ struct V2McpPanel: View {
         .opacity(isFailed ? 0.55 : 1.0)
         .overlay(alignment: .bottom) {
             Rectangle().fill(v2.line).frame(height: 1)
-        }
-    }
-
-    @ViewBuilder
-    private func stateSquare(connected: Bool, pending: Bool, failed: Bool, needsAuth: Bool) -> some View {
-        if pending || needsAuth {
-            Rectangle()
-                .stroke(v2.line2, lineWidth: 1)
-                .frame(width: 11, height: 11)
-        } else if failed {
-            Rectangle()
-                .fill(v2.del)
-                .frame(width: 11, height: 11)
-        } else if connected {
-            Rectangle()
-                .fill(v2.ink)
-                .frame(width: 11, height: 11)
-        } else {
-            Rectangle()
-                .stroke(v2.line2, lineWidth: 1)
-                .frame(width: 11, height: 11)
         }
     }
 
