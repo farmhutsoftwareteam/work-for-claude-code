@@ -303,39 +303,24 @@ final class HarnessOrchestrator: ObservableObject {
         )
     }
 
-    /// Spawn `claude -p` with the prompt, capture stdout text, wait for exit.
-    /// Returns "" if the spawn or wait fails — phases tolerate empty output
-    /// (it just produces nothing for the iteration; the user can stop or
-    /// the next iteration will see no progress and likely fail review).
+    /// Spawn `claude -p` with the prompt, capture stdout text. Returns ""
+    /// on spawn failure or cancellation — phases tolerate empty output
+    /// (no progress, next iteration's review will likely fail).
+    ///
+    /// Goes through V2Subprocess so:
+    ///   • stderr is drained concurrently (no pipe-buffer deadlock)
+    ///   • Task cancellation (`currentTask?.cancel()` from stop()) actually
+    ///     terminates the child process instead of leaving it orphaned.
     private func runOneShot(prompt: String, skipPermissions: Bool) async -> String {
-        let claudeURL = self.claudeURL
-        let cwd = self.cwd
-        return await Task.detached(priority: .userInitiated) {
-            var args = ["-p", prompt, "--output-format", "text"]
-            if skipPermissions {
-                args.append("--dangerously-skip-permissions")
-            }
-
-            let process = Process()
-            process.executableURL = claudeURL
-            process.arguments = args
-            process.currentDirectoryURL = cwd
-
-            let stdout = Pipe()
-            let stderr = Pipe()
-            process.standardOutput = stdout
-            process.standardError = stderr
-
-            do {
-                try process.run()
-            } catch {
-                log.error("harness phase spawn failed: \(error.localizedDescription, privacy: .public)")
-                return ""
-            }
-            process.waitUntilExit()
-            let data = stdout.fileHandleForReading.readDataToEndOfFile()
-            return String(data: data, encoding: .utf8) ?? ""
-        }.value
+        var args = ["-p", prompt, "--output-format", "text"]
+        if skipPermissions {
+            args.append("--dangerously-skip-permissions")
+        }
+        return await V2Subprocess.runCollectingStdout(
+            executable: claudeURL,
+            args: args,
+            cwd: cwd
+        )
     }
 
     nonisolated static func parseVerdict(raw: String) -> (isPass: Bool, summary: String) {

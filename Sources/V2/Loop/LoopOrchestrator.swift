@@ -198,39 +198,28 @@ final class LoopOrchestrator: ObservableObject {
         claudeURL: URL,
         cwd: URL
     ) async -> Verdict {
-        await Task.detached(priority: .userInitiated) {
-            let combined = """
-            \(prompt)
+        let combined = """
+        \(prompt)
 
-            ---
-            Agent output to evaluate:
-            \(doerOutput.isEmpty ? "(no text result returned)" : doerOutput)
-            ---
-            """
+        ---
+        Agent output to evaluate:
+        \(doerOutput.isEmpty ? "(no text result returned)" : doerOutput)
+        ---
+        """
 
-            let process = Process()
-            process.executableURL = claudeURL
-            process.arguments = ["-p", combined, "--output-format", "text"]
-            process.currentDirectoryURL = cwd
-
-            let stdout = Pipe()
-            let stderr = Pipe()
-            process.standardOutput = stdout
-            process.standardError = stderr
-
-            do {
-                try process.run()
-            } catch {
-                log.error("verifier spawn failed: \(error.localizedDescription, privacy: .public)")
-                return Verdict(isPass: false, summary: "verifier spawn failed: \(error.localizedDescription)")
-            }
-
-            process.waitUntilExit()
-
-            let data = stdout.fileHandleForReading.readDataToEndOfFile()
-            let raw = String(data: data, encoding: .utf8) ?? ""
-            return parseVerdict(raw: raw)
-        }.value
+        // Goes through V2Subprocess which drains both pipes concurrently
+        // (no stderr-buffer deadlock) and terminates the child on outer
+        // Task cancel (no orphaned claude processes when the user clicks
+        // Stop while the verifier is running).
+        let raw = await V2Subprocess.runCollectingStdout(
+            executable: claudeURL,
+            args: ["-p", combined, "--output-format", "text"],
+            cwd: cwd
+        )
+        if raw.isEmpty {
+            return Verdict(isPass: false, summary: "verifier produced no output (spawn failed or cancelled)")
+        }
+        return parseVerdict(raw: raw)
     }
 
     /// Parse PASS / FAIL: <reason> from the verifier's first non-empty line.
