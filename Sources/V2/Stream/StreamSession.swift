@@ -98,6 +98,11 @@ final class StreamSession: ObservableObject {
         return min(1, Double(contextTokens) / Double(contextWindow))
     }
 
+    /// When the current user turn was sent. Drives the composer's elapsed
+    /// "Working… Ns" counter so a slow first token reads as "alive", not
+    /// "stuck". Set in send(); only meaningful while state == .working.
+    @Published private(set) var turnStartedAt: Date?
+
     /// Set true while an `api_retry` is in flight.
     @Published private(set) var isRetrying: Bool = false
 
@@ -441,6 +446,7 @@ final class StreamSession: ObservableObject {
         // Previously the success path was the only one that set .working,
         // so a failed send left the transcript showing the user turn with
         // the session stuck in .ready and no visible error.
+        turnStartedAt = Date()
         state = .working
         Task { [weak self] in
             guard let self else { return }
@@ -668,11 +674,13 @@ final class StreamSession: ObservableObject {
             if let t = sys.tools { tools = t }
             if let c = sys.cwd { cwd = c }
             // Semantic correctness: after init, claude is idle waiting for
-            // the first user message — that's .ready, not .working. Going
-            // straight to .working makes the composer render a Stop button
-            // when nothing's actually running. The transition to .working
-            // happens in send() when the user sends their first text.
-            if state == .spawning || state == .initializing || state == .working {
+            // the first user message — that's .ready. Only promote from the
+            // startup states. Crucially do NOT touch .working: the composer
+            // lets you type during .initializing, so you can send before
+            // system/init lands — and if init then reset .working → .ready it
+            // would kill the "Working…" cue of an in-flight turn, which read
+            // as "I sent but nothing happened" (intermittent dead air).
+            if state == .spawning || state == .initializing {
                 state = .ready
             }
         case "api_retry":

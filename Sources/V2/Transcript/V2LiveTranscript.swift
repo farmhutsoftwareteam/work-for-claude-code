@@ -94,12 +94,22 @@ struct V2LiveTranscript: View {
             // keep a subtle shimmer underneath.
             V2LoadingSkeleton()
         } else {
-            // Nothing back yet — explicit labelled cue.
+            // Nothing back yet — explicit labelled cue with a live elapsed
+            // counter so a slow first token reads as "alive", not "stuck".
             HStack(spacing: 9) {
                 V2PulseDot(size: 7, color: v2.ink)
-                Text("Working…")
-                    .font(.system(size: 13, design: .monospaced))
-                    .foregroundColor(v2.mute)
+                if let started = session.turnStartedAt {
+                    TimelineView(.periodic(from: started, by: 1)) { ctx in
+                        let secs = Int(ctx.date.timeIntervalSince(started))
+                        Text(secs >= 1 ? "Working… \(secs)s" : "Working…")
+                            .font(.system(size: 13, design: .monospaced))
+                            .foregroundColor(v2.mute)
+                    }
+                } else {
+                    Text("Working…")
+                        .font(.system(size: 13, design: .monospaced))
+                        .foregroundColor(v2.mute)
+                }
             }
             .padding(.top, 2)
         }
