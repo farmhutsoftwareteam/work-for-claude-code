@@ -82,21 +82,12 @@ final class StreamSession: ObservableObject {
     @Published private(set) var tokensUsed: Int = 0
 
     /// Tokens currently occupying the context window (prompt size of the last
-    /// completed turn). Drives the composer's context meter. Zero until the
-    /// first turn completes; reset by resetTranscript().
+    /// completed turn). This is measured from the agent's own usage data — the
+    /// numerator of the context meter. The window (denominator) is sourced
+    /// separately from the provider via V2AppState.contextWindow(for:), not
+    /// hardcoded here. Zero until the first turn completes; reset by
+    /// resetTranscript().
     @Published private(set) var contextTokens: Int = 0
-
-    /// The active model's context window. Opus/Sonnet/Haiku are 200k; the
-    /// 1M-context beta variants (model id carries "1m") get 1,000,000.
-    var contextWindow: Int {
-        model.lowercased().contains("1m") ? 1_000_000 : 200_000
-    }
-
-    /// Fraction of the context window in use, 0…1.
-    var contextFraction: Double {
-        guard contextWindow > 0 else { return 0 }
-        return min(1, Double(contextTokens) / Double(contextWindow))
-    }
 
     /// When the current user turn was sent. Drives the composer's elapsed
     /// "Working… Ns" counter so a slow first token reads as "alive", not

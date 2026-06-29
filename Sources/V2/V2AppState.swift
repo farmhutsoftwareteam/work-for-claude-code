@@ -47,6 +47,13 @@ final class V2AppState: ObservableObject {
     /// picker falls back to the active session's model when empty.
     @Published private(set) var discoveredModels: [V2DiscoveredModel] = []
 
+    /// model id → context window (max_input_tokens), sourced from Anthropic's
+    /// Models API — NOT hardcoded. Empty until a fetch succeeds; persisted so
+    /// a launch without network still has last-known values. When a model
+    /// isn't in here, the context meter shows raw tokens with no percentage.
+    @Published private(set) var modelContextWindows: [String: Int] = [:]
+    private static let modelWindowsKey = "v2.modelContextWindows"
+
     /// Default model passed to `claude --model X` on every new spawn. The
     /// user can still flip models mid-session via V2ModelPicker; this
     /// just sets the initial model for fresh sessions and resumes.
@@ -103,6 +110,36 @@ final class V2AppState: ObservableObject {
                 self?.discoveredModels = models
             }
         }
+    }
+
+    /// Load any persisted context windows, then refresh from Anthropic's
+    /// Models API if an API key is available. No key (OAuth/subscription) ⇒
+    /// keep whatever's cached (possibly nothing) and let the meter show
+    /// tokens-only. Call once at launch.
+    func refreshModelCatalog() {
+        if modelContextWindows.isEmpty,
+           let data = UserDefaults.standard.data(forKey: Self.modelWindowsKey),
+           let cached = try? JSONDecoder().decode([String: Int].self, from: data) {
+            modelContextWindows = cached
+        }
+        Task { [weak self] in
+            guard let fresh = await V2ModelCatalog.fetch() else { return }
+            await MainActor.run {
+                self?.modelContextWindows = fresh
+                if let data = try? JSONEncoder().encode(fresh) {
+                    UserDefaults.standard.set(data, forKey: Self.modelWindowsKey)
+                }
+            }
+        }
+    }
+
+    /// Provider-sourced context window for a model id, or nil if unknown.
+    /// The 1M-context beta is signalled by "1m" in the id (a client-enabled
+    /// capability the Models API doesn't report as a separate entry), so it's
+    /// the one documented constant here; everything else comes from the API.
+    func contextWindow(for modelId: String) -> Int? {
+        if modelId.lowercased().contains("1m") { return 1_000_000 }
+        return modelContextWindows[modelId]
     }
 
     // MARK: - Tab access

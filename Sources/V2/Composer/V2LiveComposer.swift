@@ -562,30 +562,36 @@ struct V2LiveComposer: View {
         .foregroundColor(v2.faint)
     }
 
-    /// Model + how full the context window is. The bar + percentage answer
-    /// "how much room is left before I should /clear or /compact".
+    /// Model + how full the context is. Shows a % gauge only when we have a
+    /// provider-sourced window (Anthropic Models API); otherwise it degrades
+    /// to honest raw "Nk in context" with no invented denominator.
     private var contextMeter: some View {
-        let frac = session.contextFraction
-        let high = frac >= 0.85
-        let pct = Int((frac * 100).rounded())
-        let used = V2Format.count(session.contextTokens)
-        let window = V2Format.count(session.contextWindow)
+        let used = session.contextTokens
+        let usedLabel = V2Format.count(used)
+        let window = appState.contextWindow(for: session.model)
         return HStack(spacing: 8) {
             Text(session.model).foregroundColor(v2.faint)
-            ZStack(alignment: .leading) {
-                Rectangle().fill(v2.line2).frame(width: 46, height: 4)
-                Rectangle()
-                    .fill(high ? v2.del : v2.ink)
-                    .frame(width: 46 * max(0, min(1, frac)), height: 4)
-            }
-            if session.contextTokens > 0 {
-                Text("\(pct)% · \(used)/\(window)")
-                    .foregroundColor(high ? v2.del : v2.faint)
-            } else {
+            if used == 0 {
                 Text("context idle").foregroundColor(v2.faint)
+            } else if let window, window > 0 {
+                let frac = min(1, Double(used) / Double(window))
+                let high = frac >= 0.85
+                let pct = Int((frac * 100).rounded())
+                ZStack(alignment: .leading) {
+                    Rectangle().fill(v2.line2).frame(width: 46, height: 4)
+                    Rectangle().fill(high ? v2.del : v2.ink)
+                        .frame(width: 46 * max(0, frac), height: 4)
+                }
+                Text("\(pct)% · \(usedLabel)/\(V2Format.count(window))")
+                    .foregroundColor(high ? v2.del : v2.faint)
+                    .help("Context: \(usedLabel) of \(V2Format.count(window)) tokens (\(pct)%). /clear resets it, /compact summarises.")
+            } else {
+                // No provider window for this model — never fake a %.
+                Text("\(usedLabel) in context")
+                    .foregroundColor(v2.faint)
+                    .help("Tokens in context. The window % needs Anthropic's Models API, which requires an ANTHROPIC_API_KEY the app can read.")
             }
         }
-        .help("Context window: \(used) of \(window) tokens used (\(pct)%). /clear resets it, /compact summarises.")
     }
 
     // MARK: - Image picker

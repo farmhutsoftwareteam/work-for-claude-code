@@ -116,6 +116,7 @@ struct V2RootView: View {
             appState.attach(terminals: terminals)
             appState.resolveBinary()
             appState.refreshDiscoveredModels()
+            appState.refreshModelCatalog()
             // Aged composer pastes (>24h) get cleaned up here rather than
             // on every send — clearing post-send was deleting PNGs out from
             // under an in-flight Read tool call.
