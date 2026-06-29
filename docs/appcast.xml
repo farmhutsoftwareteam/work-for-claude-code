@@ -6,6 +6,30 @@
         <description>Updates for Work</description>
         <language>en</language>
         <item>
+            <title>Version 2.0.3</title>
+            <pubDate>Mon, 29 Jun 2026 14:27:00 +0000</pubDate>
+            <sparkle:version>27</sparkle:version>
+            <sparkle:shortVersionString>2.0.3</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>15.0</sparkle:minimumSystemVersion>
+            <description><![CDATA[
+                <h3>Atelier 2.0.3 — making v2 usable for daily work</h3>
+                <p>Six chat-surface bugs from the first sessions of dogfooding v2 — all the kind that bite within minutes of real use.</p>
+                <ul>
+                    <li><b>Transcript scrolls during streaming.</b> It used to only scroll on a new message; a streaming reply ran off the bottom. Now it pins to the bottom as the reply comes in, and jumps to the bottom on a resumed session.</li>
+                    <li><b>New chats stop "replacing" the current tab.</b> The strip is now global — every open chat is a visible tab (like browser tabs), with a project label when you span more than one.</li>
+                    <li><b>Permission requests are a real modal.</b> The whole window dims and the Approve / Deny request sits front and centre, instead of a small inline card that was easy to miss.</li>
+                    <li><b>Each tab keeps its own draft, attachments, and scroll position.</b> No more half-typed messages bleeding between tabs.</li>
+                    <li><b>Enter no longer fires a second turn mid-stream.</b> You can keep typing your next message; it sends once the turn finishes.</li>
+                    <li><b>"esc to interrupt" actually works now</b> — it was advertised but never wired.</li>
+                </ul>
+            ]]></description>
+            <enclosure
+                url="https://work.munyamakosa.com/Work.dmg"
+                length="9887927"
+                type="application/octet-stream"
+                sparkle:edSignature="u/cPpOaRzghyUylgWaUH3j3YpiB+3ArDlqml9RQIjhY5kxKvwtKN2NcgyF1pMqYZlu/6gDmV7KkQki7Bl0/0Cw==" />
+        </item>
+        <item>
             <title>Version 2.0.1</title>
             <pubDate>Mon, 29 Jun 2026 13:58:00 +0000</pubDate>
             <sparkle:version>25</sparkle:version>
