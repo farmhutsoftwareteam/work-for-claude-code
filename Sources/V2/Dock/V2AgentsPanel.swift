@@ -75,39 +75,46 @@ struct V2AgentsPanel: View {
     // MARK: - Header
 
     private var header: some View {
-        HStack {
-            Text("Agents")
-                .font(.system(size: 15, weight: .medium))
-                .kerning(-0.15)
-            Spacer()
-            if !filtered.isEmpty {
-                Text("\(filtered.count)")
-                    .font(.system(size: 10.5, design: .monospaced))
-                    .foregroundColor(v2.faint)
+        VStack(alignment: .leading, spacing: 4) {
+            HStack {
+                Text("Agents")
+                    .font(.system(size: 15, weight: .medium))
+                    .kerning(-0.15)
+                Spacer()
+                if !filtered.isEmpty {
+                    Text("\(filtered.count)")
+                        .font(.system(size: 10.5, design: .monospaced))
+                        .foregroundColor(v2.faint)
+                }
+                Button { reload() } label: {
+                    Image(systemName: "arrow.clockwise")
+                        .font(.system(size: 11, weight: .medium))
+                        .foregroundColor(v2.mute)
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 5)
+                }
+                .buttonStyle(.plain)
+                .help("Reload from disk")
+                Button { editing = .new(scope: defaultNewScope()) } label: {
+                    Text("+ new")
+                        .font(.system(size: 10.5, design: .monospaced))
+                        .foregroundColor(v2.ink)
+                        .padding(.horizontal, 9)
+                        .padding(.vertical, 5)
+                        .background(v2.card)
+                        .overlay(Rectangle().stroke(v2.line2, lineWidth: 1))
+                }
+                .buttonStyle(.plain)
+                .help("Create a new agent in the current project (or user scope)")
             }
-            Button { reload() } label: {
-                Image(systemName: "arrow.clockwise")
-                    .font(.system(size: 11, weight: .medium))
-                    .foregroundColor(v2.mute)
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 5)
-            }
-            .buttonStyle(.plain)
-            .help("Reload from disk")
-            Button { editing = .new(scope: defaultNewScope()) } label: {
-                Text("+ new")
-                    .font(.system(size: 10.5, design: .monospaced))
-                    .foregroundColor(v2.ink)
-                    .padding(.horizontal, 9)
-                    .padding(.vertical, 5)
-                    .background(v2.card)
-                    .overlay(Rectangle().stroke(v2.line2, lineWidth: 1))
-            }
-            .buttonStyle(.plain)
-            .help("Create a new agent in the current project (or user scope)")
+            Text("Specialised sub-claudes the main session can delegate to — each runs isolated, only the summary returns.")
+                .font(.system(size: 10.5, design: .monospaced))
+                .foregroundColor(v2.faint)
+                .lineSpacing(2)
         }
         .padding(.horizontal, 18)
-        .padding(.vertical, 16)
+        .padding(.top, 14)
+        .padding(.bottom, 12)
         .frame(maxWidth: .infinity, alignment: .leading)
         .overlay(alignment: .bottom) {
             Rectangle().fill(v2.line).frame(height: 1)

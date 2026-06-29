@@ -25,20 +25,57 @@ struct V2TitleBar: View {
             + store.pluginMCPs.values.reduce(0) { $0 + $1.count }
     }
 
-    private var statusLine: String {
-        // Compact one-liner replacing the old "workshop" placeholder text +
-        // the workbench tile grid in the left rail. Reads real counts from
-        // Store; clicking it is reserved for the future Workshop window.
-        var parts: [String] = []
-        if totalMCPs > 0 { parts.append("\(totalMCPs) mcp\(totalMCPs == 1 ? "" : "s")") }
+    /// Per-segment status chips with their own tooltips so a new user can
+    /// hover any one of them to learn what it is. Replaces the old static
+    /// "workshop" placeholder + the workbench tile grid.
+    private var statusSegments: [StatusSegment] {
+        var out: [StatusSegment] = []
+        if totalMCPs > 0 {
+            out.append(.init(
+                text: "\(totalMCPs) mcp\(totalMCPs == 1 ? "" : "s")",
+                help: """
+                MCP servers — Model Context Protocol providers claude loads
+                at session start. Each server exposes a set of tools
+                (filesystem, github, linear, sentry, …) the session can call.
+                """
+            ))
+        }
         if store.plugins.count > 0 {
-            parts.append("\(store.plugins.count) plugin\(store.plugins.count == 1 ? "" : "s")")
+            out.append(.init(
+                text: "\(store.plugins.count) plugin\(store.plugins.count == 1 ? "" : "s")",
+                help: """
+                Plugins — installed bundles that ship one or more skills,
+                MCP servers, and hooks together. Distributed via the plugin
+                marketplace; configured per project or globally.
+                """
+            ))
         }
-        if totalSkills > 0 { parts.append("\(totalSkills) skill\(totalSkills == 1 ? "" : "s")") }
+        if totalSkills > 0 {
+            out.append(.init(
+                text: "\(totalSkills) skill\(totalSkills == 1 ? "" : "s")",
+                help: """
+                Skills — reusable instruction packs ("how to do X") claude
+                can load mid-session when the task matches. Lighter-weight
+                than MCPs; no subprocess, just text + maybe a tool.
+                """
+            ))
+        }
         if store.hooks.count > 0 {
-            parts.append("\(store.hooks.count) hook\(store.hooks.count == 1 ? "" : "s")")
+            out.append(.init(
+                text: "\(store.hooks.count) hook\(store.hooks.count == 1 ? "" : "s")",
+                help: """
+                Hooks — shell commands that fire on tool events (PreToolUse,
+                PostToolUse, etc.). Use to lint before commits, log every
+                Edit, block dangerous Bash, etc.
+                """
+            ))
         }
-        return parts.joined(separator: " · ")
+        return out
+    }
+
+    private struct StatusSegment {
+        let text: String
+        let help: String
     }
 
     var body: some View {
@@ -78,11 +115,21 @@ struct V2TitleBar: View {
                 .buttonStyle(.plain)
                 .help("Theme: \(theme.label) (click to cycle)")
 
-                if !statusLine.isEmpty {
-                    Text(statusLine)
-                        .font(.system(size: 11, design: .monospaced))
-                        .foregroundColor(v2.faint)
-                        .help("Configured MCPs, plugins, skills, hooks. Workshop window coming.")
+                let segments = statusSegments
+                if !segments.isEmpty {
+                    HStack(spacing: 6) {
+                        ForEach(Array(segments.enumerated()), id: \.offset) { idx, segment in
+                            Text(segment.text)
+                                .font(.system(size: 11, design: .monospaced))
+                                .foregroundColor(v2.faint)
+                                .help(segment.help)
+                            if idx < segments.count - 1 {
+                                Text("·")
+                                    .font(.system(size: 11, design: .monospaced))
+                                    .foregroundColor(v2.line2)
+                            }
+                        }
+                    }
                 }
             }
         }

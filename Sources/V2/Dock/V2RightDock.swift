@@ -123,12 +123,39 @@ struct V2RightDock: View {
         }
     }
 
+    /// Help text shown on hover — one-line description so the icons aren't
+    /// cryptic to a new user. macOS surfaces these as system tooltips
+    /// after the standard hover delay.
     private func label(for p: V2DockPanel) -> String {
         switch p {
-        case .loop:    return "Loop runner"
-        case .harness: return "Harness"
-        case .agents:  return "Agents"
-        case .mcp:     return "MCP servers"
+        case .loop:
+            return """
+            Loop runner — auto-iterate on a goal until a verifier passes.
+            You set a target ("all tests pass"), a verifier prompt, and a
+            turn budget; the doer takes a turn, the verifier grades it,
+            failures critique back into the doer until it passes or the
+            budget runs out.
+            """
+        case .harness:
+            return """
+            Harness — multi-phase plan → work → review pipeline. Each
+            phase spawns a fresh `claude -p` process with a persisted
+            progress.md, so long-running work survives restarts.
+            """
+        case .agents:
+            return """
+            Agents — specialized claude sub-instances the main session
+            can delegate to (reviewer, explorer, test-runner, …). Each
+            runs in its own context; only the summary returns to your
+            window, so exploration noise stays out.
+            """
+        case .mcp:
+            return """
+            MCP servers — Model Context Protocol tool providers claude
+            loads at session start (filesystem, github, linear, etc.).
+            This panel shows what's connected for the active session
+            and lets you add new ones to your global config.
+            """
         }
     }
 

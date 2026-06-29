@@ -40,15 +40,22 @@ struct V2LoopPanel: View {
     }
 
     private var header: some View {
-        HStack {
-            Text("Loop runner")
-                .font(.system(size: 15, weight: .medium))
-                .kerning(-0.15)
-            Spacer()
-            statusIndicator
+        VStack(alignment: .leading, spacing: 4) {
+            HStack {
+                Text("Loop runner")
+                    .font(.system(size: 15, weight: .medium))
+                    .kerning(-0.15)
+                Spacer()
+                statusIndicator
+            }
+            Text("Auto-iterate on a goal: doer → verifier → repeat until pass or budget runs out.")
+                .font(.system(size: 10.5, design: .monospaced))
+                .foregroundColor(v2.faint)
+                .lineSpacing(2)
         }
         .padding(.horizontal, 18)
-        .padding(.vertical, 16)
+        .padding(.top, 14)
+        .padding(.bottom, 12)
         .frame(maxWidth: .infinity, alignment: .leading)
         .overlay(alignment: .bottom) {
             Rectangle().fill(v2.line).frame(height: 1)

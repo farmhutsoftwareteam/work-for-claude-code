@@ -35,15 +35,22 @@ struct V2HarnessPanel: View {
     }
 
     private var header: some View {
-        HStack {
-            Text("Harness")
-                .font(.system(size: 15, weight: .medium))
-                .kerning(-0.15)
-            Spacer()
-            statusIndicator
+        VStack(alignment: .leading, spacing: 4) {
+            HStack {
+                Text("Harness")
+                    .font(.system(size: 15, weight: .medium))
+                    .kerning(-0.15)
+                Spacer()
+                statusIndicator
+            }
+            Text("Multi-phase plan → work → review pipeline with persisted progress notes between phases.")
+                .font(.system(size: 10.5, design: .monospaced))
+                .foregroundColor(v2.faint)
+                .lineSpacing(2)
         }
         .padding(.horizontal, 18)
-        .padding(.vertical, 16)
+        .padding(.top, 14)
+        .padding(.bottom, 12)
         .frame(maxWidth: .infinity, alignment: .leading)
         .overlay(alignment: .bottom) {
             Rectangle().fill(v2.line).frame(height: 1)

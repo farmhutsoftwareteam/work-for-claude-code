@@ -34,30 +34,37 @@ struct V2McpPanel: View {
     // MARK: - Header
 
     private var header: some View {
-        HStack {
-            Text("MCP servers")
-                .font(.system(size: 15, weight: .medium))
-                .kerning(-0.15)
-            Spacer()
-            if let session = appState.activeSession, !session.mcpServers.isEmpty {
-                Text("\(session.mcpServers.count)")
-                    .font(.system(size: 10.5, design: .monospaced))
-                    .foregroundColor(v2.faint)
+        VStack(alignment: .leading, spacing: 4) {
+            HStack {
+                Text("MCP servers")
+                    .font(.system(size: 15, weight: .medium))
+                    .kerning(-0.15)
+                Spacer()
+                if let session = appState.activeSession, !session.mcpServers.isEmpty {
+                    Text("\(session.mcpServers.count)")
+                        .font(.system(size: 10.5, design: .monospaced))
+                        .foregroundColor(v2.faint)
+                }
+                Button { addingMCP = true } label: {
+                    Text("+ add")
+                        .font(.system(size: 10.5, design: .monospaced))
+                        .foregroundColor(v2.ink)
+                        .padding(.horizontal, 9)
+                        .padding(.vertical, 5)
+                        .background(v2.card)
+                        .overlay(Rectangle().stroke(v2.line2, lineWidth: 1))
+                }
+                .buttonStyle(.plain)
+                .help("Add a new MCP server")
             }
-            Button { addingMCP = true } label: {
-                Text("+ add")
-                    .font(.system(size: 10.5, design: .monospaced))
-                    .foregroundColor(v2.ink)
-                    .padding(.horizontal, 9)
-                    .padding(.vertical, 5)
-                    .background(v2.card)
-                    .overlay(Rectangle().stroke(v2.line2, lineWidth: 1))
-            }
-            .buttonStyle(.plain)
-            .help("Add a new MCP server")
+            Text("Tool providers claude loads on spawn — filesystem, github, etc.")
+                .font(.system(size: 10.5, design: .monospaced))
+                .foregroundColor(v2.faint)
+                .lineSpacing(2)
         }
         .padding(.horizontal, 18)
-        .padding(.vertical, 16)
+        .padding(.top, 14)
+        .padding(.bottom, 12)
         .frame(maxWidth: .infinity, alignment: .leading)
         .overlay(alignment: .bottom) {
             Rectangle().fill(v2.line).frame(height: 1)
