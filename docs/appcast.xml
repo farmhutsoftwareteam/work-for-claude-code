@@ -6,6 +6,23 @@
         <description>Updates for Work</description>
         <language>en</language>
         <item>
+            <title>Version 2.0.1</title>
+            <pubDate>Mon, 29 Jun 2026 13:58:00 +0000</pubDate>
+            <sparkle:version>25</sparkle:version>
+            <sparkle:shortVersionString>2.0.1</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>15.0</sparkle:minimumSystemVersion>
+            <description><![CDATA[
+                <h3>Atelier 2.0.1 — v2 actually opens this time</h3>
+                <p>Hotfix on top of 2.0.0. The v2 <code>Window</code> scene declaration in <code>WorkApp.swift</code> was still wrapped in <code>#if DEBUG</code>, so when 2.0.0 shipped as a Release build the <code>Window(id: "v2-preview")</code> scene didn't exist — <code>V2AutoOpen.openWindow(id: "v2-preview")</code> silently no-op'd and Atelier kept opening into the v1 chrome.</p>
+                <p>This release drops the <code>#if DEBUG</code> guard so the v2 scene is registered in Release too. Same code as 2.0.0 otherwise; just makes the v2 default actually take effect.</p>
+            ]]></description>
+            <enclosure
+                url="https://work.munyamakosa.com/Work.dmg"
+                length="9867256"
+                type="application/octet-stream"
+                sparkle:edSignature="SSz9G4q2oQY5phyd9PkOU6Ou8B74hy36jkEDXThZNTEOWCYPT6sRdFBZkCSzffP6G+Nyyqwx27HA/gCQe2MSCg==" />
+        </item>
+        <item>
             <title>Version 2.0.0</title>
             <pubDate>Mon, 29 Jun 2026 13:30:00 +0000</pubDate>
             <sparkle:version>24</sparkle:version>
