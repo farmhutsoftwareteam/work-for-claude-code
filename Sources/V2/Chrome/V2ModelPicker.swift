@@ -140,6 +140,9 @@ struct V2ModelPicker: View {
                     Rectangle().fill(v2.ink).frame(width: 2)
                 }
             }
+            // Make the WHOLE row the hit target, not just the text. Without
+            // this a .plain Button only registers clicks on its glyphs.
+            .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
         .disabled(appState.activeSession == nil)

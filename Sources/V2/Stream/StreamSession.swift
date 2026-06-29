@@ -678,10 +678,14 @@ final class StreamSession: ObservableObject {
             // so the UI can explain it and offer a fresh start.
             if r.isError == true {
                 let raw = r.errors?.first ?? r.result
-                if let raw, raw.contains("No conversation found") {
+                    ?? ("Claude returned an error" + (r.subtype.map { " (\($0))" } ?? "") + ".")
+                if raw.contains("No conversation found") {
+                    // Unresumable session — handled by the empty-state + fresh CTA.
                     endError = "This conversation's history is no longer available — it may have been cleared."
                 } else {
-                    endError = raw ?? "Claude ended with an error" + (r.subtype.map { " (\($0))" } ?? "") + "."
+                    // Any other error (e.g. "Claude Fable 5 is currently
+                    // unavailable") — show it inline so it's never silent.
+                    transcript.append(.systemNote(kind: .error, text: raw))
                 }
             }
             tokensUsed = r.usage?.total ?? tokensUsed
