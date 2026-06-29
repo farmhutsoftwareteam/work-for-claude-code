@@ -53,6 +53,18 @@ var replyBuffer = ""
 client.onModels = { models in
     print("MODELS: " + models.map { $0.id }.joined(separator: ", "))
 }
+client.onPermissionRequest = { req in
+    // Phase 2 proof: a real permission request arrived. Print it, then
+    // auto-allow (prefer allow_once) — mimicking a user clicking "Allow".
+    let opts = req.options.map { "\($0.kind):\($0.id)" }.joined(separator: " | ")
+    print("PERMISSION REQ #\(req.requestId): tool=\(req.toolName) detail=\(req.detail ?? "-")")
+    print("  options: \(opts)")
+    let chosen = req.options.first(where: { $0.kind == "allow_once" })?.id
+        ?? req.options.first(where: { $0.isAllow })?.id
+        ?? req.options.first?.id ?? "allow"
+    print("  → selecting \(chosen)")
+    client.resolvePermission(requestId: req.requestId, optionId: chosen)
+}
 client.onAgentText = { chunk in
     replyBuffer += chunk
     FileHandle.standardOutput.write(Data(chunk.utf8))

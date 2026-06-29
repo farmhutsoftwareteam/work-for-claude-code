@@ -52,10 +52,11 @@ final class ACPClient: @unchecked Sendable {
     var onModels: (([ACPModel]) -> Void)?
     /// A protocol-level or transport error.
     var onError: ((String) -> Void)?
-    /// Agent is asking the client to approve a tool use (Phase 2 wires UI;
-    /// for now the default handler auto-denies unless overridden).
-    /// Return the optionId to select.
-    var onPermissionRequest: ((ACPPermissionRequest) -> String)?
+    /// Agent is asking the client to approve a tool use. This is a
+    /// NOTIFICATION, not a synchronous query — the reader thread must not
+    /// block waiting for a click. The consumer shows UI and later calls
+    /// resolvePermission(requestId:optionId:). Delivered on the main thread.
+    var onPermissionRequest: ((ACPPermissionRequest) -> Void)?
 
     // MARK: - State
 
@@ -82,6 +83,12 @@ final class ACPClient: @unchecked Sendable {
     private var readerThread: Thread?
     private var running = false
     private var stdinFD: Int32 = -1
+
+    /// JSON-RPC ids of in-flight session/request_permission requests we
+    /// haven't answered yet. On cancel we must reply to each with the
+    /// `cancelled` outcome (spec requirement) or the agent hangs.
+    private var pendingPermissionIds: Set<Int> = []
+    private let permLock = NSLock()
 
     /// id → handler for our outgoing requests' responses.
     private var pending: [Int: (Result<[String: Any], ACPError>) -> Void] = [:]
@@ -257,8 +264,9 @@ final class ACPClient: @unchecked Sendable {
         case "session/update":
             handleSessionUpdate(params)
         case "session/request_permission":
-            // Agent→client REQUEST (has id) — must respond.
-            handlePermission(id: obj["id"], params: params)
+            // Agent→client REQUEST (has id) — must respond, but NOT
+            // synchronously: surface it and let the UI resolve later.
+            if let id = obj["id"] as? Int { handlePermission(id: id, params: params) }
         default:
             // fs/*, terminal/* and others arrive in later phases.
             log.debug("acp unhandled method \(method, privacy: .public)")
@@ -282,15 +290,66 @@ final class ACPClient: @unchecked Sendable {
         }
     }
 
-    private func handlePermission(id: Any?, params: [String: Any]) {
+    private func handlePermission(id: Int, params: [String: Any]) {
+        let toolCall = params["toolCall"] as? [String: Any] ?? [:]
+        let options = (params["options"] as? [[String: Any]] ?? []).map {
+            ACPPermissionOption(
+                id: $0["optionId"] as? String ?? "",
+                name: $0["name"] as? String ?? "(option)",
+                kind: $0["kind"] as? String ?? "allow_once"
+            )
+        }
+        // Pull a human-readable command/detail out of rawInput (Bash →
+        // {command}, Edit/Write → {file_path}, etc.).
+        let raw = toolCall["rawInput"] as? [String: Any] ?? [:]
+        let detail = raw["command"] as? String
+            ?? raw["file_path"] as? String
+            ?? raw["path"] as? String
+
         let req = ACPPermissionRequest(
-            toolName: ((params["toolCall"] as? [String: Any])?["title"] as? String)
-                ?? (params["title"] as? String) ?? "tool",
-            raw: params
+            requestId: id,
+            toolName: toolCall["title"] as? String ?? toolCall["kind"] as? String ?? "tool",
+            toolKind: toolCall["kind"] as? String,
+            detail: detail,
+            options: options
         )
-        let chosen = onPermissionRequest?(req) ?? "reject"  // default-deny until Phase 2 UI
-        // RequestPermissionResponse: { outcome: { outcome: "selected", optionId } }
-        respond(id: id, result: ["outcome": ["outcome": "selected", "optionId": chosen]])
+
+        permLock.lock(); pendingPermissionIds.insert(id); permLock.unlock()
+
+        if onPermissionRequest != nil {
+            onMain { self.onPermissionRequest?(req) }
+        } else {
+            // No handler wired — fail safe by rejecting (prefer a reject_once
+            // option, else the first option) so the agent never hangs.
+            let fallback = options.first(where: { $0.kind.hasPrefix("reject") })?.id
+                ?? options.first?.id ?? "reject"
+            resolvePermission(requestId: id, optionId: fallback)
+        }
+    }
+
+    /// Answer a pending permission request with the user's chosen option.
+    /// Safe to call from the main thread; the actual write is serialized.
+    func resolvePermission(requestId: Int, optionId: String) {
+        permLock.lock()
+        let wasPending = pendingPermissionIds.remove(requestId) != nil
+        permLock.unlock()
+        guard wasPending else { return }  // already answered / cancelled
+        respond(id: requestId, result: ["outcome": ["outcome": "selected", "optionId": optionId]])
+    }
+
+    /// Cancel the current turn. Per the ACP spec we must answer every
+    /// in-flight permission request with the `cancelled` outcome before /
+    /// alongside the session/cancel notification, or the agent stalls.
+    func cancel() {
+        guard let sessionId else { return }
+        permLock.lock()
+        let inflight = pendingPermissionIds
+        pendingPermissionIds.removeAll()
+        permLock.unlock()
+        for id in inflight {
+            respond(id: id, result: ["outcome": ["outcome": "cancelled"]])
+        }
+        writeMessage(["jsonrpc": "2.0", "method": "session/cancel", "params": ["sessionId": sessionId]])
     }
 
     // MARK: - Outbound
@@ -355,9 +414,22 @@ struct ACPModel: Equatable, Sendable {
     let description: String
 }
 
-struct ACPPermissionRequest {
-    let toolName: String
-    let raw: [String: Any]
+struct ACPPermissionOption: Equatable, Sendable, Identifiable {
+    let id: String       // optionId to send back
+    let name: String     // human label ("Allow once", …)
+    let kind: String     // allow_once | allow_always | reject_once | reject_always
+
+    var isAllow: Bool { kind.hasPrefix("allow") }
+    var isRemembered: Bool { kind.hasSuffix("always") }
+}
+
+struct ACPPermissionRequest: Sendable, Identifiable {
+    let requestId: Int
+    let toolName: String       // e.g. "Bash" / "Run shell command"
+    let toolKind: String?      // ACP ToolKind hint (execute, edit, read, …)
+    let detail: String?        // the command / file path being acted on
+    let options: [ACPPermissionOption]
+    var id: Int { requestId }
 }
 
 struct ACPError: Error, Sendable {
