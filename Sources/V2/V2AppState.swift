@@ -117,15 +117,20 @@ final class V2AppState: ObservableObject {
     /// keep whatever's cached (possibly nothing) and let the meter show
     /// tokens-only. Call once at launch.
     func refreshModelCatalog() {
-        if modelContextWindows.isEmpty,
-           let data = UserDefaults.standard.data(forKey: Self.modelWindowsKey),
+        // Baseline: the committed snapshot — keyless, ships in the app.
+        var map = V2ModelCatalog.bundledWindows() ?? [:]
+        // Overlay a previous live pull, if any (fresher than the snapshot).
+        if let data = UserDefaults.standard.data(forKey: Self.modelWindowsKey),
            let cached = try? JSONDecoder().decode([String: Int].self, from: data) {
-            modelContextWindows = cached
+            map.merge(cached) { _, live in live }
         }
+        modelContextWindows = map
+        // If (and only if) an API key is present, refresh from the provider
+        // and override. No key (OAuth/subscription) ⇒ the snapshot stands.
         Task { [weak self] in
             guard let fresh = await V2ModelCatalog.fetch() else { return }
             await MainActor.run {
-                self?.modelContextWindows = fresh
+                self?.modelContextWindows.merge(fresh) { _, live in live }
                 if let data = try? JSONEncoder().encode(fresh) {
                     UserDefaults.standard.set(data, forKey: Self.modelWindowsKey)
                 }

@@ -1,0 +1,20 @@
+{
+  "_comment": "Anthropic model context windows (max_input_tokens). Snapshot of GET /v1/models. Regenerate with scripts/sync-model-windows.sh — do not hand-edit beyond seeding a new id. Unlisted models fall back to a tokens-only meter (no fabricated %).",
+  "syncedAt": "2026-06-29",
+  "source": "https://api.anthropic.com/v1/models",
+  "windows": {
+    "claude-opus-4-8": 200000,
+    "claude-opus-4-6": 200000,
+    "claude-opus-4-1": 200000,
+    "claude-opus-4-20250514": 200000,
+    "claude-sonnet-4-6": 200000,
+    "claude-sonnet-4-5": 200000,
+    "claude-sonnet-4-20250514": 200000,
+    "claude-haiku-4-5": 200000,
+    "claude-haiku-4-5-20251001": 200000,
+    "claude-fable-5": 200000,
+    "claude-3-7-sonnet-20250219": 200000,
+    "claude-3-5-sonnet-20241022": 200000,
+    "claude-3-5-haiku-20241022": 200000
+  }
+}

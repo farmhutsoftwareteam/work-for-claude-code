@@ -586,10 +586,10 @@ struct V2LiveComposer: View {
                     .foregroundColor(high ? v2.del : v2.faint)
                     .help("Context: \(usedLabel) of \(V2Format.count(window)) tokens (\(pct)%). /clear resets it, /compact summarises.")
             } else {
-                // No provider window for this model — never fake a %.
+                // This model isn't in the bundled snapshot — never fake a %.
                 Text("\(usedLabel) in context")
                     .foregroundColor(v2.faint)
-                    .help("Tokens in context. The window % needs Anthropic's Models API, which requires an ANTHROPIC_API_KEY the app can read.")
+                    .help("Tokens in context. No context-window on file for \(session.model) — run scripts/sync-model-windows.sh to refresh the snapshot from Anthropic.")
             }
         }
     }

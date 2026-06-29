@@ -18,6 +18,25 @@ enum V2ModelCatalog {
         return key.isEmpty ? nil : key
     }
 
+    // The committed snapshot bundled in the app (model-windows.json). This is
+    // the keyless baseline — every user gets real, provider-sourced numbers
+    // without an API key. A live /v1/models fetch overrides it when a key is
+    // present. Regenerate the file with scripts/sync-model-windows.sh.
+    private struct Snapshot: Decodable {
+        let windows: [String: Int]
+        let syncedAt: String?
+    }
+
+    /// `id → max_input_tokens` from the bundled snapshot, or nil if missing.
+    static func bundledWindows() -> [String: Int]? {
+        guard let url = Bundle.main.url(forResource: "model-windows", withExtension: "json"),
+              let data = try? Data(contentsOf: url),
+              let snap = try? JSONDecoder().decode(Snapshot.self, from: data),
+              !snap.windows.isEmpty
+        else { return nil }
+        return snap.windows
+    }
+
     // Only the fields we use from the Models API response.
     private struct ModelsResponse: Decodable {
         let data: [ModelInfo]
