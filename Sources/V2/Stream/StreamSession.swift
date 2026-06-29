@@ -383,6 +383,12 @@ final class StreamSession: ObservableObject {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }
         transcript.append(.userText(trimmed))
+        // Clear the previous turn's result footer the instant a new turn
+        // starts. It's only set when a turn finishes and was never reset,
+        // so a follow-up message used to render under a stale "1 turn · 3s ·
+        // $0.16" footer that looked "done" — making the new turn feel like
+        // nothing was happening until text finally streamed in below it.
+        latestResult = nil
         // Optimistic state flip — if the write fails we roll back below.
         // Previously the success path was the only one that set .working,
         // so a failed send left the transcript showing the user turn with
@@ -572,6 +578,19 @@ final class StreamSession: ObservableObject {
                 retryDelayMs: sys.retryDelayMs,
                 errorStatus: sys.errorStatus
             )
+        case "api_error":
+            // Same shape as api_retry under a different subtype + key names.
+            // claude auto-retries connection errors; we used to drop these
+            // entirely, so a flaky connection looked like a dead session.
+            // Route through the same retry indicator so the user sees
+            // "retrying (1/10) — Connection error" instead of nothing.
+            isRetrying = true
+            lastRetry = RetryInfo(
+                attempt: sys.retryAttempt ?? 1,
+                maxRetries: sys.maxRetries ?? 10,
+                retryDelayMs: sys.retryInMs.map { Int($0) },
+                errorStatus: sys.errorDetail?.message ?? sys.errorDetail?.formatted ?? "API error"
+            )
         case "compact_boundary":
             transcript.append(.compactBoundary)
         default:
@@ -589,6 +608,12 @@ final class StreamSession: ObservableObject {
     }
 
     private func appendStreamingText(_ text: String) {
+        // Tokens are flowing again — clear any retry banner that was showing
+        // from an api_retry / api_error so it doesn't linger over a live reply.
+        if isRetrying {
+            isRetrying = false
+            lastRetry = nil
+        }
         if case .assistantBlock(.text(let existing)) = transcript.last {
             transcript[transcript.count - 1] = .assistantBlock(.text(existing + text))
         } else {

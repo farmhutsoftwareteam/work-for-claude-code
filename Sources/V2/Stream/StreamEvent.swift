@@ -36,7 +36,7 @@ enum StreamEvent: Decodable, Sendable {
 // MARK: - system
 
 struct SystemEvent: Decodable, Sendable {
-    /// "init" | "api_retry" | "compact_boundary"
+    /// "init" | "api_retry" | "api_error" | "compact_boundary" | …
     let subtype: String
     let sessionId: String?
     let model: String?
@@ -52,6 +52,17 @@ struct SystemEvent: Decodable, Sendable {
     let retryDelayMs: Int?
     let errorStatus: String?
 
+    // api_error fields (distinct key names from api_retry — claude emits
+    // a nested `error` object + camelCase retry fields here).
+    let errorDetail: APIErrorDetail?
+    let retryInMs: Double?
+    let retryAttempt: Int?
+
+    struct APIErrorDetail: Decodable, Sendable {
+        let message: String?
+        let formatted: String?
+    }
+
     enum CodingKeys: String, CodingKey {
         case subtype
         case sessionId = "session_id"
@@ -63,6 +74,9 @@ struct SystemEvent: Decodable, Sendable {
         case maxRetries = "max_retries"
         case retryDelayMs = "retry_delay_ms"
         case errorStatus = "error_status"
+        case errorDetail = "error"
+        case retryInMs
+        case retryAttempt
     }
 }
 

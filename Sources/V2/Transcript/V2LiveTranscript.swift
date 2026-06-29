@@ -37,7 +37,7 @@ struct V2LiveTranscript: View {
                     }
 
                     if session.state == .working {
-                        V2LoadingSkeleton()
+                        workingIndicator
                     }
 
                     // Zero-height anchor pinned to the very bottom. We scroll
@@ -73,6 +73,32 @@ struct V2LiveTranscript: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(v2.paper)
         .enableInjection()
+    }
+
+    /// Immediate, unmistakable "claude is working" cue shown the instant
+    /// state flips to .working. Before its first token arrives we show a
+    /// labelled pulsing row ("Working…") so there's never dead air after
+    /// send; once text is streaming the shimmer skeleton carries the load.
+    @ViewBuilder
+    private var workingIndicator: some View {
+        let hasStreamingText: Bool = {
+            if case .assistantBlock(.text) = session.transcript.last { return true }
+            return false
+        }()
+        if hasStreamingText {
+            // Reply is already streaming — the text itself is the indicator,
+            // keep a subtle shimmer underneath.
+            V2LoadingSkeleton()
+        } else {
+            // Nothing back yet — explicit labelled cue.
+            HStack(spacing: 9) {
+                V2PulseDot(size: 7, color: v2.ink)
+                Text("Working…")
+                    .font(.system(size: 13, design: .monospaced))
+                    .foregroundColor(v2.mute)
+            }
+            .padding(.top, 2)
+        }
     }
 
     /// Cheap signature of everything that should trigger an auto-scroll.
