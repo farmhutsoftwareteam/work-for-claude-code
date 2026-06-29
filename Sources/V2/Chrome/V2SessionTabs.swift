@@ -12,7 +12,12 @@ struct V2SessionTabs: View {
 
     var body: some View {
         HStack(spacing: 0) {
-            ForEach(terminals.tabs) { tab in
+            // Only tabs in the project the user is currently focused on.
+            // Showing every project's tabs in one strip made it impossible
+            // to know which project you were in — clicking a project in
+            // the rail would highlight it but the strip kept showing the
+            // foreign tab from the previous project as the active one.
+            ForEach(visibleTabs) { tab in
                 V2TabChip(
                     tab: tab,
                     isActive: tab.id == appState.activeTabId,
@@ -41,6 +46,14 @@ struct V2SessionTabs: View {
             Rectangle().fill(v2.line).frame(height: 1)
         }
         .enableInjection()
+    }
+
+    /// Tabs scoped to the rail's currently selected project. Falls back to
+    /// the full list when no project is selected (defensive — should rarely
+    /// happen since V2RootView selects the first project on appear).
+    private var visibleTabs: [TerminalTab] {
+        guard let cwd = appState.selectedProjectCwd?.path else { return terminals.tabs }
+        return terminals.tabs.filter { $0.projectCwd == cwd }
     }
 }
 
