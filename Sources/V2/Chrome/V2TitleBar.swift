@@ -19,16 +19,27 @@ struct V2TitleBar: View {
             // macOS traffic lights live in the system chrome; leave room.
             Spacer().frame(width: 70)
 
-            Button {
-                themeRaw = theme.next.rawValue
+            // Theme picker: a menu showing Light / Dark / System with the
+            // current mode checked — one click to any mode, instead of a
+            // single button that cycled through all three ambiguously.
+            Menu {
+                Picker("Theme", selection: $themeRaw) {
+                    Label("Light", systemImage: "sun.max").tag(V2ThemeChoice.light.rawValue)
+                    Label("Dark", systemImage: "moon").tag(V2ThemeChoice.dark.rawValue)
+                    Label("System", systemImage: "circle.lefthalf.filled").tag(V2ThemeChoice.system.rawValue)
+                }
+                .pickerStyle(.inline)
             } label: {
                 Image(systemName: theme.icon)
                     .font(.system(size: 13))
                     .foregroundColor(v2.mute)
                     .frame(width: 28, height: 28)
+                    .contentShape(Rectangle())
             }
-            .buttonStyle(.plain)
-            .help("Theme: \(theme.label) (click to cycle)")
+            .menuStyle(.borderlessButton)
+            .menuIndicator(.hidden)
+            .fixedSize()
+            .help("Theme: \(theme.label.capitalized)")
 
             Spacer()
 
