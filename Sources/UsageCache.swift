@@ -9,7 +9,7 @@ import Foundation
 //
 // Cache file: ~/Library/Application Support/com.munyamakosa.work/usage-cache.json
 
-struct UsageCacheEntry: Codable {
+struct UsageCacheEntry: Codable, Sendable {
     let mtime: TimeInterval
     let sessionId: String
     let projectCwd: String?
@@ -18,7 +18,7 @@ struct UsageCacheEntry: Codable {
     let byDay: [String: TokenUsage]
 }
 
-struct UsageCacheData: Codable {
+struct UsageCacheData: Codable, Sendable {
     /// Version 1: original schema, token totals only.
     /// Version 2 (1.2.0): TokenUsage gains `byModel` for cost attribution.
     ///   v1 caches are invalidated at load time and force a one-time re-parse

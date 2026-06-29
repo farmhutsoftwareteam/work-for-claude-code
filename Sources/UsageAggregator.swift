@@ -2,7 +2,7 @@ import Foundation
 
 // MARK: - Aggregated token usage across sessions and projects
 
-struct ProjectUsage: Identifiable, Equatable {
+struct ProjectUsage: Identifiable, Equatable, Sendable {
     let projectCwd: String
     var usage: TokenUsage
     var sessionCount: Int
@@ -10,7 +10,7 @@ struct ProjectUsage: Identifiable, Equatable {
     var id: String { projectCwd }
 }
 
-struct SessionUsage: Identifiable, Equatable {
+struct SessionUsage: Identifiable, Equatable, Sendable {
     let sessionId: String
     let projectCwd: String
     var usage: TokenUsage
@@ -19,7 +19,7 @@ struct SessionUsage: Identifiable, Equatable {
     var id: String { "\(projectCwd)::\(sessionId)" }
 }
 
-struct UsageTotals {
+struct UsageTotals: Sendable {
     var total: TokenUsage = .zero
     var byProject: [String: ProjectUsage] = [:]
     var bySession: [String: SessionUsage] = [:]  // keyed by composite id

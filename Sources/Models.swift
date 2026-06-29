@@ -44,7 +44,7 @@ struct Session: Identifiable, Hashable {
 }
 
 // MARK: - Token usage for a single assistant message
-struct TokenUsage: Codable, Equatable {
+struct TokenUsage: Codable, Equatable, Sendable {
     var inputTokens: Int
     var outputTokens: Int
     var cacheCreationTokens: Int
