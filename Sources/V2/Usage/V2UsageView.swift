@@ -444,9 +444,17 @@ struct V2UsageView: View {
         return "\(formatTokens(rangedTotal.total / sessionCountInRange)) tokens avg"
     }
 
+    // Reused formatters — building a DateFormatter is expensive; these were
+    // re-created on every access of the labels below.
+    private static let dayFormatter: DateFormatter = {
+        let f = DateFormatter(); f.dateFormat = "MMM d, yyyy"; return f
+    }()
+    private static let monthFormatter: DateFormatter = {
+        let f = DateFormatter(); f.dateFormat = "MMMM yyyy"; return f
+    }()
+
     private var periodLabel: String {
-        let f = DateFormatter()
-        f.dateFormat = "MMM d, yyyy"
+        let f = Self.dayFormatter
         let now = Date()
         guard let start = rangeStart else {
             // .all — show the earliest activity date as a true range.
@@ -459,9 +467,7 @@ struct V2UsageView: View {
     }
 
     private var monthYearLabel: String {
-        let f = DateFormatter()
-        f.dateFormat = "MMMM yyyy"
-        return f.string(from: Date()).lowercased()
+        Self.monthFormatter.string(from: Date()).lowercased()
     }
 
     // Daily bars for the selected range, mapped to a 0-56pt height range.

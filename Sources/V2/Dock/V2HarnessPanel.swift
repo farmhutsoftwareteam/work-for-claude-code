@@ -5,6 +5,13 @@
 import SwiftUI
 import Inject
 
+/// Reused short date+time formatter (building one per row was wasteful).
+private enum V2HarnessFormat {
+    static let dateTime: DateFormatter = {
+        let f = DateFormatter(); f.dateStyle = .short; f.timeStyle = .short; return f
+    }()
+}
+
 struct V2HarnessPanel: View {
     @ObserveInjection private var inject
     @Environment(\.v2) private var v2
@@ -241,10 +248,7 @@ struct V2HarnessPanel: View {
     }
 
     private func formatDate(_ d: Date) -> String {
-        let f = DateFormatter()
-        f.dateStyle = .short
-        f.timeStyle = .short
-        return f.string(from: d)
+        V2HarnessFormat.dateTime.string(from: d)
     }
 
     // MARK: - Live sections (used by V2HarnessLiveView)

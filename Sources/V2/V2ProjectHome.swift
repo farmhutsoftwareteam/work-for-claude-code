@@ -205,7 +205,11 @@ struct V2ProjectHome: View {
     }
 
     private var sessionsBody: some View {
-        ScrollView {
+        // Build the id→Session map ONCE, not once per row. sessionRow used to
+        // read the computed `sessionsById`, which rebuilt the whole dictionary
+        // for every visible row → O(n²) over the list.
+        let byId = sessionsById
+        return ScrollView {
             LazyVStack(alignment: .leading, spacing: 0) {
                 if groups.isEmpty {
                     emptySessions
@@ -213,7 +217,7 @@ struct V2ProjectHome: View {
                     ForEach(Array(groups.enumerated()), id: \.offset) { _, group in
                         groupHeader(group.label)
                         ForEach(group.entries) { entry in
-                            sessionRow(entry)
+                            sessionRow(entry, session: byId[entry.sessionId])
                         }
                     }
                 }
@@ -230,8 +234,7 @@ struct V2ProjectHome: View {
             .overlay(alignment: .bottom) { Rectangle().fill(v2.line).frame(height: 1) }
     }
 
-    private func sessionRow(_ entry: V2HistoryEntry) -> some View {
-        let s = sessionsById[entry.sessionId]
+    private func sessionRow(_ entry: V2HistoryEntry, session s: Session?) -> some View {
         let open = isOpen(entry)
         let title = rowTitle(entry, s)
         let subtitle = rowSubtitle(s)

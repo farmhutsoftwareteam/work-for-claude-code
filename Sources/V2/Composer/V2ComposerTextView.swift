@@ -103,16 +103,20 @@ struct V2ComposerTextView: NSViewRepresentable {
         context.coordinator.popoverPick = onPopoverPick
         context.coordinator.popoverDismiss = onPopoverDismiss
         context.coordinator.backspaceAtStart = onBackspaceAtStart
-        tv.placeholderString = placeholder
 
+        // Guard every AppKit setter: the composer re-renders on each streamed
+        // token (it observes the session for state/context), but none of these
+        // change mid-stream — assigning them anyway dirties the text view and
+        // forces redundant redraws.
+        if tv.placeholderString != placeholder { tv.placeholderString = placeholder }
         if tv.string != text {
             let selected = tv.selectedRange()
             tv.string = text
             tv.setSelectedRange(NSRange(location: min(selected.location, text.count), length: 0))
         }
-        tv.textColor = foregroundColor
-        tv.placeholderColor = placeholderColor
-        tv.isEditable = isEnabled
+        if tv.textColor != foregroundColor { tv.textColor = foregroundColor }
+        if tv.placeholderColor != placeholderColor { tv.placeholderColor = placeholderColor }
+        if tv.isEditable != isEnabled { tv.isEditable = isEnabled }
 
         if focused && tv.window?.firstResponder !== tv {
             DispatchQueue.main.async {
