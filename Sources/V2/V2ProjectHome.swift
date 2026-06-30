@@ -122,9 +122,11 @@ struct V2ProjectHome: View {
             Text(label.uppercased())
                 .font(.system(size: 9.5, design: .monospaced)).kerning(1.1)
                 .foregroundColor(v2.faint)
+                .lineLimit(1).truncationMode(.tail)
             Text(value)
                 .font(.system(size: 24, weight: .medium)).kerning(-0.48)
                 .foregroundColor(v2.ink)
+                .lineLimit(1).minimumScaleFactor(0.6)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(.leading, leadingPad).padding(.trailing, 20).padding(.vertical, 14)
@@ -144,7 +146,9 @@ struct V2ProjectHome: View {
                 HStack(spacing: 7) {
                     Circle().fill(v2.ink).frame(width: 6, height: 6)
                     Text(g).font(.system(size: 11, design: .monospaced)).foregroundColor(v2.faint)
+                        .lineLimit(1).truncationMode(.middle)
                 }
+                .frame(maxWidth: 240, alignment: .trailing)
             }
         }
         .padding(.horizontal, 20)

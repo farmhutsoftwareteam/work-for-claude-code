@@ -29,6 +29,12 @@ struct V2LiveComposer: View {
     /// text field holds only its arguments.
     @State private var activeCommand: V2SlashCommand?
 
+    /// Measured width of the helper row, so it can shed hints as it narrows
+    /// (same responsive contract as the session header).
+    @State private var helperWidth: CGFloat = 0
+    private var helperCompact: Bool { helperWidth > 0 && helperWidth < 620 }
+    private var helperTight: Bool { helperWidth > 0 && helperWidth < 470 }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 9) {
             if !attachments.items.isEmpty {
@@ -550,31 +556,49 @@ struct V2LiveComposer: View {
     // MARK: - Helper row
 
     private var helperRow: some View {
-        HStack(spacing: 18) {
+        HStack(spacing: 14) {
             if activeCommand != nil {
                 Text("⌫ at start removes the command · ⏎ runs it")
                     .foregroundColor(v2.faint)
+                    .lineLimit(1).truncationMode(.tail)
             } else {
                 Button { session.cyclePermissionMode() } label: {
-                    Text("/ for commands · \(permissionLabel) · shift+tab to cycle")
+                    Text(helperTight
+                         ? "/ · \(permissionLabel)"
+                         : "/ for commands · \(permissionLabel) · shift+tab to cycle")
                         .foregroundColor(v2.faint)
+                        .lineLimit(1).truncationMode(.tail)
                 }
                 .buttonStyle(.plain)
             }
 
-            Text("⇧⏎ newline · ⌘V paste image")
-                .foregroundColor(v2.faint)
+            // Secondary hint — first to go when the row gets narrow.
+            if !helperCompact {
+                Text("⇧⏎ newline · ⌘V paste image")
+                    .foregroundColor(v2.faint)
+                    .lineLimit(1)
+            }
 
             if isWorking {
                 Text("esc to interrupt")
+                    .lineLimit(1)
             }
 
-            Spacer()
+            Spacer(minLength: 8)
 
+            // The context meter is the one thing that always stays — it carries
+            // real state (how full the window is), not a static hint.
             contextMeter
+                .layoutPriority(1)
         }
         .font(.system(size: 10.5, design: .monospaced))
         .foregroundColor(v2.faint)
+        .background(
+            GeometryReader { geo in
+                Color.clear.preference(key: V2WidthKey.self, value: geo.size.width)
+            }
+        )
+        .onPreferenceChange(V2WidthKey.self) { helperWidth = $0 }
     }
 
     /// Model + how full the context is. Shows a % gauge only when we have a
@@ -585,9 +609,15 @@ struct V2LiveComposer: View {
         let usedLabel = V2Format.count(used)
         let window = appState.contextWindow(for: session.model)
         return HStack(spacing: 8) {
-            Text(session.model).foregroundColor(v2.faint)
+            // Model name is the first thing the meter sheds when space is tight
+            // — the gauge + percentage matter more than the id.
+            if !helperTight {
+                Text(session.model)
+                    .foregroundColor(v2.faint)
+                    .lineLimit(1).truncationMode(.middle)
+            }
             if used == 0 {
-                Text("context idle").foregroundColor(v2.faint)
+                Text("context idle").foregroundColor(v2.faint).lineLimit(1)
             } else if let window, window > 0 {
                 let frac = min(1, Double(used) / Double(window))
                 let high = frac >= 0.85
@@ -597,16 +627,21 @@ struct V2LiveComposer: View {
                     Rectangle().fill(high ? v2.del : v2.ink)
                         .frame(width: 46 * max(0, frac), height: 4)
                 }
-                Text("\(pct)% · \(usedLabel)/\(V2Format.count(window))")
+                Text(helperTight ? "\(pct)%" : "\(pct)% · \(usedLabel)/\(V2Format.count(window))")
                     .foregroundColor(high ? v2.del : v2.faint)
+                    .lineLimit(1)
                     .help("Context: \(usedLabel) of \(V2Format.count(window)) tokens (\(pct)%). /clear resets it, /compact summarises.")
             } else {
                 // This model isn't in the bundled snapshot — never fake a %.
-                Text("\(usedLabel) in context")
+                Text(helperTight ? usedLabel : "\(usedLabel) in context")
                     .foregroundColor(v2.faint)
+                    .lineLimit(1)
                     .help("Tokens in context. No context-window on file for \(session.model) — run scripts/sync-model-windows.sh to refresh the snapshot from Anthropic.")
             }
         }
+        // Never let the meter wrap or get truncated — it sheds its own bits
+        // (model id, byte counts) via helperTight instead.
+        .fixedSize(horizontal: true, vertical: false)
     }
 
     // MARK: - Image picker
