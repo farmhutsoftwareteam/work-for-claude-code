@@ -431,7 +431,16 @@ enum V2MCPAuth {
                         outData.append(chunk)
                         if !openedURL, let s = String(data: chunk, encoding: .utf8) {
                             buffer += s
-                            if let url = extractAuthURL(buffer) {
+                            // Only extract from COMPLETE lines (up to the last
+                            // newline). The auth URL streams over the PTY and can
+                            // arrive split across reads — matching the partial
+                            // buffer would open a half-formed URL with a truncated
+                            // client_id, which the provider rejects with
+                            // "Unrecognized client_id". A newline after the URL
+                            // proves it's whole.
+                            guard let lastNL = buffer.lastIndex(where: { $0 == "\n" || $0 == "\r" }) else { continue }
+                            let complete = stripANSI(String(buffer[..<lastNL]))
+                            if let url = extractAuthURL(complete) {
                                 openedURL = true
                                 DispatchQueue.main.async { NSWorkspace.shared.open(url) }
                             }
