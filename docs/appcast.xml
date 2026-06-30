@@ -6,6 +6,41 @@
         <description>Updates for Work</description>
         <language>en</language>
         <item>
+            <title>Version 2.2.0</title>
+            <pubDate>Tue, 30 Jun 2026 13:42:04 +0400</pubDate>
+            <sparkle:version>30</sparkle:version>
+            <sparkle:shortVersionString>2.2.0</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>15.0</sparkle:minimumSystemVersion>
+            <description><![CDATA[
+                <h3>Atelier 2.2.0 — faster, with status you can hear</h3>
+                <h4>Performance</h4>
+                <ul>
+                    <li>Long replies now stream at <b>steady speed</b> instead of slowing as they grow — the whole streaming path was reworked (cached parsing, ~30fps coalesced updates, a lazy transcript).</li>
+                    <li>Scrolling stays smooth in long conversations, and a streamed token no longer re-renders the whole window.</li>
+                </ul>
+                <h4>Tabs you can see and hear</h4>
+                <ul>
+                    <li>Tabs show a clear status: <b>working</b> (pulsing dot + live timer), <b>done · unseen</b> (a turn finished while you were on another tab), and <b>needs you</b> (blocked on your approval) — plus a summary in the title bar.</li>
+                    <li><b>Sound notifications</b> — a gentle chime when a background turn finishes, a more insistent one when one needs approval. Only for tabs you're not looking at; toggle from the title bar.</li>
+                </ul>
+                <h4>MCP, managed in the app</h4>
+                <ul>
+                    <li>See every MCP server a project is configured with — each with a <b>brand logo</b> and its <b>real connection state</b> — and <b>sign in to one in a click</b>, with no visible terminal; it reconnects the session for you.</li>
+                    <li>A <b>red dot</b> flags any project with a server that needs sign-in.</li>
+                </ul>
+                <h4>Transcript &amp; polish</h4>
+                <ul>
+                    <li><b>Markdown tables render</b> as tables; <b>one-click copy</b> on code blocks and under each message.</li>
+                    <li>The header and composer <b>adapt to width</b> instead of wrapping into a broken stack; Light / Dark / System is a menu; your composer draft is kept per tab.</li>
+                </ul>
+            ]]></description>
+            <enclosure
+                url="https://work.munyamakosa.com/Work.dmg"
+                length="11218421"
+                type="application/octet-stream"
+                sparkle:edSignature="E6mNtu5Cd8txR51d/8dI0C4bJ0Ri4Nvf96Ab5S0NsTTQ9bqUC6IHptX1Eb4Ewxt9sJaL77mQaFcTZzp5naOeAg==" />
+        </item>
+        <item>
             <title>Version 2.1.0</title>
             <pubDate>Mon, 29 Jun 2026 20:15:00 +0000</pubDate>
             <sparkle:version>29</sparkle:version>

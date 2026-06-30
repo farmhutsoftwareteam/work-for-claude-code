@@ -333,7 +333,10 @@ DOWNLOAD_URL="https://work.munyamakosa.com/$DMG_NAME"
 # Sparkle compares against in the installed app's Info.plist. Without
 # this, sparkle:version was the marketing string ("2.0.0") and Sparkle's
 # numeric compare against the running build (24) misbehaved.
-BUILD_NUMBER=$(grep -E "^  CURRENT_PROJECT_VERSION:" project.yml | head -1 | sed 's/.*"\([0-9]\+\)".*/\1/')
+# NB: BSD sed (macOS) doesn't support \+ — extract the digits with grep -oE,
+# which is portable. The old sed left BUILD_NUMBER as the whole YAML line, so
+# sparkle:version came out as '  CURRENT_PROJECT_VERSION: "30"'.
+BUILD_NUMBER=$(grep -E "^  CURRENT_PROJECT_VERSION:" project.yml | head -1 | grep -oE '[0-9]+' | head -1)
 if [ -z "$BUILD_NUMBER" ]; then BUILD_NUMBER="$VERSION"; fi
 
 # Attempt EdDSA signature
