@@ -409,32 +409,75 @@ struct V2LiveToolWidget: View {
     let input: JSONValue
 
     var body: some View {
+        // Agent vocabulary: uppercase tag · target rendered as a token (path /
+        // ref) or an ink command chip (Bash). The outcome lands in the result
+        // block below, so the widget itself carries no status.
         HStack(spacing: 11) {
             V2Pill(text: name.uppercased())
-            Text(previewText)
-                .font(.system(size: 12, design: .monospaced))
-                .lineLimit(1)
-                .truncationMode(.middle)
-                .frame(maxWidth: .infinity, alignment: .leading)
-            Text("running")
-                .font(.system(size: 12, design: .monospaced))
-                .foregroundColor(v2.mute)
+            target.frame(maxWidth: .infinity, alignment: .leading)
         }
+        .font(.system(size: 12, design: .monospaced))
         .padding(.horizontal, 14)
         .padding(.vertical, 11)
         .background(v2.card)
         .overlay(Rectangle().stroke(v2.line2, lineWidth: 1))
     }
 
-    private var previewText: String {
+    @ViewBuilder
+    private var target: some View {
         switch name {
-        case "Bash":           return input.dig("command")?.asString ?? input.preview
-        case "Edit", "Write":  return input.dig("file_path")?.asString ?? input.preview
-        case "Read":           return input.dig("file_path")?.asString ?? input.preview
-        case "Grep":           return input.dig("pattern")?.asString ?? input.preview
-        case "Glob":           return input.dig("pattern")?.asString ?? input.preview
-        default:               return input.preview
+        case "Bash":
+            V2CommandChip(input.dig("command")?.asString ?? input.preview)
+        case "Read", "Edit", "Write", "MultiEdit", "NotebookEdit":
+            V2Token(input.dig("file_path")?.asString ?? input.preview)
+        case "Glob":
+            V2Token(input.dig("pattern")?.asString ?? input.preview)
+        case "Grep":
+            HStack(spacing: 8) {
+                Text("“\(input.dig("pattern")?.asString ?? "")”")
+                    .foregroundColor(v2.ink).lineLimit(1).truncationMode(.middle)
+                if let path = input.dig("path")?.asString ?? input.dig("glob")?.asString {
+                    Text("·").foregroundColor(v2.faint)
+                    V2Token(path)
+                }
+            }
+        default:
+            Text(input.preview)
+                .foregroundColor(v2.ink).lineLimit(1).truncationMode(.middle)
         }
+    }
+}
+
+// MARK: - Agent-vocabulary atoms
+
+/// A "token" chip — file paths, refs, shas, globs. The unifying primitive of
+/// the agent action vocabulary.
+struct V2Token: View {
+    @Environment(\.v2) private var v2
+    let text: String
+    init(_ text: String) { self.text = text }
+    var body: some View {
+        Text(text)
+            .font(.system(size: 12, design: .monospaced))
+            .foregroundColor(v2.tokInk)
+            .lineLimit(1).truncationMode(.middle)
+            .padding(.horizontal, 6).padding(.vertical, 1)
+            .background(v2.tok)
+    }
+}
+
+/// An ink-filled chip for a command (Bash) — the loud, executed instruction.
+struct V2CommandChip: View {
+    @Environment(\.v2) private var v2
+    let text: String
+    init(_ text: String) { self.text = text }
+    var body: some View {
+        Text(text)
+            .font(.system(size: 12, design: .monospaced))
+            .foregroundColor(v2.paper)
+            .lineLimit(1).truncationMode(.middle)
+            .padding(.horizontal, 7).padding(.vertical, 1)
+            .background(v2.ink)
     }
 }
 

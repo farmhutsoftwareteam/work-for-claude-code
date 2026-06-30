@@ -92,7 +92,8 @@ struct V2MarkdownText: View {
     // MARK: - Inline attributed string
 
     private func inlineAttributed(_ s: String) -> AttributedString {
-        Self.inlineAttributed(s, codeBg: v2.paper3, ink: v2.ink)
+        // Inline code shares the agent-vocabulary "token" swatch.
+        Self.inlineAttributed(s, codeBg: v2.tok, ink: v2.tokInk)
     }
 
     /// Inline markdown (**bold**, *italic*, `code`, [links]) → AttributedString,
@@ -352,15 +353,15 @@ private struct V2MarkdownTable: View {
     }
 
     private func cell(_ text: String, isHeader: Bool) -> some View {
-        Text(V2MarkdownText.inlineAttributed(text, codeBg: v2.paper3, ink: v2.ink))
+        // Vocabulary: header is tertiary (faint, medium), cells are primary (ink).
+        Text(V2MarkdownText.inlineAttributed(text, codeBg: v2.tok, ink: v2.tokInk))
             .font(.system(size: 12, design: .monospaced))
-            .fontWeight(isHeader ? .semibold : .regular)
-            .foregroundColor(v2.ink)
+            .fontWeight(isHeader ? .medium : .regular)
+            .foregroundColor(isHeader ? v2.faint : v2.ink)
             .lineLimit(1)
             .fixedSize(horizontal: true, vertical: false)
             .padding(.horizontal, 12).padding(.vertical, 7)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .background(isHeader ? v2.paper3 : Color.clear)
     }
 }
 

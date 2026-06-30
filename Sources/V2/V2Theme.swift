@@ -20,6 +20,10 @@ struct V2Palette {
     let addBg: Color
     let del: Color
     let delBg: Color
+    /// "Token" chip — file paths, refs, shas, inline code. The agent-vocabulary
+    /// primitive (design: Agent vocabulary.dc.html).
+    let tok: Color
+    let tokInk: Color
 }
 
 enum V2Theme {
@@ -37,7 +41,9 @@ enum V2Theme {
         add:    Color(red: 0x3f/255.0, green: 0x6f/255.0, blue: 0x57/255.0),
         addBg:  Color(red: 0x3f/255.0, green: 0x6f/255.0, blue: 0x57/255.0).opacity(0.10),
         del:    Color(red: 0x9c/255.0, green: 0x52/255.0, blue: 0x49/255.0),
-        delBg:  Color(red: 0x9c/255.0, green: 0x52/255.0, blue: 0x49/255.0).opacity(0.10)
+        delBg:  Color(red: 0x9c/255.0, green: 0x52/255.0, blue: 0x49/255.0).opacity(0.10),
+        tok:    Color(red: 0xdd/255.0, green: 0xe0/255.0, blue: 0xdb/255.0),
+        tokInk: Color(red: 0x2c/255.0, green: 0x2e/255.0, blue: 0x2b/255.0)
     )
 
     static let dark = V2Palette(
@@ -54,7 +60,9 @@ enum V2Theme {
         add:    Color(red: 0x7f/255.0, green: 0xb8/255.0, blue: 0x9a/255.0),
         addBg:  Color(red: 0x7f/255.0, green: 0xb8/255.0, blue: 0x9a/255.0).opacity(0.13),
         del:    Color(red: 0xd3/255.0, green: 0x91/255.0, blue: 0x89/255.0),
-        delBg:  Color(red: 0xd3/255.0, green: 0x91/255.0, blue: 0x89/255.0).opacity(0.13)
+        delBg:  Color(red: 0xd3/255.0, green: 0x91/255.0, blue: 0x89/255.0).opacity(0.13),
+        tok:    Color(red: 0x33/255.0, green: 0x35/255.0, blue: 0x2f/255.0),
+        tokInk: Color(red: 0xcd/255.0, green: 0xd0/255.0, blue: 0xc8/255.0)
     )
 }
 
