@@ -32,8 +32,8 @@ struct V2LiveTranscript: View {
                     // Content-hash ids changed every token (tearing down and
                     // rebuilding the streaming row + resetting text selection);
                     // a stable index keeps the row alive as its text grows.
-                    ForEach(Array(session.transcript.enumerated()), id: \.offset) { _, item in
-                        row(for: item)
+                    ForEach(session.transcript.indices, id: \.self) { i in
+                        row(for: session.transcript[i])
                     }
 
                     if session.isRetrying {
@@ -74,10 +74,12 @@ struct V2LiveTranscript: View {
             // item, streaming growth of the last text block, state change,
             // result arrival. The old onChange watched only transcript.count,
             // so it never fired while a single reply streamed in token-by-token.
+            // Auto-scroll to the bottom as content grows. NOT animated: an
+            // animated scrollTo fired on every token stacks dozens of competing
+            // animations a second and stutters. A plain scrollTo tracks the
+            // streaming text smoothly and cheaply.
             .onChange(of: scrollKey) { _, _ in
-                withAnimation(.easeOut(duration: 0.18)) {
-                    proxy.scrollTo(bottomAnchorID, anchor: .bottom)
-                }
+                proxy.scrollTo(bottomAnchorID, anchor: .bottom)
             }
             .onAppear {
                 // Jump to the bottom when a tab first shows — matters for
@@ -115,9 +117,11 @@ struct V2LiveTranscript: View {
             return false
         }()
         if hasStreamingText {
-            // Reply is already streaming — the text itself is the indicator,
-            // keep a subtle shimmer underneath.
-            V2LoadingSkeleton()
+            // Reply is already streaming — the growing text is the indicator, so
+            // keep just a single cheap pulse. (The old 3× GeometryReader shimmer
+            // re-ran a layout pass on every token.)
+            V2PulseDot(size: 6, color: v2.faint)
+                .padding(.top, 2)
         } else {
             // Nothing back yet — explicit labelled cue with a live elapsed
             // counter so a slow first token reads as "alive", not "stuck".
@@ -144,15 +148,11 @@ struct V2LiveTranscript: View {
     /// Includes the last block's character count so streaming growth (which
     /// leaves transcript.count untouched) still moves the view.
     private var scrollKey: String {
-        let lastLen: Int
-        if case .assistantBlock(.text(let s)) = session.transcript.last {
-            lastLen = s.count
-        } else {
-            lastLen = 0
-        }
+        // streamTick replaces the old O(n) grapheme count of the streaming
+        // block — same "content grew" signal, O(1) to read.
         let working = session.state == .working ? 1 : 0
         let hasResult = session.latestResult == nil ? 0 : 1
-        return "\(session.transcript.count)-\(lastLen)-\(working)-\(hasResult)-\(session.isRetrying ? 1 : 0)"
+        return "\(session.transcript.count)-\(session.streamTick)-\(working)-\(hasResult)-\(session.isRetrying ? 1 : 0)"
     }
 
     @ViewBuilder

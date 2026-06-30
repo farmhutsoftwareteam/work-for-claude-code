@@ -97,14 +97,15 @@ struct V2MarkdownText: View {
 
     /// Inline markdown (**bold**, *italic*, `code`, [links]) → AttributedString,
     /// with the paper3 swatch on inline code. Static so table cells reuse it.
-    /// Apple's parser is the cheapest way to get this without rolling our own;
-    /// preserve whitespace so streaming partial deltas don't collapse spacing.
+    ///
+    /// The expensive step — `AttributedString(markdown:)` — is CACHED by the raw
+    /// string (theme-independent). While a reply streams in, the stable prefix
+    /// paragraphs hash to the same strings every frame, so they hit the cache
+    /// for free and only the growing tail paragraph re-parses. Without this the
+    /// whole message re-parsed every token (O(n²) per reply). Colours are applied
+    /// fresh each call (cheap run walk) so the cache survives light/dark switches.
     static func inlineAttributed(_ s: String, codeBg: Color, ink: Color) -> AttributedString {
-        guard let attr = try? AttributedString(
-            markdown: s,
-            options: .init(interpretedSyntax: .inlineOnlyPreservingWhitespace)
-        ) else { return AttributedString(s) }
-        var out = attr
+        var out = parsedMarkdown(s)
         for run in out.runs where run.inlinePresentationIntent?.contains(.code) == true {
             out[run.range].backgroundColor = codeBg
             out[run.range].foregroundColor = ink
@@ -112,10 +113,43 @@ struct V2MarkdownText: View {
         return out
     }
 
+    // Parse cache. Touched only from the main actor (view rendering), so the
+    // unsynchronised dictionary is safe; worst case under contention is a
+    // redundant parse, never corruption.
+    nonisolated(unsafe) private static var parseCache: [String: AttributedString] = [:]
+    private static let parseCacheLimit = 1024
+
+    private static func parsedMarkdown(_ s: String) -> AttributedString {
+        if let hit = parseCache[s] { return hit }
+        let parsed = (try? AttributedString(
+            markdown: s,
+            options: .init(interpretedSyntax: .inlineOnlyPreservingWhitespace)
+        )) ?? AttributedString(s)
+        // Coarse eviction: when full, drop everything. The stable prefix re-warms
+        // on the next frame; a transient spike beats unbounded growth.
+        if parseCache.count >= parseCacheLimit { parseCache.removeAll(keepingCapacity: true) }
+        parseCache[s] = parsed
+        return parsed
+    }
+
     // MARK: - Block chunker
 
     private var blocks: [MDBlock] {
-        Self.chunk(text)
+        Self.cachedChunk(text)
+    }
+
+    // Block-splitting cache. The transcript re-renders every token (the whole
+    // VStack), so without this every stable message re-chunks on every token of
+    // the reply currently streaming. Keyed by the message text → cache hit for
+    // anything not actively growing.
+    nonisolated(unsafe) private static var chunkCache: [String: [MDBlock]] = [:]
+
+    private static func cachedChunk(_ text: String) -> [MDBlock] {
+        if let hit = chunkCache[text] { return hit }
+        let result = chunk(text)
+        if chunkCache.count >= parseCacheLimit { chunkCache.removeAll(keepingCapacity: true) }
+        chunkCache[text] = result
+        return result
     }
 
     enum MDBlock {

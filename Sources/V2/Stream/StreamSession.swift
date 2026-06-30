@@ -64,6 +64,11 @@ final class StreamSession: ObservableObject {
     /// Ordered, append-only transcript. Each item is a separate UI row.
     @Published private(set) var transcript: [TranscriptItem] = []
 
+    /// Monotonic counter bumped on every streaming text delta. A cheap O(1)
+    /// signal the transcript watches to auto-scroll while a reply grows in place
+    /// (the last block mutates without changing `transcript.count`).
+    @Published private(set) var streamTick: UInt = 0
+
     /// Number of older user turns that exist on disk but weren't rendered
     /// into the transcript (we cap the preload at the latest N events).
     /// Drives the "↑ N earlier messages" affordance at the top of the
@@ -832,6 +837,10 @@ final class StreamSession: ObservableObject {
         } else {
             transcript.append(.assistantBlock(.text(text)))
         }
+        // Monotonic O(1) "content grew" signal for the transcript's auto-scroll.
+        // The view used to derive this from the streaming block's grapheme count
+        // (O(n) per render); a bare counter is free.
+        streamTick &+= 1
     }
 
     private func handleControlRequest(_ req: ControlRequest) {
