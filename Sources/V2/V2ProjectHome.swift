@@ -142,13 +142,20 @@ struct V2ProjectHome: View {
             tabButton("Sessions", .sessions, badge: nil)
             tabButton("Changes", .changes, badge: changeBadge)
             Spacer()
-            if let g = gitIndicator {
+            // Branch as a token (ref), ahead/behind carry valence — agent
+            // vocabulary's git refs.
+            if let s = git.status, s.branch != "—" {
                 HStack(spacing: 7) {
                     Circle().fill(v2.ink).frame(width: 6, height: 6)
-                    Text(g).font(.system(size: 11, design: .monospaced)).foregroundColor(v2.faint)
-                        .lineLimit(1).truncationMode(.middle)
+                    V2Token(s.branch)
+                    if s.ahead > 0 {
+                        Text("↑\(s.ahead)").font(.system(size: 11, design: .monospaced)).foregroundColor(v2.add)
+                    }
+                    if s.behind > 0 {
+                        Text("↓\(s.behind)").font(.system(size: 11, design: .monospaced)).foregroundColor(v2.faint)
+                    }
                 }
-                .frame(maxWidth: 240, alignment: .trailing)
+                .frame(maxWidth: 280, alignment: .trailing)
             }
         }
         .padding(.horizontal, 20)
@@ -158,18 +165,6 @@ struct V2ProjectHome: View {
     private var changeBadge: String? {
         let n = git.status?.changeCount ?? 0
         return n > 0 ? "\(n)" : nil
-    }
-
-    private var gitIndicator: String? {
-        guard let s = git.status, s.branch != "—" else { return nil }
-        var label = s.branch
-        if s.ahead > 0 || s.behind > 0 {
-            var arrows: [String] = []
-            if s.ahead > 0 { arrows.append("↑\(s.ahead)") }
-            if s.behind > 0 { arrows.append("↓\(s.behind)") }
-            label += " · " + arrows.joined(separator: " ")
-        }
-        return label
     }
 
     private func tabButton(_ title: String, _ which: Tab, badge: String?) -> some View {

@@ -353,15 +353,29 @@ private struct V2MarkdownTable: View {
     }
 
     private func cell(_ text: String, isHeader: Bool) -> some View {
-        // Vocabulary: header is tertiary (faint, medium), cells are primary (ink).
-        Text(V2MarkdownText.inlineAttributed(text, codeBg: v2.tok, ink: v2.tokInk))
+        // Vocabulary: header is tertiary (faint, medium), cells are primary
+        // (ink), and a verdict-word cell carries valence (sage/clay).
+        let color = isHeader ? v2.faint : (Self.valence(text).map { $0 ? v2.add : v2.del } ?? v2.ink)
+        return Text(V2MarkdownText.inlineAttributed(text, codeBg: v2.tok, ink: v2.tokInk))
             .font(.system(size: 12, design: .monospaced))
             .fontWeight(isHeader ? .medium : .regular)
-            .foregroundColor(isHeader ? v2.faint : v2.ink)
+            .foregroundColor(color)
             .lineLimit(1)
             .fixedSize(horizontal: true, vertical: false)
             .padding(.horizontal, 12).padding(.vertical, 7)
             .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    /// A whole-cell verdict word → valence (true = good/sage, false = bad/clay,
+    /// nil = neutral). Only matches when the cell IS the word, so "additive" in
+    /// a sentence isn't colored.
+    private static func valence(_ text: String) -> Bool? {
+        let t = text.trimmingCharacters(in: .whitespaces).lowercased()
+        let good: Set<String> = ["safe", "pass", "passed", "ok", "done", "yes", "✓", "good", "stable", "green"]
+        let bad: Set<String> = ["watch", "fail", "failed", "error", "no", "✗", "blocked", "broken", "risk", "warning", "unsafe", "red"]
+        if good.contains(t) { return true }
+        if bad.contains(t) { return false }
+        return nil
     }
 }
 

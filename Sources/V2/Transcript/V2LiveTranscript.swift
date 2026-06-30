@@ -168,7 +168,7 @@ struct V2LiveTranscript: View {
         case .userText(let text):
             V2UserTurn(text: text)
         case .assistantBlock(let block):
-            V2AssistantBlock(block: block)
+            V2AssistantBlock(block: block, toolOutcomes: session.toolOutcomes)
         case .compactBoundary:
             V2CompactBoundary()
         case .systemNote(let kind, let text):
@@ -279,6 +279,7 @@ struct V2UserTurn: View {
 struct V2AssistantBlock: View {
     @Environment(\.v2) private var v2
     let block: ContentBlock
+    var toolOutcomes: [String: Bool] = [:]
     @State private var hover = false
     @State private var copied = false
 
@@ -339,8 +340,12 @@ struct V2AssistantBlock: View {
         case .text(let s):
             V2MarkdownText(text: s)
                 .foregroundColor(v2.ink)
-        case .toolUse(_, let name, let input):
-            V2LiveToolWidget(name: name, input: input)
+        case .toolUse(let id, let name, let input):
+            if name == "TodoWrite", let todos = input.dig("todos")?.asArray {
+                V2LiveTodoBlock(todos: todos)
+            } else {
+                V2LiveToolWidget(name: name, input: input, outcome: toolOutcomes[id])
+            }
         case .toolResult(_, let content, let isError):
             V2LiveToolResult(content: content, isError: isError ?? false)
         case .thinking(let text, _):
@@ -407,20 +412,31 @@ struct V2LiveToolWidget: View {
     @Environment(\.v2) private var v2
     let name: String
     let input: JSONValue
+    /// nil = still running, false = done, true = error. Drives the row's valence.
+    var outcome: Bool? = nil
 
     var body: some View {
-        // Agent vocabulary: uppercase tag · target rendered as a token (path /
-        // ref) or an ink command chip (Bash). The outcome lands in the result
-        // block below, so the widget itself carries no status.
+        // Agent vocabulary: uppercase tag · target as a token (path/ref) or an
+        // ink command chip (Bash) · status carries valence (spinner → ✓ / ✗).
         HStack(spacing: 11) {
             V2Pill(text: name.uppercased())
             target.frame(maxWidth: .infinity, alignment: .leading)
+            status
         }
         .font(.system(size: 12, design: .monospaced))
         .padding(.horizontal, 14)
         .padding(.vertical, 11)
         .background(v2.card)
         .overlay(Rectangle().stroke(v2.line2, lineWidth: 1))
+    }
+
+    @ViewBuilder
+    private var status: some View {
+        switch outcome {
+        case .none:        V2Spinner(size: 11)
+        case .some(false): Text("✓").foregroundColor(v2.add)
+        case .some(true):  Text("✗").foregroundColor(v2.del)
+        }
     }
 
     @ViewBuilder
@@ -478,6 +494,73 @@ struct V2CommandChip: View {
             .lineLimit(1).truncationMode(.middle)
             .padding(.horizontal, 7).padding(.vertical, 1)
             .background(v2.ink)
+    }
+}
+
+// MARK: - Todo state block (TodoWrite)
+
+/// The agent-vocabulary todo state block — a TodoWrite call rendered as a
+/// checklist: completed = sage fill + strikethrough, in-progress = pulsing dot,
+/// pending = empty box.
+struct V2LiveTodoBlock: View {
+    @Environment(\.v2) private var v2
+    let todos: [JSONValue]
+
+    private struct Todo { let content: String; let status: String }
+    private var items: [Todo] {
+        todos.map { Todo(content: $0.dig("content")?.asString ?? "",
+                         status: $0.dig("status")?.asString ?? "pending") }
+    }
+    private var doneCount: Int { items.filter { $0.status == "completed" }.count }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 11) {
+            Text("TASKS · \(doneCount) / \(items.count)")
+                .font(.system(size: 10, design: .monospaced)).kerning(0.8)
+                .foregroundColor(v2.faint)
+            VStack(alignment: .leading, spacing: 8) {
+                ForEach(Array(items.enumerated()), id: \.offset) { _, t in
+                    HStack(alignment: .top, spacing: 10) {
+                        box(t.status).padding(.top, 1)
+                        Text(t.content)
+                            .font(.system(size: 12.5, design: .monospaced))
+                            .strikethrough(t.status == "completed")
+                            .foregroundColor(textColor(t.status))
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                }
+            }
+        }
+        .padding(15)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(v2.card)
+        .overlay(Rectangle().stroke(v2.line2, lineWidth: 1))
+    }
+
+    private func textColor(_ status: String) -> Color {
+        switch status {
+        case "completed":   return v2.faint
+        case "in_progress": return v2.ink
+        default:            return v2.mute
+        }
+    }
+
+    @ViewBuilder
+    private func box(_ status: String) -> some View {
+        switch status {
+        case "completed":
+            ZStack {
+                Rectangle().fill(v2.add)
+                Text("✓").font(.system(size: 9)).foregroundColor(v2.paper)
+            }
+            .frame(width: 13, height: 13)
+        case "in_progress":
+            Rectangle().stroke(v2.ink, lineWidth: 1).frame(width: 13, height: 13)
+                .overlay(V2PulseDot(size: 5, color: v2.ink))
+        default:
+            Rectangle().stroke(v2.line2, lineWidth: 1).frame(width: 13, height: 13)
+        }
     }
 }
 
@@ -594,6 +677,8 @@ struct V2SystemNote: View {
         }
     }
 
+    private var isError: Bool { if case .error = kind { return true }; return false }
+
     var body: some View {
         HStack(alignment: .top, spacing: 9) {
             Image(systemName: icon)
@@ -602,15 +687,20 @@ struct V2SystemNote: View {
                 .padding(.top, 1)
             Text(text)
                 .font(.system(size: 11.5, design: .monospaced))
-                .foregroundColor(tint)
+                .foregroundColor(isError ? v2.mute : tint)
                 .textSelection(.enabled)
                 .frame(maxWidth: .infinity, alignment: .leading)
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 9)
-        .background(v2.paper2)
+        // Errors get the vocabulary's boxed treatment (clay border + clay-bg);
+        // info / hook stay subtle with a left tint bar.
+        .background(isError ? v2.delBg : v2.paper2)
+        .overlay {
+            if isError { Rectangle().stroke(v2.del, lineWidth: 1) }
+        }
         .overlay(alignment: .leading) {
-            Rectangle().fill(tint.opacity(0.4)).frame(width: 2)
+            if !isError { Rectangle().fill(tint.opacity(0.4)).frame(width: 2) }
         }
     }
 }

@@ -76,10 +76,10 @@ struct V2LivePermissionCard: View {
                     Button { session.respondToPermission(allow: false) } label: {
                         Text("Deny")
                             .font(.system(size: 12, design: .monospaced))
-                            .foregroundColor(v2.ink)
+                            .foregroundColor(v2.del)
                             .padding(.horizontal, 16)
                             .padding(.vertical, 8)
-                            .overlay(Rectangle().stroke(v2.line2, lineWidth: 1))
+                            .overlay(Rectangle().stroke(v2.del, lineWidth: 1))
                     }
                     .buttonStyle(.plain)
                     .keyboardShortcut(.delete, modifiers: [.command])

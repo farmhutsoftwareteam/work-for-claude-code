@@ -69,6 +69,10 @@ final class StreamSession: ObservableObject {
     /// last block mutates without changing `transcript.count`).
     @Published private(set) var streamTick: UInt = 0
 
+    /// tool_use_id → isError, recorded when a tool result arrives. Lets a
+    /// tool-call row show its ✓ / ✗ valence (and a spinner while absent).
+    @Published private(set) var toolOutcomes: [String: Bool] = [:]
+
     // Streaming coalescer. Deltas accumulate into `streamBuffer` (amortized O(1)
     // append) and are committed to the open transcript block on a throttled
     // flush (~30fps) instead of per token — the old path did `existing + text`
@@ -653,6 +657,7 @@ final class StreamSession: ObservableObject {
         flushPending = false
         streamingIndex = nil
         streamBuffer = ""
+        toolOutcomes.removeAll()
     }
 
     /// Close stdin (clean EOF) and terminate the child.
@@ -731,7 +736,10 @@ final class StreamSession: ObservableObject {
             // Tool results echo back in user events — render as a result row.
             finalizeStreamingText()
             for block in m.message.content {
-                if case .toolResult = block {
+                if case .toolResult(let toolUseId, _, let isError) = block {
+                    // Record the outcome so the originating tool-call row can
+                    // show its ✓ / ✗ valence (agent vocabulary).
+                    toolOutcomes[toolUseId] = (isError ?? false)
                     transcript.append(.assistantBlock(block))
                 }
             }

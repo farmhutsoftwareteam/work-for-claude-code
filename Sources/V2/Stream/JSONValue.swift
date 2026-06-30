@@ -72,4 +72,9 @@ enum JSONValue: Codable, Sendable, Equatable {
         if case .string(let v) = self { return v }
         return nil
     }
+
+    var asArray: [JSONValue]? {
+        if case .array(let v) = self { return v }
+        return nil
+    }
 }
