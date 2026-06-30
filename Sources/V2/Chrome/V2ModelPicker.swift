@@ -171,6 +171,8 @@ struct V2ModelChip: View {
                 Text(V2ModelOption.displayLabel(for: appState.activeSession?.model ?? ""))
                     .font(.system(size: 11, design: .monospaced))
                     .foregroundColor(v2.ink)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
                 Image(systemName: "chevron.down")
                     .font(.system(size: 8, weight: .medium))
                     .foregroundColor(v2.mute)
@@ -179,6 +181,9 @@ struct V2ModelChip: View {
             .padding(.vertical, 2)
             .background(v2.card)
             .overlay(Rectangle().stroke(v2.line2, lineWidth: 1))
+            // Never let the model id wrap vertically (one char per line) when
+            // the header column is squeezed — keep it on one line, truncating.
+            .fixedSize(horizontal: true, vertical: false)
         }
         .buttonStyle(.plain)
         .disabled(appState.activeSession == nil)

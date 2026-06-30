@@ -17,28 +17,40 @@ struct V2SessionHeader: View {
     @EnvironmentObject private var appState: V2AppState
     @Binding var dockPanel: V2DockPanel
 
+    /// Measured header width, used to choose how much the right-side controls
+    /// collapse. The identity block (title + path + model) always truncates
+    /// first; below the breakpoint the controls shed their labels too.
+    @State private var headerWidth: CGFloat = 0
+    private var isCompact: Bool { headerWidth > 0 && headerWidth < 700 }
+    private var isTight: Bool { headerWidth > 0 && headerWidth < 520 }
+
     var body: some View {
-        HStack(alignment: .center, spacing: 16) {
+        HStack(alignment: .center, spacing: 14) {
             V2DovetailMark(size: 30)
                 .foregroundColor(v2.ink)
+                .layoutPriority(2)   // the mark never gets squeezed
 
             VStack(alignment: .leading, spacing: 3) {
                 HStack(spacing: 9) {
                     Text(headerTitle)
                         .font(.system(size: 19, weight: .medium))
                         .kerning(-0.38)
+                        .lineLimit(1)
+                        .truncationMode(.tail)
                     if showLive { liveBadge }
                 }
                 pathSublineView
             }
+            .layoutPriority(1)       // identity wins remaining space over Spacer
 
-            Spacer()
+            Spacer(minLength: 12)
 
             HStack(spacing: 10) {
                 modePill
                 dockSwitcher
                 runningPill
             }
+            .layoutPriority(2)       // controls keep their (compact) size
         }
         .padding(.horizontal, 26)
         .padding(.top, 18)
@@ -46,6 +58,12 @@ struct V2SessionHeader: View {
         .overlay(alignment: .bottom) {
             Rectangle().fill(v2.line).frame(height: 1)
         }
+        .background(
+            GeometryReader { geo in
+                Color.clear.preference(key: V2WidthKey.self, value: geo.size.width)
+            }
+        )
+        .onPreferenceChange(V2WidthKey.self) { headerWidth = $0 }
         .enableInjection()
     }
 
@@ -116,13 +134,15 @@ struct V2SessionHeader: View {
             HStack(spacing: 6) {
                 Image(systemName: isModeA ? "terminal" : "text.bubble")
                     .font(.system(size: 10, weight: .medium))
-                Text(label)
-                    .font(.system(size: 11, design: .monospaced))
-                    .kerning(0.22)
+                if !isCompact {
+                    Text(label)
+                        .font(.system(size: 11, design: .monospaced))
+                        .kerning(0.22)
+                }
             }
             .foregroundColor(v2.ink)
             .fixedSize(horizontal: true, vertical: false)
-            .padding(.horizontal, 11)
+            .padding(.horizontal, isCompact ? 8 : 11)
             .padding(.vertical, 7)
             .background(v2.card)
             .overlay(Rectangle().stroke(v2.line2, lineWidth: 1))
@@ -133,26 +153,64 @@ struct V2SessionHeader: View {
         .keyboardShortcut("y", modifiers: [.command, .shift])
     }
 
+    @ViewBuilder
     private var dockSwitcher: some View {
-        HStack(spacing: 0) {
-            ForEach(V2DockPanel.allCases) { panel in
-                Button {
-                    dockPanel = panel
-                } label: {
-                    Text(panel.rawValue)
+        if isCompact {
+            // Collapsed: a single dropdown that names the current panel. Frees
+            // ~170px versus the four-segment control while keeping every panel
+            // one click away and showing which one is active.
+            Menu {
+                ForEach(V2DockPanel.allCases) { panel in
+                    Button {
+                        dockPanel = panel
+                    } label: {
+                        HStack {
+                            Text(panel.rawValue)
+                            if dockPanel == panel { Image(systemName: "checkmark") }
+                        }
+                    }
+                }
+            } label: {
+                HStack(spacing: 6) {
+                    Text(dockPanel.rawValue)
                         .font(.system(size: 11, design: .monospaced))
                         .kerning(0.22)
-                        .foregroundColor(dockPanel == panel ? v2.paper : v2.mute)
-                        .fixedSize(horizontal: true, vertical: false)
-                        .padding(.horizontal, 11)
-                        .padding(.vertical, 7)
-                        .background(dockPanel == panel ? v2.ink : v2.card)
+                        .foregroundColor(v2.ink)
+                    Image(systemName: "chevron.down")
+                        .font(.system(size: 8, weight: .medium))
+                        .foregroundColor(v2.mute)
                 }
-                .buttonStyle(.plain)
+                .fixedSize(horizontal: true, vertical: false)
+                .padding(.horizontal, 10)
+                .padding(.vertical, 7)
+                .background(v2.card)
+                .overlay(Rectangle().stroke(v2.line2, lineWidth: 1))
             }
+            .menuStyle(.borderlessButton)
+            .menuIndicator(.hidden)
+            .fixedSize(horizontal: true, vertical: false)
+            .help("Switch dock panel")
+        } else {
+            HStack(spacing: 0) {
+                ForEach(V2DockPanel.allCases) { panel in
+                    Button {
+                        dockPanel = panel
+                    } label: {
+                        Text(panel.rawValue)
+                            .font(.system(size: 11, design: .monospaced))
+                            .kerning(0.22)
+                            .foregroundColor(dockPanel == panel ? v2.paper : v2.mute)
+                            .fixedSize(horizontal: true, vertical: false)
+                            .padding(.horizontal, 11)
+                            .padding(.vertical, 7)
+                            .background(dockPanel == panel ? v2.ink : v2.card)
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+            .fixedSize(horizontal: true, vertical: false)
+            .overlay(Rectangle().stroke(v2.line2, lineWidth: 1))
         }
-        .fixedSize(horizontal: true, vertical: false)
-        .overlay(Rectangle().stroke(v2.line2, lineWidth: 1))
     }
 
     private var runningPill: some View {
@@ -169,16 +227,18 @@ struct V2SessionHeader: View {
         } label: {
             HStack(spacing: 7) {
                 stateDot
-                Text(stateLabel)
-                    .font(.system(size: 11.5, design: .monospaced))
-                    .fixedSize(horizontal: true, vertical: false)
+                if !isTight {
+                    Text(stateLabel)
+                        .font(.system(size: 11.5, design: .monospaced))
+                        .fixedSize(horizontal: true, vertical: false)
+                }
                 Image(systemName: "chevron.down")
                     .font(.system(size: 8, weight: .medium))
-                    .padding(.leading, 2)
+                    .padding(.leading, isTight ? 0 : 2)
             }
             .foregroundColor(v2.ink)
             .fixedSize(horizontal: true, vertical: false)
-            .padding(.horizontal, 12)
+            .padding(.horizontal, isTight ? 9 : 12)
             .padding(.vertical, 7)
             .background(v2.card)
             .overlay(Rectangle().stroke(v2.line2, lineWidth: 1))
@@ -186,6 +246,7 @@ struct V2SessionHeader: View {
         .menuStyle(.borderlessButton)
         .menuIndicator(.hidden)
         .fixedSize(horizontal: true, vertical: false)
+        .help(stateLabel)
     }
 
     @ViewBuilder
@@ -272,6 +333,17 @@ struct V2SessionHeader: View {
             case .terminated: return "Ended"
             }
         }
+    }
+}
+
+// MARK: - Width measurement
+
+/// Reports a view's measured width up the tree so the header can pick a
+/// responsive layout. Uses `max` so a transient zero never wins.
+struct V2WidthKey: PreferenceKey {
+    static let defaultValue: CGFloat = 0
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
+        value = max(value, nextValue())
     }
 }
 
