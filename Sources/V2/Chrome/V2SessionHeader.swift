@@ -15,7 +15,23 @@ struct V2SessionHeader: View {
     @ObserveInjection private var inject
     @Environment(\.v2) private var v2
     @EnvironmentObject private var appState: V2AppState
+    @EnvironmentObject private var store: Store
     @Binding var dockPanel: V2DockPanel
+
+    /// The active session has a live MCP server that's failed / needs auth, or
+    /// the current project has a configured server that needs sign-in. Drives
+    /// the red badge on the dock's `mcp` control.
+    private var mcpAlert: Bool {
+        if let servers = appState.activeSession?.mcpServers, !servers.isEmpty {
+            let bad = servers.contains {
+                let s = ($0.status ?? "").lowercased()
+                return s == "needs-auth" || s == "failed" || s == "error"
+            }
+            if bad { return true }
+        }
+        let cwd = appState.activeTab?.projectCwd ?? appState.selectedProjectCwd?.path ?? ""
+        return store.projectHasUnconnectedMCP(cwd)
+    }
 
     /// Measured header width, used to choose how much the right-side controls
     /// collapse. The identity block (title + path + model) always truncates
@@ -176,6 +192,9 @@ struct V2SessionHeader: View {
                         .font(.system(size: 11, design: .monospaced))
                         .kerning(0.22)
                         .foregroundColor(v2.ink)
+                    if mcpAlert {
+                        Circle().fill(v2.del).frame(width: 6, height: 6)
+                    }
                     Image(systemName: "chevron.down")
                         .font(.system(size: 8, weight: .medium))
                         .foregroundColor(v2.mute)
@@ -189,7 +208,7 @@ struct V2SessionHeader: View {
             .menuStyle(.borderlessButton)
             .menuIndicator(.hidden)
             .fixedSize(horizontal: true, vertical: false)
-            .help("Switch dock panel")
+            .help(mcpAlert ? "An MCP server needs sign-in" : "Switch dock panel")
         } else {
             HStack(spacing: 0) {
                 ForEach(V2DockPanel.allCases) { panel in
@@ -206,6 +225,15 @@ struct V2SessionHeader: View {
                             .background(dockPanel == panel ? v2.ink : v2.card)
                     }
                     .buttonStyle(.plain)
+                    // Red badge on the MCP tab when a server needs sign-in /
+                    // isn't connected — visible whichever panel is open.
+                    .overlay(alignment: .topTrailing) {
+                        if panel == .mcp && mcpAlert {
+                            Circle().fill(v2.del).frame(width: 6, height: 6)
+                                .offset(x: -3, y: 3)
+                                .help("An MCP server needs sign-in")
+                        }
+                    }
                 }
             }
             .fixedSize(horizontal: true, vertical: false)

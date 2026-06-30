@@ -247,6 +247,7 @@ struct V2LeftRail: View {
                         cwd: project.cwd,
                         sessionCount: project.sessions.count,
                         live: project.isActive,
+                        mcpAlert: store.projectHasUnconnectedMCP(project.cwd),
                         isActive: appState.selectedProjectCwd?.path == project.cwd
                     ) {
                         appState.selectProject(cwd: project.cwd, name: project.displayName)
@@ -388,6 +389,7 @@ private struct V2ProjectRow: View {
     let cwd: String
     let sessionCount: Int
     let live: Bool
+    var mcpAlert: Bool = false
     let isActive: Bool
     let onTap: () -> Void
 
@@ -405,6 +407,13 @@ private struct V2ProjectRow: View {
                     .lineLimit(1)
                     .truncationMode(.tail)
                 Spacer()
+                // Red dot when one of this project's own MCP servers needs
+                // sign-in — a scannable "this project has a disconnected tool"
+                // cue down the rail.
+                if mcpAlert {
+                    Circle().fill(v2.del).frame(width: 6, height: 6)
+                        .help("An MCP server in this project needs sign-in")
+                }
                 Text(sessionCount > 0 ? "\(sessionCount)" : "")
                     .font(.system(size: 10.5, design: .monospaced))
                     .foregroundColor(v2.faint)

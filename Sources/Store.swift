@@ -954,6 +954,21 @@ final class Store: ObservableObject {
         mcpNeedsAuth = Set(obj.keys)
     }
 
+    /// True if this project has one of its OWN configured MCP servers that isn't
+    /// connected — i.e. a server in its `.mcp.json` (project) or `~/.claude.json`
+    /// (local) that currently needs sign-in. Drives the red "needs attention"
+    /// cue on project rows and the header MCP control.
+    ///
+    /// Deliberately project + local scope only: a GLOBAL (user-scope) server
+    /// needing auth is a global problem, so flagging it on every project row
+    /// would be noise. The fast path is O(1) — when nothing needs auth at all
+    /// (the common case) we return immediately.
+    func projectHasUnconnectedMCP(_ cwd: String) -> Bool {
+        guard !mcpNeedsAuth.isEmpty else { return false }
+        let scoped = (projectMCPs[cwd] ?? []) + (localUserMCPs[cwd] ?? [])
+        return scoped.contains { mcpNeedsAuth.contains($0.name) }
+    }
+
     private nonisolated static func parseExtensions(claudeDir: URL) -> (
         plugins: [ClaudePlugin],
         skills: [ClaudeSkill],
