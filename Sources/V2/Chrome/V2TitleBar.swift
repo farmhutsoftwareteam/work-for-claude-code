@@ -9,6 +9,8 @@ struct V2TitleBar: View {
     @ObserveInjection private var inject
     @Binding var themeRaw: String
     @Environment(\.v2) private var v2
+    @EnvironmentObject private var appState: V2AppState
+    @AppStorage("v2.soundEnabled") private var soundEnabled = true
 
     private var theme: V2ThemeChoice {
         V2ThemeChoice(rawValue: themeRaw) ?? .system
@@ -19,6 +21,9 @@ struct V2TitleBar: View {
             // Everything lives in the top-right corner; the left is the
             // system's traffic-light chrome.
             Spacer()
+
+            summary
+            soundToggle
 
             // Theme picker: a menu showing Light / Dark / System with the
             // current mode checked — one click to any mode, instead of a
@@ -58,5 +63,46 @@ struct V2TitleBar: View {
             Rectangle().fill(v2.line).frame(height: 1)
         }
         .enableInjection()
+    }
+
+    // MARK: - Summary readout + sound toggle
+
+    /// Per the Tab-states design: a live tally of what's working / finished
+    /// unseen / blocked on you, across every open tab. Only non-zero counts show.
+    @ViewBuilder
+    private var summary: some View {
+        let c = appState.tabStatusCounts
+        if c.working + c.done + c.needs > 0 {
+            HStack(spacing: 14) {
+                if c.working > 0 { summaryItem(c.working, "working", color: v2.ink, pulse: true) }
+                if c.done > 0    { summaryItem(c.done, "done", color: v2.add, pulse: false) }
+                if c.needs > 0   { summaryItem(c.needs, "needs you", color: v2.del, pulse: false) }
+            }
+            .font(.system(size: 11, design: .monospaced))
+            .foregroundColor(v2.mute)
+        }
+    }
+
+    private func summaryItem(_ count: Int, _ label: String, color: Color, pulse: Bool) -> some View {
+        HStack(spacing: 6) {
+            if pulse {
+                V2PulseDot(size: 7, color: color)
+            } else {
+                Circle().fill(color).frame(width: 7, height: 7)
+            }
+            Text("\(count) \(label)")
+        }
+    }
+
+    private var soundToggle: some View {
+        Button { soundEnabled.toggle() } label: {
+            Image(systemName: soundEnabled ? "speaker.wave.2" : "speaker.slash")
+                .font(.system(size: 12))
+                .foregroundColor(v2.mute)
+                .frame(width: 28, height: 28)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .help(soundEnabled ? "Attention sounds on — click to mute" : "Attention sounds muted — click to enable")
     }
 }

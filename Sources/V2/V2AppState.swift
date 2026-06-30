@@ -15,7 +15,21 @@ import Combine
 final class V2AppState: ObservableObject {
     /// Window-local active tab id. Independent of TerminalsController's
     /// activeTabId so the v1 and v2 windows can focus different tabs.
-    @Published var activeTabId: UUID?
+    @Published var activeTabId: UUID? {
+        didSet {
+            // Viewing a tab marks its result seen — clears the "done · unseen"
+            // sage cue. (Design: selecting a done tab clears its sage.)
+            if let id = activeTabId { unseenDone.remove(id) }
+        }
+    }
+
+    /// Tabs whose turn finished while you were looking at a DIFFERENT tab — the
+    /// "done · unseen" state. Cleared when the tab is viewed (activeTabId didSet).
+    @Published private(set) var unseenDone: Set<UUID> = []
+
+    /// Last seen lifecycle state per tab, so we can detect transitions
+    /// (working → ready = a turn finished; → awaitingPermission = blocked).
+    private var lastTabState: [UUID: StreamSession.LifecycleState] = [:]
 
     /// Project the left rail is currently focused on. New tabs spawn here.
     @Published var selectedProjectCwd: URL?
@@ -114,16 +128,44 @@ final class V2AppState: ObservableObject {
     /// session directly, so they still update live per token; only the chrome
     /// that reflects these specific, low-frequency fields needs the nudge.
     private func observeSessionState(_ session: StreamSession, tabId: UUID) {
-        let signals: [AnyPublisher<Void, Never>] = [
-            session.$state.map { _ in () }.eraseToAnyPublisher(),
+        // $state drives tab status + the done/needs-you transitions (and a
+        // republish); the other low-frequency fields just republish chrome.
+        let stateSub = session.$state
+            .receive(on: RunLoop.main)
+            .sink { [weak self] newState in self?.handleStateTransition(tabId: tabId, to: newState) }
+        let otherSignals: [AnyPublisher<Void, Never>] = [
             session.$model.map { _ in () }.eraseToAnyPublisher(),
             session.$permissionMode.map { _ in () }.eraseToAnyPublisher(),
             session.$mcpServers.map { _ in () }.eraseToAnyPublisher(),
             session.$isRetrying.map { _ in () }.eraseToAnyPublisher(),
         ]
-        sessionStateSubs[tabId] = Publishers.MergeMany(signals)
+        let otherSub = Publishers.MergeMany(otherSignals)
             .receive(on: RunLoop.main)
             .sink { [weak self] _ in self?.objectWillChange.send() }
+        sessionStateSubs[tabId] = AnyCancellable { stateSub.cancel(); otherSub.cancel() }
+    }
+
+    /// Detect tab-status transitions and fire the matching attention cue.
+    private func handleStateTransition(tabId: UUID, to newState: StreamSession.LifecycleState) {
+        let old = lastTabState[tabId]
+        lastTabState[tabId] = newState
+        defer { objectWillChange.send() }   // republish so the tab strip re-renders
+
+        // Skip the publisher's initial replay (no real transition yet).
+        guard let old else { return }
+        let isBackground = (tabId != activeTabId)
+
+        // Needs you: entered awaitingPermission from anything else.
+        if case .awaitingPermission = newState, !old.isAwaitingPermission {
+            if isBackground { V2Sound.play(.needsYou) }
+            return
+        }
+        // Done · unseen: a turn finished (working → ready) on a tab you weren't
+        // looking at.
+        if case .ready = newState, case .working = old, isBackground {
+            unseenDone.insert(tabId)
+            V2Sound.play(.done)
+        }
     }
 
     // MARK: - Setup
@@ -202,6 +244,36 @@ final class V2AppState: ObservableObject {
     }
 
     var activeSession: StreamSession? { activeTab?.streamSession }
+
+    /// The four-state status for a tab (shared by the tab strip + the title-bar
+    /// summary). Selection is separate — that's `activeTabId`.
+    func tabStatus(_ tab: TerminalTab) -> V2TabStatus {
+        switch tab.surface {
+        case .modeA:
+            return tab.isLive ? .working : .idle
+        case .modeB:
+            guard let s = tab.streamSession else { return .idle }
+            switch s.state {
+            case .working, .spawning, .initializing: return .working
+            case .awaitingPermission:                return .needsYou
+            default: return unseenDone.contains(tab.id) ? .doneUnseen : .idle
+            }
+        }
+    }
+
+    /// Counts for the title-bar summary readout.
+    var tabStatusCounts: (working: Int, done: Int, needs: Int) {
+        var w = 0, d = 0, n = 0
+        for tab in tabs {
+            switch tabStatus(tab) {
+            case .working:    w += 1
+            case .doneUnseen: d += 1
+            case .needsYou:   n += 1
+            case .idle:       break
+            }
+        }
+        return (w, d, n)
+    }
 
     // MARK: - Project selection
 
@@ -308,6 +380,8 @@ final class V2AppState: ObservableObject {
         _ = terminals?.close(tabId, force: true)
         resumeIds.removeValue(forKey: tabId)
         sessionStateSubs[tabId] = nil   // cancel the state subscription (was leaked)
+        lastTabState[tabId] = nil
+        unseenDone.remove(tabId)
         if wasActive {
             activeTabId = tabs.last?.id
         }
@@ -537,4 +611,11 @@ final class V2AppState: ObservableObject {
 
 private extension String {
     func ifEmpty(_ fallback: String) -> String { isEmpty ? fallback : self }
+}
+
+extension StreamSession.LifecycleState {
+    var isAwaitingPermission: Bool {
+        if case .awaitingPermission = self { return true }
+        return false
+    }
 }
