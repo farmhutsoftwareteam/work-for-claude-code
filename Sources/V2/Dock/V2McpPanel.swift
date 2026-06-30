@@ -526,7 +526,12 @@ enum V2MCPAuth {
                             // client_id, which the provider rejects with
                             // "Unrecognized client_id". A newline after the URL
                             // proves it's whole.
-                            guard let lastNL = buffer.lastIndex(where: { $0 == "\n" || $0 == "\r" }) else { continue }
+                            //
+                            // NB: the CLI emits CRLF, and Swift treats "\r\n" as a
+                            // SINGLE Character that is != "\n" and != "\r" — so we
+                            // must test the Character's scalars, not the Character
+                            // itself, or no line ending is ever found.
+                            guard let lastNL = buffer.lastIndex(where: { $0.unicodeScalars.contains { $0 == "\n" || $0 == "\r" } }) else { continue }
                             let complete = stripANSI(String(buffer[..<lastNL]))
                             if let url = extractAuthURL(complete) {
                                 openedURL = true
