@@ -277,20 +277,22 @@ struct V2AssistantBlock: View {
 
     var body: some View {
         HStack(alignment: .top, spacing: 13) {
-            // Gutter: dovetail mark, plus a hover-reveal copy for the whole
-            // message (text blocks only) — tucked here so it never covers text.
-            VStack(alignment: .leading, spacing: 7) {
-                V2DovetailMark(size: 18)
-                    .foregroundColor(v2.ink)
-                    .padding(.top, 2)
-                if hover, textForCopy != nil {
+            V2DovetailMark(size: 18)
+                .foregroundColor(v2.ink)
+                .frame(width: 54, alignment: .leading)
+                .padding(.top, 2)
+
+            // Message + an action bar BELOW it (where ChatGPT / Claude put it),
+            // left-aligned with the text. Revealed on hover; only for text.
+            VStack(alignment: .leading, spacing: 6) {
+                content
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                if textForCopy != nil {
                     copyButton
+                        .opacity(hover ? 1 : 0)
+                        .allowsHitTesting(hover)
                 }
             }
-            .frame(width: 54, alignment: .leading)
-
-            content
-                .frame(maxWidth: .infinity, alignment: .leading)
         }
         .onHover { hover = $0 }
     }
@@ -308,11 +310,17 @@ struct V2AssistantBlock: View {
             copied = true
             DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { copied = false }
         } label: {
-            Image(systemName: copied ? "checkmark" : "doc.on.doc")
-                .font(.system(size: 10, weight: .medium))
-                .foregroundColor(copied ? v2.ink : v2.faint)
-                .frame(width: 22, height: 16)
-                .contentShape(Rectangle())
+            HStack(spacing: 5) {
+                Image(systemName: copied ? "checkmark" : "doc.on.doc")
+                    .font(.system(size: 10, weight: .medium))
+                Text(copied ? "copied" : "copy")
+                    .font(.system(size: 10.5, design: .monospaced))
+            }
+            .foregroundColor(copied ? v2.ink : v2.mute)
+            .padding(.horizontal, 8).padding(.vertical, 4)
+            .background(v2.paper2)
+            .overlay(Rectangle().stroke(v2.line2, lineWidth: 1))
+            .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
         .help("Copy message")
