@@ -101,6 +101,31 @@ final class V2AppState: ObservableObject {
 
     private var cancellables: Set<AnyCancellable> = []
 
+    /// Per-tab subscriptions to a session's LOW-FREQUENCY signals. Keyed by tab
+    /// id so re-subscribing (mode flip / reopen) replaces rather than stacks a
+    /// duplicate, and close() can cancel it — the old blanket sinks leaked and
+    /// duplicated.
+    private var sessionStateSubs: [UUID: AnyCancellable] = [:]
+
+    /// Republish chrome when a tab's session changes state/model/permission/MCP/
+    /// retry — NOT on its blanket objectWillChange, which fires on every streamed
+    /// token and re-rendered the whole window (rail, tabs, header, dock) for
+    /// content that didn't change. The transcript and composer @Observe the
+    /// session directly, so they still update live per token; only the chrome
+    /// that reflects these specific, low-frequency fields needs the nudge.
+    private func observeSessionState(_ session: StreamSession, tabId: UUID) {
+        let signals: [AnyPublisher<Void, Never>] = [
+            session.$state.map { _ in () }.eraseToAnyPublisher(),
+            session.$model.map { _ in () }.eraseToAnyPublisher(),
+            session.$permissionMode.map { _ in () }.eraseToAnyPublisher(),
+            session.$mcpServers.map { _ in () }.eraseToAnyPublisher(),
+            session.$isRetrying.map { _ in () }.eraseToAnyPublisher(),
+        ]
+        sessionStateSubs[tabId] = Publishers.MergeMany(signals)
+            .receive(on: RunLoop.main)
+            .sink { [weak self] _ in self?.objectWillChange.send() }
+    }
+
     // MARK: - Setup
 
     func attach(terminals: TerminalsController) {
@@ -205,13 +230,9 @@ final class V2AppState: ObservableObject {
         activeTabId = id
         mainView = .chat
 
-        // Re-publish per-tab StreamSession changes so v2 chrome reacts to
-        // streaming/permission state transitions.
+        // React to this tab's session state transitions (not per-token churn).
         guard let session = terminals.tabs.first(where: { $0.id == id })?.streamSession else { return }
-        session.objectWillChange
-            .receive(on: RunLoop.main)
-            .sink { [weak self] _ in self?.objectWillChange.send() }
-            .store(in: &cancellables)
+        observeSessionState(session, tabId: id)
 
         // Just start it. "New session" means a session — not a tab that then
         // makes you click a second "Start session" button.
@@ -286,6 +307,7 @@ final class V2AppState: ObservableObject {
         let wasActive = (activeTabId == tabId)
         _ = terminals?.close(tabId, force: true)
         resumeIds.removeValue(forKey: tabId)
+        sessionStateSubs[tabId] = nil   // cancel the state subscription (was leaked)
         if wasActive {
             activeTabId = tabs.last?.id
         }
@@ -432,10 +454,7 @@ final class V2AppState: ObservableObject {
             : projectName
 
         if let session = terminals.tabs.first(where: { $0.id == id })?.streamSession {
-            session.objectWillChange
-                .receive(on: RunLoop.main)
-                .sink { [weak self] _ in self?.objectWillChange.send() }
-                .store(in: &cancellables)
+            observeSessionState(session, tabId: id)
         }
         // Eagerly resume — user explicitly picked this session. resume()
         // reads the (possibly large) history OFF the main thread and flips
@@ -457,23 +476,17 @@ final class V2AppState: ObservableObject {
         guard let id = activeTabId else { return }
         terminals?.flipSurface(tabId: id)
 
-        // Re-subscribe to the new StreamSession's changes (B→A creates one,
-        // A→B nils it).
+        // Re-subscribe to the new StreamSession's state (B→A creates one,
+        // A→B nils it). Keyed by tab id, so the flip replaces the prior sub.
         if let session = terminals?.tabs.first(where: { $0.id == id })?.streamSession {
-            session.objectWillChange
-                .receive(on: RunLoop.main)
-                .sink { [weak self] _ in self?.objectWillChange.send() }
-                .store(in: &cancellables)
+            observeSessionState(session, tabId: id)
         }
     }
 
     func flipMode(tabId: UUID) {
         terminals?.flipSurface(tabId: tabId)
         if let session = terminals?.tabs.first(where: { $0.id == tabId })?.streamSession {
-            session.objectWillChange
-                .receive(on: RunLoop.main)
-                .sink { [weak self] _ in self?.objectWillChange.send() }
-                .store(in: &cancellables)
+            observeSessionState(session, tabId: tabId)
         }
     }
 
