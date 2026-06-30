@@ -17,20 +17,14 @@ struct V2McpPanel: View {
     @EnvironmentObject private var store: Store
     @State private var addingMCP = false
     @State private var authing: Set<String> = []   // servers mid sign-in
+    @State private var authHandles: [String: V2AuthHandle] = [:]   // cancel handles
+    @State private var authFailedServer: String?   // last server whose sign-in failed
     @State private var authNote: String?
 
     var body: some View {
         VStack(spacing: 0) {
             header
-            if let note = authNote {
-                Text(note)
-                    .font(.system(size: 10.5, design: .monospaced))
-                    .foregroundColor(v2.mute)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(.horizontal, 18).padding(.vertical, 9)
-                    .background(v2.card)
-                    .overlay(alignment: .bottom) { Rectangle().fill(v2.line).frame(height: 1) }
-            }
+            if let note = authNote { authBanner(note) }
             content
         }
         .sheet(isPresented: $addingMCP) {
@@ -200,48 +194,102 @@ struct V2McpPanel: View {
 
     // MARK: - Authenticate (claude mcp login)
 
+    /// Status banner under the header. On failure it offers an explicit
+    /// "open a terminal" escape hatch (for a server that genuinely needs the
+    /// manual paste flow) instead of forcing a terminal on every error — and a
+    /// dismiss so a stale note doesn't linger.
+    @ViewBuilder
+    private func authBanner(_ note: String) -> some View {
+        let failed = authFailedServer
+        HStack(alignment: .top, spacing: 10) {
+            Text(note)
+                .font(.system(size: 10.5, design: .monospaced))
+                .foregroundColor(failed != nil ? v2.del : v2.mute)
+                .fixedSize(horizontal: false, vertical: true)
+                .frame(maxWidth: .infinity, alignment: .leading)
+            if let failed {
+                Button {
+                    appState.openMCPLogin(serverName: failed)
+                    authNote = nil; authFailedServer = nil
+                } label: {
+                    Text("terminal")
+                        .font(.system(size: 10, design: .monospaced))
+                        .foregroundColor(v2.ink)
+                        .padding(.horizontal, 7).padding(.vertical, 3)
+                        .overlay(Rectangle().stroke(v2.line2, lineWidth: 1))
+                }
+                .buttonStyle(.plain)
+                .help("Open `claude mcp login` in a terminal to finish by hand")
+            }
+            Button { authNote = nil; authFailedServer = nil } label: {
+                Image(systemName: "xmark")
+                    .font(.system(size: 9, weight: .medium))
+                    .foregroundColor(v2.faint)
+            }
+            .buttonStyle(.plain)
+            .help("Dismiss")
+        }
+        .padding(.horizontal, 18).padding(.vertical, 9)
+        .background(v2.card)
+        .overlay(alignment: .bottom) { Rectangle().fill(v2.line).frame(height: 1) }
+    }
+
     private func authButton(_ name: String) -> some View {
         let busy = authing.contains(name)
-        return Button { authenticate(name) } label: {
-            Text(busy ? "signing in…" : "sign in")
+        // While in flight the button cancels (so you're never stuck waiting for
+        // a callback that isn't coming); otherwise it starts / retries sign-in.
+        return Button { busy ? cancelAuth(name) : authenticate(name) } label: {
+            Text(busy ? "cancel" : "sign in")
                 .font(.system(size: 10.5, design: .monospaced))
-                .foregroundColor(busy ? v2.faint : v2.ink)
+                .foregroundColor(busy ? v2.mute : v2.ink)
                 .padding(.horizontal, 9).padding(.vertical, 4)
                 .background(v2.card)
                 .overlay(Rectangle().stroke(busy ? v2.line2 : v2.ink, lineWidth: 1))
         }
         .buttonStyle(.plain)
-        .disabled(busy)
-        .help("Sign in to this MCP server (OAuth in your browser)")
+        .help(busy ? "Cancel sign-in" : "Sign in to this MCP server (OAuth in your browser)")
+    }
+
+    private func cancelAuth(_ name: String) {
+        authHandles[name]?.cancel()
     }
 
     private func authenticate(_ name: String) {
         guard let binary = appState.claudeBinary else { authNote = "Can't find the claude binary."; return }
         let cwd = projectCwd ?? NSHomeDirectory()
+        let handle = V2AuthHandle()
+        authHandles[name] = handle
         authing.insert(name)
-        authNote = "\(name): opening your browser — authorise there to finish."
+        authFailedServer = nil
+        authNote = "\(name): opening your browser — authorise there, or cancel."
         Task {
-            let r = await V2MCPAuth.login(claudeBinary: binary, name: name, cwd: cwd)
+            let result = await V2MCPAuth.login(claudeBinary: binary, name: name, cwd: cwd, handle: handle)
             authing.remove(name)
-            if r.ok {
+            authHandles[name] = nil
+            switch result {
+            case .ok:
                 // Refresh auth state from claude's own cache FIRST (cheap, sync,
                 // and immune to load()'s in-progress guard) so the row flips from
                 // "sign in" → "signed in" immediately.
                 store.loadMCPNeedsAuth()
                 await store.load()
-                // Don't make them restart by hand — reconnect the live session
-                // for them so the server just appears, folded into the session's
-                // normal loading state.
+                // Reconnect the live session so the server just appears, folded
+                // into the session's normal loading state.
                 let reconnected = appState.reconnectSessions(inProject: cwd, afterAuthOf: name)
+                authFailedServer = nil
                 authNote = reconnected > 0
                     ? "\(name): signed in ✓ — reconnecting your session…"
                     : "\(name): signed in ✓ — connected."
-            } else {
-                // Fall back to the visible terminal if the headless flow can't
-                // complete (e.g. a server with no loopback that needs the paste).
-                let reason = r.output.isEmpty ? "couldn't complete sign-in" : String(r.output.suffix(140))
-                authNote = "\(name): \(reason) — opening a terminal to finish manually."
-                appState.openMCPLogin(serverName: name)
+            case .cancelled:
+                authFailedServer = nil
+                authNote = "\(name): sign-in cancelled. Click “sign in” to try again."
+            case .timedOut:
+                authFailedServer = name
+                authNote = "\(name): didn’t hear back — the browser may have shown an error. “sign in” to retry."
+            case .failed(let output):
+                authFailedServer = name
+                let reason = output.isEmpty ? "sign-in failed" : String(output.suffix(140))
+                authNote = "\(name): \(reason) — “sign in” to retry."
             }
         }
     }
@@ -387,18 +435,52 @@ struct V2McpPanel: View {
 
 // MARK: - MCP OAuth via `claude mcp login` (hidden PTY)
 
+/// Outcome of an MCP sign-in attempt, so the UI can say exactly what happened
+/// and offer the right next step (retry / cancel / manual terminal).
+enum V2MCPAuthResult {
+    case ok(output: String)        // process exited 0 — signed in
+    case failed(output: String)    // process exited non-zero — real error
+    case timedOut                  // no callback within the timeout (often a
+                                   // browser-side error the loopback never saw)
+    case cancelled                 // user cancelled
+}
+
+/// Cancellable handle for an in-flight sign-in. The panel holds one per server
+/// so a Cancel button can terminate the underlying process; the login reader
+/// then hits EOF and returns `.cancelled`.
+final class V2AuthHandle: @unchecked Sendable {
+    private let lock = NSLock()
+    private var process: Process?
+    private(set) var wasCancelled = false
+
+    /// Register the spawned process. Returns false if cancel already fired, so
+    /// the caller can tear the just-spawned process down immediately.
+    func attach(_ p: Process) -> Bool {
+        lock.lock(); defer { lock.unlock() }
+        if wasCancelled { return false }
+        process = p
+        return true
+    }
+
+    func cancel() {
+        lock.lock(); let p = process; wasCancelled = true; lock.unlock()
+        p?.terminate()
+    }
+}
+
 enum V2MCPAuth {
     /// Run `claude mcp login <name> --no-browser` attached to a HIDDEN
     /// pseudo-terminal — the CLI's TTY check passes, but nothing is rendered.
     /// We parse the authorization URL it prints and open the browser ourselves;
     /// the CLI's localhost loopback captures the callback and the process exits
-    /// 0 on success. No paste, no visible terminal. Capped by `timeout`.
-    static func login(claudeBinary: URL, name: String, cwd: String, timeout: TimeInterval = 180) async -> (ok: Bool, output: String) {
+    /// 0 on success. No paste, no visible terminal. Capped by `timeout`, and
+    /// cancellable via `handle`.
+    static func login(claudeBinary: URL, name: String, cwd: String, handle: V2AuthHandle, timeout: TimeInterval = 180) async -> V2MCPAuthResult {
         await withCheckedContinuation { cont in
             DispatchQueue.global(qos: .userInitiated).async {
                 var master: Int32 = 0, slave: Int32 = 0
                 guard openpty(&master, &slave, nil, nil, nil) == 0 else {
-                    cont.resume(returning: (false, "couldn't allocate a terminal")); return
+                    cont.resume(returning: .failed(output: "couldn't allocate a terminal")); return
                 }
                 let p = Process()
                 p.executableURL = claudeBinary
@@ -414,9 +496,15 @@ enum V2MCPAuth {
                 p.standardError = slaveFH
                 do { try p.run() } catch {
                     close(master); close(slave)
-                    cont.resume(returning: (false, "couldn't launch claude")); return
+                    cont.resume(returning: .failed(output: "couldn't launch claude")); return
                 }
                 close(slave)   // child owns it; closing here lets master EOF on exit
+                // If the user already hit Cancel before we got here, don't leave
+                // an orphan running.
+                guard handle.attach(p) else {
+                    p.terminate(); p.waitUntilExit(); close(master)
+                    cont.resume(returning: .cancelled); return
+                }
                 let masterFH = FileHandle(fileDescriptor: master, closeOnDealloc: false)
 
                 let group = DispatchGroup()
@@ -448,7 +536,9 @@ enum V2MCPAuth {
                     }
                     group.leave()
                 }
+                var timedOut = false
                 if group.wait(timeout: .now() + timeout) == .timedOut {
+                    timedOut = true
                     p.terminate()
                     group.wait()
                 }
@@ -456,7 +546,10 @@ enum V2MCPAuth {
                 close(master)
                 let clean = stripANSI(String(data: outData, encoding: .utf8) ?? "")
                     .trimmingCharacters(in: .whitespacesAndNewlines)
-                cont.resume(returning: (p.terminationStatus == 0, clean))
+                if handle.wasCancelled      { cont.resume(returning: .cancelled) }
+                else if timedOut            { cont.resume(returning: .timedOut) }
+                else if p.terminationStatus == 0 { cont.resume(returning: .ok(output: clean)) }
+                else                        { cont.resume(returning: .failed(output: clean)) }
             }
         }
     }
