@@ -15,7 +15,10 @@ struct V2LiveTranscript: View {
     var body: some View {
         ScrollViewReader { proxy in
             ScrollView {
-                VStack(alignment: .leading, spacing: 26) {
+                // Lazy so a long transcript only builds the rows on screen. The
+                // bottom anchor + scrollTo still pin the view to the latest as a
+                // reply streams in.
+                LazyVStack(alignment: .leading, spacing: 26) {
                     if session.transcript.isEmpty {
                         emptyState
                     } else if let err = session.endError {

@@ -64,10 +64,21 @@ final class StreamSession: ObservableObject {
     /// Ordered, append-only transcript. Each item is a separate UI row.
     @Published private(set) var transcript: [TranscriptItem] = []
 
-    /// Monotonic counter bumped on every streaming text delta. A cheap O(1)
-    /// signal the transcript watches to auto-scroll while a reply grows in place
-    /// (the last block mutates without changing `transcript.count`).
+    /// Monotonic counter bumped on every streaming flush. A cheap O(1) signal
+    /// the transcript watches to auto-scroll while a reply grows in place (the
+    /// last block mutates without changing `transcript.count`).
     @Published private(set) var streamTick: UInt = 0
+
+    // Streaming coalescer. Deltas accumulate into `streamBuffer` (amortized O(1)
+    // append) and are committed to the open transcript block on a throttled
+    // flush (~30fps) instead of per token — the old path did `existing + text`
+    // every delta (O(n²) over the reply) and re-published, re-chunked, and
+    // re-parsed the whole message on every token. `streamingIndex` is the open
+    // block's position; nil when no block is open.
+    private var streamBuffer = ""
+    private var streamingIndex: Int?
+    private var flushPending = false
+    private let streamFlushInterval: TimeInterval = 0.033
 
     /// Number of older user turns that exist on disk but weren't rendered
     /// into the transcript (we cap the preload at the latest N events).
@@ -247,6 +258,11 @@ final class StreamSession: ObservableObject {
         // Reset the "saw a live event" tracker + any prior error for this spawn.
         sawLiveEvent = false
         endError = nil
+        // No streaming block is open on a fresh spawn (the transcript is kept,
+        // but the next reply starts a new block).
+        flushPending = false
+        streamingIndex = nil
+        streamBuffer = ""
 
         // Resolve the permission mode for this spawn: explicit arg →
         // persisted default → "acceptEdits". Persisting it here (and in
@@ -493,6 +509,7 @@ final class StreamSession: ObservableObject {
         guard let inputWriter else { return }
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }
+        finalizeStreamingText()   // seal any open reply before this user turn
         transcript.append(.userText(trimmed))
         // Clear the previous turn's result footer the instant a new turn
         // starts. It's only set when a turn finishes and was never reset,
@@ -630,10 +647,16 @@ final class StreamSession: ObservableObject {
         tokensUsed = 0
         contextTokens = 0
         pendingPermission = nil
+        // Drop any open streaming block — its index now points into a cleared
+        // transcript.
+        flushPending = false
+        streamingIndex = nil
+        streamBuffer = ""
     }
 
     /// Close stdin (clean EOF) and terminate the child.
     func stop() {
+        finalizeStreamingText()   // commit any partial reply before teardown
         state = .closing
         eventConsumer?.cancel()
         stderrConsumer?.cancel()
@@ -675,6 +698,7 @@ final class StreamSession: ObservableObject {
             // accumulated incrementally), use the assistant event only for
             // tool_use / thinking blocks which don't fully arrive via deltas
             // in a render-ready shape.
+            finalizeStreamingText()   // seal streamed text before any tool/thinking block
             for block in m.message.content {
                 switch block {
                 case .text:
@@ -686,6 +710,7 @@ final class StreamSession: ObservableObject {
             }
         case .user(let m):
             // Tool results echo back in user events — render as a result row.
+            finalizeStreamingText()
             for block in m.message.content {
                 if case .toolResult = block {
                     transcript.append(.assistantBlock(block))
@@ -694,6 +719,7 @@ final class StreamSession: ObservableObject {
         case .streamEvent(let s):
             handleStreamEvent(s)
         case .result(let r):
+            finalizeStreamingText()   // commit the reply's tail before the turn closes
             latestResult = r
             // An error result (e.g. resuming a session whose transcript was
             // deleted → "No conversation found") — capture a friendly reason
@@ -832,15 +858,49 @@ final class StreamSession: ObservableObject {
             isRetrying = false
             lastRetry = nil
         }
-        if case .assistantBlock(.text(let existing)) = transcript.last {
-            transcript[transcript.count - 1] = .assistantBlock(.text(existing + text))
+        if let idx = streamingIndex, idx == transcript.count - 1,
+           case .assistantBlock(.text) = transcript[idx] {
+            // Continue the open block: O(1) buffer append, throttled commit.
+            streamBuffer += text
+            scheduleStreamFlush()
         } else {
+            // Start a new streaming block. Commit any prior buffer to its block
+            // first so a tail delta isn't lost when we repoint.
+            commitStreamBuffer()
+            streamBuffer = text
             transcript.append(.assistantBlock(.text(text)))
+            streamingIndex = transcript.count - 1
+            streamTick &+= 1
         }
-        // Monotonic O(1) "content grew" signal for the transcript's auto-scroll.
-        // The view used to derive this from the streaming block's grapheme count
-        // (O(n) per render); a bare counter is free.
+    }
+
+    private func scheduleStreamFlush() {
+        guard !flushPending else { return }
+        flushPending = true
+        DispatchQueue.main.asyncAfter(deadline: .now() + streamFlushInterval) { [weak self] in
+            guard let self, self.flushPending else { return }
+            self.flushPending = false
+            self.commitStreamBuffer()
+        }
+    }
+
+    /// Write the accumulated buffer into the open block. `.text(streamBuffer)`
+    /// shares the String storage (COW), so this is O(1), not an O(n) copy.
+    private func commitStreamBuffer() {
+        guard let idx = streamingIndex, idx < transcript.count,
+              case .assistantBlock(.text) = transcript[idx] else { return }
+        transcript[idx] = .assistantBlock(.text(streamBuffer))
         streamTick &+= 1
+    }
+
+    /// Seal the open streaming block: commit the buffer now and stop appending
+    /// to it. Called before a non-text block is appended or a turn ends, so
+    /// order is preserved and no tail text is dropped.
+    private func finalizeStreamingText() {
+        flushPending = false
+        commitStreamBuffer()
+        streamingIndex = nil
+        streamBuffer = ""
     }
 
     private func handleControlRequest(_ req: ControlRequest) {
