@@ -13,7 +13,11 @@ struct V2LiveTranscript: View {
     private let bottomAnchorID = "v2-transcript-bottom"
 
     var body: some View {
-        ScrollViewReader { proxy in
+        // Profiling marker: one Point-of-Interest per transcript render. During
+        // a stream this should track the ~30fps flush cadence, not the token
+        // rate. (Swap for `Self._printChanges()` to see WHAT caused a render.)
+        let _ = V2Signpost.signposter.emitEvent("transcript-render")
+        return ScrollViewReader { proxy in
             ScrollView {
                 // Lazy so a long transcript only builds the rows on screen. The
                 // bottom anchor + scrollTo still pin the view to the latest as a

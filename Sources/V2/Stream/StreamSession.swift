@@ -509,6 +509,7 @@ final class StreamSession: ObservableObject {
         guard let inputWriter else { return }
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }
+        V2Signpost.signposter.emitEvent("turn-start")
         finalizeStreamingText()   // seal any open reply before this user turn
         transcript.append(.userText(trimmed))
         // Clear the previous turn's result footer the instant a new turn
@@ -676,6 +677,24 @@ final class StreamSession: ObservableObject {
     /// Internal so XCTest can replay captured NDJSON through the dispatch
     /// without actually spawning a child process.
     func handle(event: StreamEvent) {
+        // Signpost interval per event so Instruments shows which event types
+        // cost time (watch handle.streamEvent during a long reply). StaticString
+        // names → no allocation when Instruments isn't attached.
+        let sp = V2Signpost.signposter
+        let spName: StaticString
+        switch event {
+        case .system:          spName = "handle.system"
+        case .assistant:       spName = "handle.assistant"
+        case .user:            spName = "handle.user"
+        case .streamEvent:     spName = "handle.streamEvent"
+        case .result:          spName = "handle.result"
+        case .controlRequest:  spName = "handle.controlRequest"
+        case .controlResponse: spName = "handle.controlResponse"
+        case .unknown:         spName = "handle.unknown"
+        }
+        let spInterval = sp.beginInterval(spName, id: sp.makeSignpostID())
+        defer { sp.endInterval(spName, spInterval) }
+
         // A SUBSTANTIVE event proves the resume produced real session data →
         // disarm the fresh-start fallback. Don't count control responses (our
         // own `initialize` handshake reply lands first and would otherwise
@@ -720,6 +739,7 @@ final class StreamSession: ObservableObject {
             handleStreamEvent(s)
         case .result(let r):
             finalizeStreamingText()   // commit the reply's tail before the turn closes
+            V2Signpost.signposter.emitEvent("turn-end")
             latestResult = r
             // An error result (e.g. resuming a session whose transcript was
             // deleted → "No conversation found") — capture a friendly reason
@@ -891,6 +911,7 @@ final class StreamSession: ObservableObject {
               case .assistantBlock(.text) = transcript[idx] else { return }
         transcript[idx] = .assistantBlock(.text(streamBuffer))
         streamTick &+= 1
+        V2Signpost.signposter.emitEvent("flush")
     }
 
     /// Seal the open streaming block: commit the buffer now and stop appending
