@@ -8,6 +8,7 @@
 // passing each paragraph through the inline parser.
 
 import SwiftUI
+import AppKit
 
 struct V2MarkdownText: View {
     @Environment(\.v2) private var v2
@@ -64,28 +65,7 @@ struct V2MarkdownText: View {
                 }
             }
         case .codeFence(let lang, let body):
-            VStack(alignment: .leading, spacing: 0) {
-                if !lang.isEmpty {
-                    Text(lang)
-                        .font(.system(size: 10, design: .monospaced))
-                        .foregroundColor(v2.mute)
-                        .padding(.horizontal, 12)
-                        .padding(.vertical, 6)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .background(v2.paper3)
-                        .overlay(alignment: .bottom) {
-                            Rectangle().fill(v2.line2).frame(height: 1)
-                        }
-                }
-                Text(body)
-                    .font(.system(size: 12, design: .monospaced))
-                    .foregroundColor(v2.ink)
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 10)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .background(v2.card)
-            }
-            .overlay(Rectangle().stroke(v2.line2, lineWidth: 1))
+            V2CodeBlock(lang: lang, code: body)
         }
     }
 
@@ -258,5 +238,69 @@ struct V2MarkdownText: View {
         let after = s.index(after: dot)
         guard after < s.endIndex else { return "" }
         return String(s[s.index(after: after)...])
+    }
+}
+
+// MARK: - Code block with one-click copy
+
+/// A fenced code block with a header bar that always carries a Copy button —
+/// the universal "copy the snippet" affordance (ChatGPT / Claude.ai / GitHub).
+/// The body stays text-selectable too, so partial copies still work.
+private struct V2CodeBlock: View {
+    @Environment(\.v2) private var v2
+    let lang: String
+    let code: String
+    @State private var copied = false
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            HStack(spacing: 8) {
+                Text(lang.isEmpty ? "code" : lang)
+                    .font(.system(size: 10, design: .monospaced))
+                    .foregroundColor(v2.faint)
+                Spacer()
+                Button(action: copy) {
+                    HStack(spacing: 4) {
+                        Image(systemName: copied ? "checkmark" : "doc.on.doc")
+                            .font(.system(size: 9, weight: .medium))
+                        Text(copied ? "copied" : "copy")
+                            .font(.system(size: 10, design: .monospaced))
+                    }
+                    .foregroundColor(copied ? v2.ink : v2.mute)
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .help("Copy code")
+            }
+            .padding(.horizontal, 12).padding(.vertical, 6)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(v2.paper3)
+            .overlay(alignment: .bottom) { Rectangle().fill(v2.line2).frame(height: 1) }
+
+            Text(code)
+                .font(.system(size: 12, design: .monospaced))
+                .foregroundColor(v2.ink)
+                .padding(.horizontal, 12).padding(.vertical, 10)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(v2.card)
+                .textSelection(.enabled)
+        }
+        .overlay(Rectangle().stroke(v2.line2, lineWidth: 1))
+    }
+
+    private func copy() {
+        V2Clipboard.copy(code)
+        copied = true
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { copied = false }
+    }
+}
+
+// MARK: - Clipboard helper
+
+enum V2Clipboard {
+    static func copy(_ string: String) {
+        let pb = NSPasteboard.general
+        pb.clearContents()
+        pb.setString(string, forType: .string)
     }
 }

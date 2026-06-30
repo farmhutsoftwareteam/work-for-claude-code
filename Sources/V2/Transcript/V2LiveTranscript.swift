@@ -272,17 +272,50 @@ struct V2UserTurn: View {
 struct V2AssistantBlock: View {
     @Environment(\.v2) private var v2
     let block: ContentBlock
+    @State private var hover = false
+    @State private var copied = false
 
     var body: some View {
         HStack(alignment: .top, spacing: 13) {
-            V2DovetailMark(size: 18)
-                .foregroundColor(v2.ink)
-                .frame(width: 54, alignment: .leading)
-                .padding(.top, 2)
+            // Gutter: dovetail mark, plus a hover-reveal copy for the whole
+            // message (text blocks only) — tucked here so it never covers text.
+            VStack(alignment: .leading, spacing: 7) {
+                V2DovetailMark(size: 18)
+                    .foregroundColor(v2.ink)
+                    .padding(.top, 2)
+                if hover, textForCopy != nil {
+                    copyButton
+                }
+            }
+            .frame(width: 54, alignment: .leading)
 
             content
                 .frame(maxWidth: .infinity, alignment: .leading)
         }
+        .onHover { hover = $0 }
+    }
+
+    /// Raw text to copy, when this block is a text block.
+    private var textForCopy: String? {
+        if case .text(let s) = block { return s }
+        return nil
+    }
+
+    private var copyButton: some View {
+        Button {
+            guard let t = textForCopy else { return }
+            V2Clipboard.copy(t)
+            copied = true
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { copied = false }
+        } label: {
+            Image(systemName: copied ? "checkmark" : "doc.on.doc")
+                .font(.system(size: 10, weight: .medium))
+                .foregroundColor(copied ? v2.ink : v2.faint)
+                .frame(width: 22, height: 16)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .help("Copy message")
     }
 
     @ViewBuilder
