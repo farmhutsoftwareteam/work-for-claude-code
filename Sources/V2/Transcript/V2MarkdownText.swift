@@ -66,6 +66,8 @@ struct V2MarkdownText: View {
             }
         case .codeFence(let lang, let body):
             V2CodeBlock(lang: lang, code: body)
+        case .table(let header, let rows):
+            V2MarkdownTable(header: header, rows: rows)
         }
     }
 
@@ -90,27 +92,22 @@ struct V2MarkdownText: View {
     // MARK: - Inline attributed string
 
     private func inlineAttributed(_ s: String) -> AttributedString {
-        // Apple's parser is the cheapest way to get **bold**, *italic*,
-        // `code`, and [links](…) without rolling our own. Preserve whitespace
-        // so streaming partial deltas don't collapse spacing.
-        if let attr = try? AttributedString(
-            markdown: s,
-            options: .init(interpretedSyntax: .inlineOnlyPreservingWhitespace)
-        ) {
-            return styleInlineCode(attr)
-        }
-        return AttributedString(s)
+        Self.inlineAttributed(s, codeBg: v2.paper3, ink: v2.ink)
     }
 
-    /// Apply the paper3 background swatch to runs marked as inline code so
-    /// they match the design's `code` styling.
-    private func styleInlineCode(_ input: AttributedString) -> AttributedString {
-        var out = input
-        for run in out.runs {
-            if run.inlinePresentationIntent?.contains(.code) == true {
-                out[run.range].backgroundColor = v2.paper3
-                out[run.range].foregroundColor = v2.ink
-            }
+    /// Inline markdown (**bold**, *italic*, `code`, [links]) → AttributedString,
+    /// with the paper3 swatch on inline code. Static so table cells reuse it.
+    /// Apple's parser is the cheapest way to get this without rolling our own;
+    /// preserve whitespace so streaming partial deltas don't collapse spacing.
+    static func inlineAttributed(_ s: String, codeBg: Color, ink: Color) -> AttributedString {
+        guard let attr = try? AttributedString(
+            markdown: s,
+            options: .init(interpretedSyntax: .inlineOnlyPreservingWhitespace)
+        ) else { return AttributedString(s) }
+        var out = attr
+        for run in out.runs where run.inlinePresentationIntent?.contains(.code) == true {
+            out[run.range].backgroundColor = codeBg
+            out[run.range].foregroundColor = ink
         }
         return out
     }
@@ -127,6 +124,7 @@ struct V2MarkdownText: View {
         case bullet([String])
         case ordered([String])
         case codeFence(lang: String, body: String)
+        case table(header: [String], rows: [[String]])
     }
 
     static func chunk(_ text: String) -> [MDBlock] {
@@ -170,6 +168,21 @@ struct V2MarkdownText: View {
                 continue
             }
 
+            // GFM table: a header row of pipes immediately followed by a
+            // delimiter row (|---|:--:|). Without this, tables fell through to
+            // the paragraph branch and rendered as raw "| a | b |" text.
+            if isTableRow(trimmed), i + 1 < lines.count, isTableDelimiter(lines[i + 1]) {
+                let header = parseTableRow(raw)
+                i += 2  // consume header + delimiter
+                var rows: [[String]] = []
+                while i < lines.count, isTableRow(lines[i].trimmingCharacters(in: .whitespaces)) {
+                    rows.append(parseTableRow(lines[i]))
+                    i += 1
+                }
+                out.append(.table(header: header, rows: rows))
+                continue
+            }
+
             // Bullet list
             if isBullet(trimmed) {
                 var items: [String] = []
@@ -208,6 +221,7 @@ struct V2MarkdownText: View {
                 if t.hasPrefix("# ") || t.hasPrefix("## ") || t.hasPrefix("### ") { break }
                 if t.hasPrefix("```") { break }
                 if isBullet(t) || isOrdered(t) { break }
+                if isTableRow(t), i + 1 < lines.count, isTableDelimiter(lines[i + 1]) { break }
                 para.append(l)
                 i += 1
             }
@@ -238,6 +252,81 @@ struct V2MarkdownText: View {
         let after = s.index(after: dot)
         guard after < s.endIndex else { return "" }
         return String(s[s.index(after: after)...])
+    }
+
+    // MARK: - Table parsing
+
+    private static func isTableRow(_ s: String) -> Bool {
+        s.trimmingCharacters(in: .whitespaces).contains("|")
+    }
+
+    /// A GFM delimiter row: only |, -, :, and spaces, with at least one dash.
+    private static func isTableDelimiter(_ s: String) -> Bool {
+        let t = s.trimmingCharacters(in: .whitespaces)
+        guard t.contains("-") else { return false }
+        return t.allSatisfy { $0 == "|" || $0 == "-" || $0 == ":" || $0 == " " }
+    }
+
+    /// Split a "| a | b |" row into trimmed cells, dropping the outer pipes.
+    private static func parseTableRow(_ s: String) -> [String] {
+        var t = s.trimmingCharacters(in: .whitespaces)
+        if t.hasPrefix("|") { t.removeFirst() }
+        if t.hasSuffix("|") { t.removeLast() }
+        return t.components(separatedBy: "|").map { $0.trimmingCharacters(in: .whitespaces) }
+    }
+}
+
+// MARK: - Table
+
+/// Renders a GFM table. Columns auto-size to content via Grid; if the table is
+/// wider than the column it scrolls horizontally (the standard chat behaviour)
+/// rather than breaking the layout. Header row gets the paper3 swatch; rows are
+/// separated by thin rules.
+private struct V2MarkdownTable: View {
+    @Environment(\.v2) private var v2
+    let header: [String]
+    let rows: [[String]]
+
+    private var columnCount: Int {
+        max(header.count, rows.map(\.count).max() ?? 0)
+    }
+
+    var body: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            Grid(alignment: .topLeading, horizontalSpacing: 0, verticalSpacing: 0) {
+                GridRow {
+                    ForEach(0..<columnCount, id: \.self) { c in
+                        cell(value(header, c), isHeader: true)
+                    }
+                }
+                ForEach(Array(rows.enumerated()), id: \.offset) { idx, row in
+                    Divider().overlay(idx == 0 ? v2.line2 : v2.line)
+                    GridRow {
+                        ForEach(0..<columnCount, id: \.self) { c in
+                            cell(value(row, c), isHeader: false)
+                        }
+                    }
+                }
+            }
+            .overlay(Rectangle().stroke(v2.line2, lineWidth: 1))
+            .padding(1)   // keep the outer stroke from clipping under scroll
+        }
+    }
+
+    private func value(_ row: [String], _ c: Int) -> String {
+        row.indices.contains(c) ? row[c] : ""
+    }
+
+    private func cell(_ text: String, isHeader: Bool) -> some View {
+        Text(V2MarkdownText.inlineAttributed(text, codeBg: v2.paper3, ink: v2.ink))
+            .font(.system(size: 12, design: .monospaced))
+            .fontWeight(isHeader ? .semibold : .regular)
+            .foregroundColor(v2.ink)
+            .lineLimit(1)
+            .fixedSize(horizontal: true, vertical: false)
+            .padding(.horizontal, 12).padding(.vertical, 7)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(isHeader ? v2.paper3 : Color.clear)
     }
 }
 
