@@ -13,6 +13,8 @@ import AppKit
 struct V2MarkdownText: View {
     @Environment(\.v2) private var v2
     let text: String
+    /// Project cwd for resolving relative file mentions into Quick Look links.
+    var baseDir: String? = nil
 
     var body: some View {
         VStack(alignment: .leading, spacing: 11) {
@@ -31,7 +33,7 @@ struct V2MarkdownText: View {
         case .paragraph(let text):
             // NSTextView-backed prose: pointing-hand cursor on links, native
             // selection, click-to-open (SwiftUI Text can't do per-run cursors).
-            V2RichText(markdown: text)
+            V2RichText(markdown: text, baseDir: baseDir)
                 .frame(maxWidth: .infinity, alignment: .leading)
         case .bullet(let items):
             VStack(alignment: .leading, spacing: 7) {
@@ -40,7 +42,7 @@ struct V2MarkdownText: View {
                         Text("•")
                             .font(.system(size: 13, design: .monospaced))
                             .foregroundColor(v2.mute)
-                        V2RichText(markdown: item)
+                        V2RichText(markdown: item, baseDir: baseDir)
                             .frame(maxWidth: .infinity, alignment: .leading)
                     }
                 }
@@ -52,7 +54,7 @@ struct V2MarkdownText: View {
                         Text("\(idx + 1).")
                             .font(.system(size: 13, design: .monospaced))
                             .foregroundColor(v2.mute)
-                        V2RichText(markdown: item)
+                        V2RichText(markdown: item, baseDir: baseDir)
                             .frame(maxWidth: .infinity, alignment: .leading)
                     }
                 }

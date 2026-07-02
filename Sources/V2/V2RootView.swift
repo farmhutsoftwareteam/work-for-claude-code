@@ -166,7 +166,7 @@ struct V2RootView: View {
                     // Permission request is now a window-level modal overlay
                     // (see body's ZStack) rather than an inline card that was
                     // easy to scroll past / miss entirely.
-                    V2LiveTranscript(session: session)
+                    V2LiveTranscript(session: session, projectCwd: tab.projectCwd)
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
                         // Key by tab so each tab keeps its own scroll
                         // position — without this, switching tabs reuses the

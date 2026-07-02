@@ -9,6 +9,9 @@ struct V2LiveTranscript: View {
     @ObserveInjection private var inject
     @Environment(\.v2) private var v2
     @ObservedObject var session: StreamSession
+    /// Project cwd — resolves relative file mentions in prose to Quick Look
+    /// links. Falls back to what the session reports (nil until system/init).
+    var projectCwd: String? = nil
 
     private let bottomAnchorID = "v2-transcript-bottom"
 
@@ -168,7 +171,8 @@ struct V2LiveTranscript: View {
         case .userText(let text):
             V2UserTurn(text: text)
         case .assistantBlock(let block):
-            V2AssistantBlock(block: block, toolOutcomes: session.toolOutcomes)
+            V2AssistantBlock(block: block, toolOutcomes: session.toolOutcomes,
+                             baseDir: session.cwd ?? projectCwd)
         case .compactBoundary:
             V2CompactBoundary()
         case .systemNote(let kind, let text):
@@ -280,6 +284,7 @@ struct V2AssistantBlock: View {
     @Environment(\.v2) private var v2
     let block: ContentBlock
     var toolOutcomes: [String: Bool] = [:]
+    var baseDir: String? = nil
     @State private var buttonHover = false
     @State private var copied = false
 
@@ -341,7 +346,7 @@ struct V2AssistantBlock: View {
     private var content: some View {
         switch block {
         case .text(let s):
-            V2MarkdownText(text: s)
+            V2MarkdownText(text: s, baseDir: baseDir)
                 .foregroundColor(v2.ink)
         case .toolUse(let id, let name, let input):
             if name == "TodoWrite", let todos = input.dig("todos")?.asArray {
