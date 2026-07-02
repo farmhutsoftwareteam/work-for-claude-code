@@ -6,6 +6,42 @@
         <description>Updates for Work</description>
         <language>en</language>
         <item>
+            <title>Version 2.3.0</title>
+            <pubDate>Thu, 02 Jul 2026 15:01:27 +0400</pubDate>
+            <sparkle:version>31</sparkle:version>
+            <sparkle:shortVersionString>2.3.0</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>15.0</sparkle:minimumSystemVersion>
+            <description><![CDATA[
+                <h3>Atelier 2.3.0 — files you can touch, and updates you can see</h3>
+                <h4>File peek</h4>
+                <ul>
+                    <li><b>Click any file the agent mentions</b> and it opens in a themed in-app preview — markdown renders as a document, code gets line numbers, images preview, huge files show their head with an "open in editor" escalation.</li>
+                    <li>Only files that <b>actually exist</b> light up — no dead links. <b>Select and copy</b> inside the preview, or use one-click <b>copy text</b> / <b>copy path</b>. Esc closes; the session keeps streaming behind it.</li>
+                </ul>
+                <h4>The agent's actions, one vocabulary</h4>
+                <ul>
+                    <li>Tool calls show their target as a <b>token chip</b> (paths) or an ink <b>command chip</b> (bash), with live status — spinner, then ✓ or ✗. Task lists render as a real checklist; errors get a proper boxed treatment.</li>
+                    <li>Links are <b>blue, underlined, get a pointing-hand cursor</b>, and open in your browser.</li>
+                </ul>
+                <h4>Visible updates + startup fixes</h4>
+                <ul>
+                    <li>Atelier now <b>checks for updates automatically and shows this dialog</b> when a new version ships — no more silent installs.</li>
+                    <li>Fixed the "old version still running in the background" bug: the newest launch retires stale instances, closing the window quits the app, and the legacy terminal window no longer opens at launch.</li>
+                </ul>
+                <h4>Quality of life</h4>
+                <ul>
+                    <li><b>Models come from the CLI itself</b> — new models appear in the picker the day your Claude Code ships them.</li>
+                    <li><b>New project</b> tab: create a blank folder (optionally git init'ed) and land straight in a session.</li>
+                    <li>The message <b>copy button is always visible</b> — no more hover hide-and-seek.</li>
+                </ul>
+            ]]></description>
+            <enclosure
+                url="https://work.munyamakosa.com/Work.dmg"
+                length="11457017"
+                type="application/octet-stream"
+                sparkle:edSignature="bY9+eOFTuhErcqGjRkVQOTfNBvkUQqvX6Fw7Ol5YEaKgpQM179EWoke41ZlUns/2dSYeDNAzDF+R7k+wIb/lCw==" />
+        </item>
+        <item>
             <title>Version 2.2.0</title>
             <pubDate>Tue, 30 Jun 2026 13:42:04 +0400</pubDate>
             <sparkle:version>30</sparkle:version>

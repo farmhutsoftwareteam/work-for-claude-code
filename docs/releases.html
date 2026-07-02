@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Changelog - Atelier</title>
-    <meta name="description" content="Every release of Atelier, dated and itemised. Latest: v2.2.0 (june 30, 2026).">
+    <meta name="description" content="Every release of Atelier, dated and itemised. Latest: v2.3.0 (july 2, 2026).">
     <link rel="canonical" href="https://work.munyamakosa.com/releases.html">
     <link rel="alternate" type="application/rss+xml" title="Atelier appcast" href="https://work.munyamakosa.com/appcast.xml">
 
@@ -184,13 +184,32 @@
         </div>
 
         
+    <article id="v2-3-0" class="release-article" style="display:grid;grid-template-columns:200px 1fr;gap:40px;padding:38px 0;border-bottom:1px solid var(--line);">
+      <div>
+        <div style="font-family:var(--helv);font-weight:500;font-size:22px;letter-spacing:-.01em;">
+          <a href="#v2-3-0" style="color:var(--ink);text-decoration:none;">v2.3.0</a>
+        </div>
+        <div style="font-family:var(--mono);font-size:11px;color:var(--mute);margin-top:6px;">2026 · jul 2</div>
+        <div style="display:inline-block;font-family:var(--mono);font-size:10px;letter-spacing:.08em;text-transform:uppercase;border:1px solid var(--line2);padding:3px 8px;margin-top:12px;">latest</div>
+        <div style="font-family:var(--mono);font-size:10px;color:var(--mute);margin-top:10px;">macOS 15.0+</div>
+      </div>
+      <div class="release-body" style="font-family:var(--helv);font-size:16px;line-height:1.6;color:rgba(27,28,30,.82);">
+        <h3>Files you can touch, and updates you can see</h3>
+        <ul>
+          <li><b>File peek.</b> Click any file the agent mentions and it opens in a themed in-app preview — markdown renders as a document, code gets line numbers (kept out of your selection), images preview, huge files show their head with an "open in editor" escalation. Only files that actually exist light up; select/copy inside, or one-click copy text / copy path. Esc closes and the session keeps streaming behind it.</li>
+          <li><b>One vocabulary for agent actions.</b> Tool calls show their target as a token chip (paths) or ink command chip (bash) with live ✓/✗ status; task lists render as a real checklist; errors get a boxed treatment; links are blue, underlined, with a pointing-hand cursor.</li>
+          <li><b>Visible updates.</b> Atelier now checks automatically and shows the standard update dialog with release notes — no more silent installs. Also fixed the "old version running in the background" bug: newest launch wins, closing the window quits, the legacy terminal window never opens at launch.</li>
+          <li><b>Quality of life.</b> The model picker reads the CLI's own catalog (new models appear the day they ship); a New project tab creates a blank folder — optionally git init'ed — straight into a session; the message copy button is always visible.</li>
+        </ul>
+      </div>
+    </article>
+
     <article id="v2-2-0" class="release-article" style="display:grid;grid-template-columns:200px 1fr;gap:40px;padding:38px 0;border-bottom:1px solid var(--line);">
       <div>
         <div style="font-family:var(--helv);font-weight:500;font-size:22px;letter-spacing:-.01em;">
           <a href="#v2-2-0" style="color:var(--ink);text-decoration:none;">v2.2.0</a>
         </div>
         <div style="font-family:var(--mono);font-size:11px;color:var(--mute);margin-top:6px;">2026 · jun 30</div>
-        <div style="display:inline-block;font-family:var(--mono);font-size:10px;letter-spacing:.08em;text-transform:uppercase;border:1px solid var(--line2);padding:3px 8px;margin-top:12px;">latest</div>
         <div style="font-family:var(--mono);font-size:10px;color:var(--mute);margin-top:10px;">macOS 15.0+</div>
       </div>
       <div class="release-body" style="font-family:var(--helv);font-size:16px;line-height:1.6;color:rgba(27,28,30,.82);">
