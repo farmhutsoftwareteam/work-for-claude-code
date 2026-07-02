@@ -73,6 +73,13 @@ final class StreamSession: ObservableObject {
     /// tool-call row show its ✓ / ✗ valence (and a spinner while absent).
     @Published private(set) var toolOutcomes: [String: Bool] = [:]
 
+    /// The models THIS binary supports, reported in the `initialize` reply.
+    /// This is the authoritative, always-current list (it's how new models
+    /// like Sonnet 5 appear the day the CLI ships them) — the picker prefers
+    /// it over the history-scan fallback, which could only ever show models
+    /// the user had already used somewhere.
+    @Published private(set) var availableModels: [V2AvailableModel] = []
+
     // Streaming coalescer. Deltas accumulate into `streamBuffer` (amortized O(1)
     // append) and are committed to the open transcript block on a throttled
     // flush (~30fps) instead of per token — the old path did `existing + text`
@@ -796,9 +803,24 @@ final class StreamSession: ObservableObject {
             // (model, cwd, tools, mcp_servers) will follow shortly in
             // system/init.
             if cr.response.requestId.hasPrefix("init_"),
-               cr.response.subtype == "success",
-               state == .spawning || state == .initializing {
-                state = .ready
+               cr.response.subtype == "success" {
+                // Capture the binary's model catalog (value = what set_model
+                // accepts, resolvedModel = the concrete id it maps to).
+                if let arr = cr.response.response?.dig("models")?.asArray {
+                    availableModels = arr.compactMap { m in
+                        guard let value = m.dig("value")?.asString,
+                              let display = m.dig("displayName")?.asString else { return nil }
+                        return V2AvailableModel(
+                            value: value,
+                            resolvedModel: m.dig("resolvedModel")?.asString ?? value,
+                            displayName: display,
+                            description: m.dig("description")?.asString ?? ""
+                        )
+                    }
+                }
+                if state == .spawning || state == .initializing {
+                    state = .ready
+                }
             }
         case .unknown(let t):
             log.notice("unknown event type: \(t, privacy: .public)")
@@ -1013,4 +1035,17 @@ enum TranscriptItem: Identifiable {
         case .systemNote(let kind, let t):  return "sys-\(kind)-\(t.hashValue)"
         }
     }
+}
+
+// MARK: - Available model (from the initialize reply)
+
+/// One entry of the binary's model catalog. `value` is the alias `set_model`
+/// accepts ("sonnet", "opus[1m]"); `resolvedModel` is the concrete id it maps
+/// to ("claude-sonnet-5").
+struct V2AvailableModel: Identifiable, Equatable, Sendable {
+    let value: String
+    let resolvedModel: String
+    let displayName: String
+    let description: String
+    var id: String { value }
 }

@@ -28,10 +28,30 @@ struct V2ModelPicker: View {
         appState.activeSession?.model ?? ""
     }
 
+    /// The binary's own model catalog from the initialize reply — the
+    /// authoritative, current list (new models appear here the day the CLI
+    /// ships them, no history required).
+    private var available: [V2AvailableModel] {
+        appState.activeSession?.availableModels ?? []
+    }
+
     private var models: [V2DiscoveredModel] {
-        // Merge: discovered (from history) + the currently-active model if
-        // claude reports one we haven't seen before (fresh install, new
-        // family, etc.). The active model always appears.
+        // Prefer what THIS binary says it supports. The id is the alias
+        // set_model accepts ("sonnet", "opus[1m]"); the tag shows the concrete
+        // model it resolves to.
+        if !available.isEmpty {
+            return available.map { m in
+                V2DiscoveredModel(
+                    id: m.value,
+                    displayName: m.displayName,
+                    tag: Self.shortResolved(m.resolvedModel),
+                    description: m.description,
+                    usageCount: 0
+                )
+            }
+        }
+        // Fallback (no live catalog yet): discovered from history + the
+        // currently-active model if claude reports one we haven't seen.
         var seen = Set(appState.discoveredModels.map(\.id))
         var list = appState.discoveredModels
         let activeBare = String(activeId.split(separator: "[").first ?? Substring(activeId))
@@ -49,6 +69,13 @@ struct V2ModelPicker: View {
             seen.insert(activeBare)
         }
         return list
+    }
+
+    /// "claude-sonnet-5[1m]" → "sonnet-5" for the row's right-hand tag.
+    private static func shortResolved(_ id: String) -> String {
+        var s = String(id.split(separator: "[").first ?? Substring(id))
+        if s.hasPrefix("claude-") { s.removeFirst("claude-".count) }
+        return s
     }
 
     var body: some View {
@@ -149,12 +176,22 @@ struct V2ModelPicker: View {
     }
 
     private func isActive(_ option: V2DiscoveredModel) -> Bool {
-        let raw = activeId.lowercased()
-        let opt = option.id.lowercased()
+        let raw = normalize(activeId)
+        // Catalog rows: the option id is an alias ("sonnet") — compare the
+        // concrete model it RESOLVES to against what the session reports.
+        if let avail = available.first(where: { $0.value == option.id }) {
+            return normalize(avail.resolvedModel) == raw
+        }
+        let opt = normalize(option.id)
         if raw == opt { return true }
         // Tolerate the "claude-sonnet-4-8" / "sonnet" / "claude-sonnet-4-8[1m]"
         // variants — match if either string is a prefix of the other.
         return raw.hasPrefix(opt) || opt.hasPrefix(raw)
+    }
+
+    /// Lowercase + strip a "[1m]"-style suffix so variants compare equal.
+    private func normalize(_ s: String) -> String {
+        String(s.lowercased().split(separator: "[").first ?? Substring(s.lowercased()))
     }
 }
 

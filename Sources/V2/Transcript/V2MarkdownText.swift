@@ -107,9 +107,17 @@ struct V2MarkdownText: View {
     /// fresh each call (cheap run walk) so the cache survives light/dark switches.
     static func inlineAttributed(_ s: String, codeBg: Color, ink: Color) -> AttributedString {
         var out = parsedMarkdown(s)
-        for run in out.runs where run.inlinePresentationIntent?.contains(.code) == true {
-            out[run.range].backgroundColor = codeBg
-            out[run.range].foregroundColor = ink
+        for run in out.runs {
+            if run.inlinePresentationIntent?.contains(.code) == true {
+                out[run.range].backgroundColor = codeBg
+                out[run.range].foregroundColor = ink
+            }
+            // Make links LOOK clickable (SwiftUI Text opens .link attributes in
+            // the default browser; without styling they were invisible as links).
+            if run.link != nil {
+                out[run.range].foregroundColor = ink
+                out[run.range].underlineStyle = .single
+            }
         }
         return out
     }
@@ -122,15 +130,34 @@ struct V2MarkdownText: View {
 
     private static func parsedMarkdown(_ s: String) -> AttributedString {
         if let hit = parseCache[s] { return hit }
-        let parsed = (try? AttributedString(
+        var parsed = (try? AttributedString(
             markdown: s,
             options: .init(interpretedSyntax: .inlineOnlyPreservingWhitespace)
         )) ?? AttributedString(s)
+        linkifyBareURLs(&parsed)
         // Coarse eviction: when full, drop everything. The stable prefix re-warms
         // on the next frame; a transient spike beats unbounded growth.
         if parseCache.count >= parseCacheLimit { parseCache.removeAll(keepingCapacity: true) }
         parseCache[s] = parsed
         return parsed
+    }
+
+    /// Claude usually emits URLs bare (https://…), not as [markdown](links) —
+    /// and Apple's inline parser only links the latter. Detect bare URLs /
+    /// emails and attach .link so they're clickable. Runs once per unique
+    /// string (inside the parse cache), so it costs nothing while streaming.
+    private static func linkifyBareURLs(_ attr: inout AttributedString) {
+        let plain = String(attr.characters)
+        guard plain.contains("://") || plain.contains("www.") || plain.contains("@") else { return }
+        guard let detector = try? NSDataDetector(types: NSTextCheckingResult.CheckingType.link.rawValue) else { return }
+        let ns = plain as NSString
+        for match in detector.matches(in: plain, range: NSRange(location: 0, length: ns.length)) {
+            guard let url = match.url,
+                  let range = Range(match.range, in: attr),
+                  attr[range].link == nil   // don't stomp real markdown links
+            else { continue }
+            attr[range].link = url
+        }
     }
 
     // MARK: - Block chunker
