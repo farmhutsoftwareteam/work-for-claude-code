@@ -5,10 +5,10 @@ import Sparkle
 /// a persistent "Update available" badge. Listens to the standard updater's
 /// delegate callbacks and republishes them on the main actor.
 ///
-/// Because `SUAutomaticallyUpdate` is enabled, Sparkle downloads new versions
-/// silently in the background. We track the download state so the UI can say
-/// "Downloading…" while it's in flight and "Relaunch to update" once it's
-/// finished — matching the Slack/Brave UX where Install is instant.
+/// Updates now use the standard VISIBLE flow (`SUAutomaticallyUpdate: false`):
+/// Sparkle checks hourly and shows its update dialog with release notes when
+/// the appcast has a newer build. This observer remains for any chrome that
+/// wants an "update available" badge alongside the dialog.
 @MainActor
 final class UpdateStateObserver: NSObject, ObservableObject {
     /// Any update state: either downloading or ready.

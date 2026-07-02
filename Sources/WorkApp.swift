@@ -48,6 +48,13 @@ struct WorkApp: App {
             userDriverDelegate: nil
         )
         observer.updater = controller.updater
+        // Industry-standard visible updates: check automatically, but PROMPT
+        // with Sparkle's dialog instead of silently installing. Set at runtime
+        // too because Sparkle persists these in user defaults — existing
+        // installs were seeded with silent mode by the old Info.plist and
+        // would otherwise keep updating invisibly.
+        controller.updater.automaticallyChecksForUpdates = true
+        controller.updater.automaticallyDownloadsUpdates = false
         self.updaterController = controller
         _updateState = StateObject(wrappedValue: observer)
     }

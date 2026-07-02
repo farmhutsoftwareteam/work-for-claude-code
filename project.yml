@@ -91,8 +91,11 @@ targets:
         SUPublicEDKey: OxlQLub17dx6WhaZ4eF79PE1vfQF+/x4Qo6gt/ThCH0=
         SUScheduledCheckInterval: 3600
         SUEnableAutomaticChecks: true
-        # Silently download updates in the background; user approves install via the badge.
-        SUAutomaticallyUpdate: true
+        # Standard visible flow: check automatically (hourly), then SHOW the
+        # update dialog with release notes — the user clicks Install & Relaunch.
+        # (true = silent background installs; that hid updates entirely once the
+        # v1 badge chrome stopped being shown.)
+        SUAutomaticallyUpdate: false
     scheme:
       testTargets:
         - WorkTests
