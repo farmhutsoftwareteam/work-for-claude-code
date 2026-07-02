@@ -53,12 +53,15 @@ struct WorkApp: App {
     }
 
     var body: some Scene {
-        WindowGroup {
-            ContentView()
+        // Atelier — THE app, and the primary scene: first in the body and
+        // explicitly presented at launch. The old arrangement launched the
+        // legacy v1 terminal window first (then tried to miniaturise it away),
+        // which is why "the black terminal app" kept appearing at startup.
+        Window("Atelier", id: "v2-preview") {
+            V2RootView()
                 .environmentObject(store)
                 .environmentObject(updateState)
                 .environmentObject(terminals)
-                .modifier(V2AutoOpenInDebug())
                 .onAppear {
                     AppDelegate.sharedTerminals = terminals
                     checkTerminalPermission()
@@ -104,7 +107,8 @@ struct WorkApp: App {
                 }
         }
         .windowResizability(.contentMinSize)
-        .defaultSize(width: 1010, height: 670)
+        .defaultSize(width: 1440, height: 900)
+        .defaultLaunchBehavior(.presented)
         .commands {
             CommandGroup(replacing: .newItem) { }
 
@@ -147,21 +151,22 @@ struct WorkApp: App {
             }
         }
 
-        // Atelier — the main surface. The legacy WindowGroup above stays so
-        // SwiftUI has something to auto-open on launch (Window scenes can't
-        // auto-open), and V2AutoOpen miniaturises it immediately. Both scenes
-        // share the same Store / TerminalsController / Update state — separate
-        // Scene = separate SwiftUI environment, so we wire them explicitly
-        // here. (Window id kept as "v2-preview" so saved window frames carry
-        // over from earlier builds.)
-        Window("Atelier", id: "v2-preview") {
-            V2RootView()
+        // Legacy v1 terminal window — kept reachable (the v2 chrome still
+        // points at its Extensions editor) but it NEVER auto-opens: launch is
+        // suppressed and state restoration disabled, so it only appears when
+        // explicitly opened from the Window menu. Both scenes share the same
+        // Store / TerminalsController / Update state — separate Scene =
+        // separate SwiftUI environment, so we wire them explicitly here.
+        Window("Atelier — legacy terminal", id: "v1-legacy") {
+            ContentView()
                 .environmentObject(store)
                 .environmentObject(updateState)
                 .environmentObject(terminals)
         }
         .windowResizability(.contentMinSize)
-        .defaultSize(width: 1440, height: 900)
+        .defaultSize(width: 1010, height: 670)
+        .defaultLaunchBehavior(.suppressed)
+        .restorationBehavior(.disabled)
     }
 
     private func checkTerminalPermission() {
