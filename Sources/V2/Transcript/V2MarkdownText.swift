@@ -106,9 +106,10 @@ struct V2MarkdownText: View {
                 out[run.range].foregroundColor = ink
             }
             // Make links LOOK clickable (SwiftUI Text opens .link attributes in
-            // the default browser; without styling they were invisible as links).
+            // the default browser; without styling they were invisible as
+            // links). System link blue, matching the NSTextView prose renderer.
             if run.link != nil {
-                out[run.range].foregroundColor = ink
+                out[run.range].foregroundColor = Color(nsColor: .linkColor)
                 out[run.range].underlineStyle = .single
             }
         }

@@ -42,7 +42,9 @@ struct V2RichText: NSViewRepresentable {
         guard context.coordinator.lastKey != key else { return }
         context.coordinator.lastKey = key
         tv.linkTextAttributes = [
-            .foregroundColor: NSColor(v2.ink),
+            // System link blue — the universal "this is clickable" affordance;
+            // adapts automatically between light and dark appearance.
+            .foregroundColor: NSColor.linkColor,
             .underlineStyle: NSUnderlineStyle.single.rawValue,
             .cursor: NSCursor.pointingHand,
         ]
