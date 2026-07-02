@@ -280,7 +280,7 @@ struct V2AssistantBlock: View {
     @Environment(\.v2) private var v2
     let block: ContentBlock
     var toolOutcomes: [String: Bool] = [:]
-    @State private var hover = false
+    @State private var buttonHover = false
     @State private var copied = false
 
     var body: some View {
@@ -290,19 +290,20 @@ struct V2AssistantBlock: View {
                 .frame(width: 54, alignment: .leading)
                 .padding(.top, 2)
 
-            // Message + an action bar BELOW it (where ChatGPT / Claude put it),
-            // left-aligned with the text. Revealed on hover; only for text.
+            // Message + a quiet copy action BELOW it, left-aligned with the
+            // text. Always visible — hover-reveal kept dropping the button
+            // mid-reach (the NSTextView prose runs its own mouse tracking, and
+            // streaming auto-scroll moves content under the cursor, both of
+            // which flip a row-level hover to false). A stable target beats a
+            // clever one.
             VStack(alignment: .leading, spacing: 6) {
                 content
                     .frame(maxWidth: .infinity, alignment: .leading)
                 if textForCopy != nil {
                     copyButton
-                        .opacity(hover ? 1 : 0)
-                        .allowsHitTesting(hover)
                 }
             }
         }
-        .onHover { hover = $0 }
     }
 
     /// Raw text to copy, when this block is a text block.
@@ -324,13 +325,15 @@ struct V2AssistantBlock: View {
                 Text(copied ? "copied" : "copy")
                     .font(.system(size: 10.5, design: .monospaced))
             }
-            .foregroundColor(copied ? v2.ink : v2.mute)
+            // Quiet at rest, ink when the BUTTON itself is hovered/just used.
+            .foregroundColor(copied || buttonHover ? v2.ink : v2.faint)
             .padding(.horizontal, 8).padding(.vertical, 4)
-            .background(v2.paper2)
-            .overlay(Rectangle().stroke(v2.line2, lineWidth: 1))
+            .background(buttonHover ? v2.paper2 : Color.clear)
+            .overlay(Rectangle().stroke(buttonHover || copied ? v2.line2 : v2.line, lineWidth: 1))
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+        .onHover { buttonHover = $0 }
         .help("Copy message")
     }
 
