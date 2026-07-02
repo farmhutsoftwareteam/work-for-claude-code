@@ -26,11 +26,11 @@ struct V2RichText: NSViewRepresentable {
     final class Coordinator: NSObject, NSTextViewDelegate {
         var lastKey: String = ""
 
-        /// file:// links preview in Quick Look (stay in the app, Esc closes);
+        /// file:// links open the in-app File Peek modal (File peek.dc.html);
         /// everything else falls through to the default browser open.
         func textView(_ textView: NSTextView, clickedOnLink link: Any, at charIndex: Int) -> Bool {
             guard let url = link as? URL, url.isFileURL else { return false }
-            V2QuickLook.preview(url)
+            V2FilePeekController.present(url)
             return true
         }
     }
@@ -182,32 +182,6 @@ struct V2RichText: NSViewRepresentable {
     }
 }
 
-// MARK: - Quick Look
-
-import Quartz
-
-/// One-shot Quick Look preview for a local file — the native "just let me see
-/// it" affordance (renders markdown, code, images, PDFs; Esc closes).
-final class V2QuickLook: NSObject, QLPreviewPanelDataSource {
-    // Only ever touched from the main thread (panel + link clicks), so the
-    // unsynchronised singleton is safe.
-    nonisolated(unsafe) static let shared = V2QuickLook()
-    private var url: URL?
-
-    @MainActor
-    static func preview(_ url: URL) {
-        shared.url = url
-        guard let panel = QLPreviewPanel.shared() else { return }
-        panel.dataSource = shared
-        panel.reloadData()
-        panel.makeKeyAndOrderFront(nil)
-    }
-
-    func numberOfPreviewItems(in panel: QLPreviewPanel!) -> Int { url == nil ? 0 : 1 }
-    func previewPanel(_ panel: QLPreviewPanel!, previewItemAt index: Int) -> QLPreviewItem! {
-        (url ?? URL(fileURLWithPath: "/")) as NSURL
-    }
-}
 
 /// NSTextView that never claims more than the text's own height and lets
 /// clicks outside text fall through naturally.

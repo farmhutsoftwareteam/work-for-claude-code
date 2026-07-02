@@ -11,6 +11,7 @@ struct V2RootView: View {
     @EnvironmentObject private var store: Store
     @EnvironmentObject private var terminals: TerminalsController
     @StateObject private var appState = V2AppState()
+    @ObservedObject private var filePeek = V2FilePeekController.shared
     @AppStorage("v2.theme") private var themeRaw: String = V2ThemeChoice.system.rawValue
     @Environment(\.colorScheme) private var systemColorScheme
     // dockPanel lives on appState so /mcp, /agents can open the panel.
@@ -106,6 +107,15 @@ struct V2RootView: View {
                     .environmentObject(appState)
                     .transition(.opacity)
                     .zIndex(300)
+            }
+
+            // File peek modal — previews a local file clicked in the transcript
+            // (File peek.dc.html). The session keeps streaming behind it.
+            if let peeked = filePeek.file {
+                V2FilePeekModal(file: peeked, onClose: { filePeek.close() })
+                    .environment(\.v2, palette)
+                    .transition(.opacity)
+                    .zIndex(250)
             }
         }
         .animation(.easeOut(duration: 0.15), value: appState.activeSession?.pendingPermission?.id)
