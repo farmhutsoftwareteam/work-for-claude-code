@@ -11,9 +11,14 @@ import Inject
 
 @MainActor
 final class V2AddProjectModel: ObservableObject {
-    enum Source { case local, clone }
+    enum Source { case local, clone, new }
 
     @Published var source: Source = .local
+
+    // New blank project
+    @Published var newBase = NSHomeDirectory() + "/dev"
+    @Published var newName = ""
+    @Published var newGitInit = true
 
     // Open folder
     @Published var folderPath = ""
@@ -52,6 +57,24 @@ final class V2AddProjectModel: ObservableObject {
     var cloneInto: String { cloneBase + "/" + repoName }
     var canAddLocal: Bool { !folderPath.isEmpty }
     var canClone: Bool { repoURL.contains("/") && !cloning }
+
+    /// Folder name with path separators stripped so a stray "/" can't nest.
+    var sanitizedNewName: String {
+        newName.trimmingCharacters(in: .whitespacesAndNewlines)
+            .replacingOccurrences(of: "/", with: "-")
+    }
+    var newInto: String { newBase + "/" + sanitizedNewName }
+    var canCreateNew: Bool { !sanitizedNewName.isEmpty }
+
+    func chooseNewBase() {
+        let panel = NSOpenPanel()
+        panel.canChooseFiles = false
+        panel.canChooseDirectories = true
+        panel.allowsMultipleSelection = false
+        panel.message = "Where to create the new project folder."
+        panel.prompt = "Choose"
+        if panel.runModal() == .OK, let url = panel.url { newBase = url.path }
+    }
 
     func browse() {
         let panel = NSOpenPanel()
@@ -135,6 +158,7 @@ struct V2AddProjectModal: View {
                 switch model.source {
                 case .local: localBody
                 case .clone: cloneBody
+                case .new:   newBody
                 }
             }
             footer
@@ -167,6 +191,7 @@ struct V2AddProjectModal: View {
         HStack(spacing: 2) {
             tab("Open folder", .local)
             tab("Clone repo", .clone)
+            tab("New project", .new)
             Spacer()
         }
         .padding(.horizontal, 20).padding(.top, 12)
@@ -309,6 +334,61 @@ struct V2AddProjectModal: View {
         .padding(20)
     }
 
+    // MARK: New blank project
+
+    private var newBody: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            HStack(spacing: 10) {
+                field(label: "folder name") {
+                    TextField("my-new-project", text: $model.newName)
+                        .textFieldStyle(.plain)
+                        .font(.system(size: 12.5, design: .monospaced)).foregroundColor(v2.ink)
+                        .padding(.horizontal, 13).padding(.vertical, 10)
+                        .background(v2.card)
+                        .overlay(Rectangle().stroke(model.newName.isEmpty ? v2.line2 : v2.ink, lineWidth: 1))
+                }
+                field(label: "create in") {
+                    HStack(spacing: 8) {
+                        Text(model.newBase).font(.system(size: 12.5, design: .monospaced)).foregroundColor(v2.mute)
+                            .lineLimit(1).truncationMode(.middle).frame(maxWidth: .infinity, alignment: .leading)
+                        Button { model.chooseNewBase() } label: {
+                            Image(systemName: "folder").font(.system(size: 11)).foregroundColor(v2.mute).contentShape(Rectangle())
+                        }.buttonStyle(.plain)
+                    }
+                    .padding(.horizontal, 13).padding(.vertical, 10)
+                    .background(v2.card).overlay(Rectangle().stroke(v2.line2, lineWidth: 1))
+                }
+            }
+            // git init toggle — a fresh project almost always wants a repo.
+            Button { model.newGitInit.toggle() } label: {
+                HStack(spacing: 10) {
+                    ZStack {
+                        Rectangle().stroke(v2.line2, lineWidth: 1)
+                        if model.newGitInit {
+                            Rectangle().fill(v2.ink).padding(2)
+                        }
+                    }
+                    .frame(width: 13, height: 13)
+                    Text("initialise a git repository")
+                        .font(.system(size: 12, design: .monospaced)).foregroundColor(v2.ink)
+                }
+                .contentShape(Rectangle())
+            }.buttonStyle(.plain)
+
+            VStack(alignment: .leading, spacing: 6) {
+                Text(model.canCreateNew ? "Will create \(model.newInto)" : "Name the folder to see where it lands.")
+                    .font(.system(size: 11.5, design: .monospaced)).foregroundColor(v2.mute)
+                    .lineLimit(1).truncationMode(.middle)
+                Text("Blank slate — run /init in the first session to write a CLAUDE.md.")
+                    .font(.system(size: 11.5, design: .monospaced)).foregroundColor(v2.faint)
+            }
+            .padding(.horizontal, 14).padding(.vertical, 13)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(v2.card).overlay(Rectangle().stroke(v2.line, lineWidth: 1))
+        }
+        .padding(20)
+    }
+
     // MARK: Footer
 
     private var footer: some View {
@@ -341,16 +421,53 @@ struct V2AddProjectModal: View {
     }
 
     private var primaryLabel: String {
-        model.source == .clone ? (model.cloning ? "Cloning…" : "Clone & add") : "Add project"
+        switch model.source {
+        case .clone: return model.cloning ? "Cloning…" : "Clone & add"
+        case .new:   return "Create & add"
+        case .local: return "Add project"
+        }
     }
     private var primaryEnabled: Bool {
-        model.source == .clone ? model.canClone : model.canAddLocal
+        switch model.source {
+        case .clone: return model.canClone
+        case .new:   return model.canCreateNew
+        case .local: return model.canAddLocal
+        }
     }
 
     private func primaryAction() {
         switch model.source {
         case .local: addLocal()
         case .clone: cloneAndAdd()
+        case .new:   createAndAdd()
+        }
+    }
+
+    /// Create a brand-new folder (optionally `git init`ed), register it as a
+    /// project, and land on its home — the blank-slate path.
+    private func createAndAdd() {
+        model.error = nil
+        let path = model.newInto
+        let fm = FileManager.default
+        guard !fm.fileExists(atPath: path) else {
+            model.error = "That folder already exists — use Open folder to add it."
+            return
+        }
+        do {
+            try fm.createDirectory(atPath: path, withIntermediateDirectories: true)
+        } catch {
+            model.error = "Couldn't create the folder: \(error.localizedDescription)"
+            return
+        }
+        Task {
+            if model.newGitInit { _ = await V2Git.run(["init"], cwd: path) }
+            guard let project = store.registerProject(at: path) else {
+                model.error = "The folder was created but couldn't be registered."
+                return
+            }
+            applySelectedModel()
+            appState.selectProject(cwd: project.cwd, name: project.displayName)
+            onClose()
         }
     }
 
