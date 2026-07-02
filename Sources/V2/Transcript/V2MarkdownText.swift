@@ -29,22 +29,18 @@ struct V2MarkdownText: View {
         case .heading(let level, let text):
             headingView(level: level, text: text)
         case .paragraph(let text):
-            Text(inlineAttributed(text))
-                .font(.system(size: 13, design: .monospaced))
-                .lineSpacing(13 * 0.66)
-                .foregroundColor(v2.ink)
+            // NSTextView-backed prose: pointing-hand cursor on links, native
+            // selection, click-to-open (SwiftUI Text can't do per-run cursors).
+            V2RichText(markdown: text)
                 .frame(maxWidth: .infinity, alignment: .leading)
         case .bullet(let items):
             VStack(alignment: .leading, spacing: 7) {
                 ForEach(Array(items.enumerated()), id: \.offset) { _, item in
-                    HStack(alignment: .firstTextBaseline, spacing: 10) {
+                    HStack(alignment: .top, spacing: 10) {
                         Text("•")
                             .font(.system(size: 13, design: .monospaced))
                             .foregroundColor(v2.mute)
-                        Text(inlineAttributed(item))
-                            .font(.system(size: 13, design: .monospaced))
-                            .lineSpacing(13 * 0.66)
-                            .foregroundColor(v2.ink)
+                        V2RichText(markdown: item)
                             .frame(maxWidth: .infinity, alignment: .leading)
                     }
                 }
@@ -52,14 +48,11 @@ struct V2MarkdownText: View {
         case .ordered(let items):
             VStack(alignment: .leading, spacing: 7) {
                 ForEach(Array(items.enumerated()), id: \.offset) { idx, item in
-                    HStack(alignment: .firstTextBaseline, spacing: 10) {
+                    HStack(alignment: .top, spacing: 10) {
                         Text("\(idx + 1).")
                             .font(.system(size: 13, design: .monospaced))
                             .foregroundColor(v2.mute)
-                        Text(inlineAttributed(item))
-                            .font(.system(size: 13, design: .monospaced))
-                            .lineSpacing(13 * 0.66)
-                            .foregroundColor(v2.ink)
+                        V2RichText(markdown: item)
                             .frame(maxWidth: .infinity, alignment: .leading)
                     }
                 }
