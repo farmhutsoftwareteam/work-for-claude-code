@@ -224,6 +224,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     weak static var sharedTerminals: TerminalsController?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        // Never run two instances of this app: after a Sparkle update replaces
+        // the bundle, the OLD process keeps running from the replaced bundle —
+        // and LaunchServices no longer matches it to the on-disk app, so
+        // launching the new version starts a SECOND instance with the stale one
+        // ghosting in the background. Same story for duplicate copies on disk.
+        // Policy: the newest build wins; the other instance is asked to quit.
+        enforceSingleInstance()
+
         // Offer to self-relocate into /Applications if we're running from a
         // DMG / Downloads / elsewhere. Sparkle refuses to update from those
         // locations, so catching it at first launch saves users the
@@ -240,5 +248,50 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
         Self.sharedTerminals?.shutdownAll()
         return .terminateNow
+    }
+
+    /// Quit when the last window closes. Without this the process lingers
+    /// invisibly after the window is closed — the user believes the app is
+    /// quit, an update then replaces the bundle underneath it, and the next
+    /// launch runs alongside the stale ghost. Closed window = quit app, so a
+    /// windowless instance can never be the "old version in the background".
+    func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
+        true
+    }
+
+    /// If another instance of THIS app (same bundle identifier — dev and prod
+    /// have different ids and coexist on purpose) is already running, keep the
+    /// newest build and quit the other. Handles the post-update ghost (old
+    /// process from a replaced bundle) and duplicate on-disk copies.
+    private func enforceSingleInstance() {
+        guard let myId = Bundle.main.bundleIdentifier else { return }
+        let myPid = ProcessInfo.processInfo.processIdentifier
+        let myBuild = Int(Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "") ?? 0
+
+        for other in NSRunningApplication.runningApplications(withBundleIdentifier: myId)
+        where other.processIdentifier != myPid {
+            // Best-effort read of the other instance's build. If its bundle was
+            // replaced by an update this reads the NEW plist — the comparison
+            // ties, and ties go to us (the fresh launch), which is correct.
+            let otherBuild = other.bundleURL
+                .flatMap { Bundle(url: $0) }
+                .flatMap { $0.object(forInfoDictionaryKey: "CFBundleVersion") as? String }
+                .flatMap(Int.init) ?? 0
+
+            if otherBuild > myBuild {
+                // The running instance is newer than us — the user launched a
+                // stale copy. Hand over and bow out.
+                other.activate()
+                NSApp.terminate(nil)
+                return
+            }
+            // Stale or duplicate instance — polite quit (its own
+            // applicationShouldTerminate SIGTERMs its children), force only
+            // if it's still around after a grace period.
+            other.terminate()
+            DispatchQueue.main.asyncAfter(deadline: .now() + 4) {
+                if !other.isTerminated { other.forceTerminate() }
+            }
+        }
     }
 }

@@ -480,6 +480,20 @@ fi
 echo ""
 
 # ─────────────────────────────────────────────────────────────────────────────
+# Step 13: Remove the built .app copy
+# The Release Work.app left in build/ carries the PRODUCTION bundle id, so
+# LaunchServices/Spotlight register a second "Atelier" at this path. Launching
+# that copy (or Spotlight resolving to it) while /Applications runs → two live
+# instances, one of them stale. The DMG is the artifact; the loose .app must go.
+# ─────────────────────────────────────────────────────────────────────────────
+echo "──────────────────────────────────────────────────────────────"
+echo "  Step 13: Removing the loose Release .app (DMG is the artifact)"
+echo "──────────────────────────────────────────────────────────────"
+rm -rf "$APP_PATH"
+echo "✓ Removed $APP_PATH — no duplicate com.munyamakosa.work registered."
+echo ""
+
+# ─────────────────────────────────────────────────────────────────────────────
 # Done
 # ─────────────────────────────────────────────────────────────────────────────
 echo "============================================================"
