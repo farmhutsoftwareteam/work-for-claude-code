@@ -37,6 +37,15 @@ struct V2PeekFile {
     let variant: Variant
     let meta: String
 
+    /// Whole-content copy for the header's "copy text" action (text variants).
+    var copyText: String? {
+        switch variant {
+        case .markdown(let t):        return t
+        case .code(let lines, _):     return lines.joined(separator: "\n")
+        case .image, .binary:         return nil
+        }
+    }
+
     var name: String { url.lastPathComponent }
     var dir: String {
         let d = url.deletingLastPathComponent().path
@@ -124,6 +133,7 @@ struct V2FilePeekModal: View {
     let file: V2PeekFile
     let onClose: () -> Void
     @State private var copiedPath = false
+    @State private var copiedText = false
 
     var body: some View {
         ZStack {
@@ -173,6 +183,13 @@ struct V2FilePeekModal: View {
             HStack(spacing: 7) {
                 actionChip("open in editor", primary: true) { NSWorkspace.shared.open(file.url) }
                 actionChip("reveal") { NSWorkspace.shared.activateFileViewerSelecting([file.url]) }
+                if let text = file.copyText {
+                    actionChip(copiedText ? "copied ✓" : "copy text", tint: copiedText ? v2.add : nil) {
+                        V2Clipboard.copy(text)
+                        copiedText = true
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { copiedText = false }
+                    }
+                }
                 actionChip(copiedPath ? "copied ✓" : "copy path", tint: copiedPath ? v2.add : nil) {
                     V2Clipboard.copy(file.url.path)
                     copiedPath = true
@@ -233,33 +250,11 @@ struct V2FilePeekModal: View {
     }
 
     private func codeBody(_ lines: [String]) -> some View {
-        ScrollView([.vertical, .horizontal]) {
-            LazyVStack(alignment: .leading, spacing: 0) {
-                ForEach(lines.indices, id: \.self) { i in
-                    HStack(alignment: .top, spacing: 0) {
-                        Text("\(i + 1)")
-                            .font(.system(size: 12, design: .monospaced))
-                            .foregroundColor(v2.faint)
-                            .frame(width: 38, alignment: .trailing)
-                            .padding(.trailing, 16)
-                        Text(lines[i].isEmpty ? " " : lines[i])
-                            .font(.system(size: 12, design: .monospaced))
-                            .foregroundColor(Self.isComment(lines[i]) ? v2.mute : v2.ink)
-                            .fixedSize(horizontal: true, vertical: false)
-                    }
-                    .padding(.vertical, 1)
-                }
-            }
-            .padding(28)
-        }
-        .textSelection(.enabled)
-    }
-
-    /// Whole-line comments read muted (the design's monochrome nod to syntax
-    /// without an IDE rainbow).
-    private static func isComment(_ line: String) -> Bool {
-        let t = line.trimmingCharacters(in: .whitespaces)
-        return t.hasPrefix("//") || t.hasPrefix("#") || t.hasPrefix("/*") || t.hasPrefix("* ") || t.hasPrefix("--")
+        // NSTextView-backed: native cross-line selection + ⌘C (SwiftUI Text
+        // rows couldn't be drag-selected across lines, and the drag fought the
+        // scroller). Line numbers live in an AppKit ruler, so they scroll in
+        // sync but stay OUT of the selection.
+        V2CodePeekView(lines: lines)
     }
 
     private func truncationBar(_ note: String) -> some View {
@@ -317,6 +312,129 @@ struct V2FilePeekModal: View {
         .padding(.horizontal, 16)
         .frame(height: 36)
         .overlay(alignment: .top) { Rectangle().fill(v2.line).frame(height: 1) }
+    }
+}
+
+// MARK: - Code view (NSTextView + line-number ruler)
+
+private struct V2CodePeekView: NSViewRepresentable {
+    @Environment(\.v2) private var v2
+    let lines: [String]
+
+    func makeCoordinator() -> Coordinator { Coordinator() }
+    final class Coordinator { var lastKey = "" }
+
+    func makeNSView(context: Context) -> NSScrollView {
+        let scroll = NSScrollView()
+        scroll.hasVerticalScroller = true
+        scroll.hasHorizontalScroller = true
+        scroll.drawsBackground = false
+        scroll.borderType = .noBorder
+
+        let tv = NSTextView()
+        tv.isEditable = false
+        tv.isSelectable = true
+        tv.drawsBackground = false
+        tv.textContainerInset = NSSize(width: 14, height: 20)
+        tv.textContainer?.lineFragmentPadding = 0
+        // No wrapping — long lines scroll horizontally, per the design.
+        tv.isHorizontallyResizable = true
+        tv.isVerticallyResizable = true
+        tv.textContainer?.widthTracksTextView = false
+        tv.textContainer?.containerSize = NSSize(width: CGFloat.greatestFiniteMagnitude, height: CGFloat.greatestFiniteMagnitude)
+        tv.maxSize = NSSize(width: CGFloat.greatestFiniteMagnitude, height: CGFloat.greatestFiniteMagnitude)
+        scroll.documentView = tv
+
+        let ruler = V2LineNumberRuler(scrollView: scroll, textView: tv)
+        scroll.verticalRulerView = ruler
+        scroll.hasVerticalRuler = true
+        scroll.rulersVisible = true
+        return scroll
+    }
+
+    func updateNSView(_ scroll: NSScrollView, context: Context) {
+        guard let tv = scroll.documentView as? NSTextView else { return }
+        let dark = (v2.ink == V2Theme.dark.ink)
+        let key = "\(dark)|\(lines.count)|\(lines.first ?? "")|\(lines.last ?? "")"
+        guard context.coordinator.lastKey != key else { return }
+        context.coordinator.lastKey = key
+
+        let mono = NSFont.monospacedSystemFont(ofSize: 12, weight: .regular)
+        let para = NSMutableParagraphStyle()
+        para.lineSpacing = 12 * 0.55
+        let ink = NSColor(v2.ink), mute = NSColor(v2.mute)
+        let out = NSMutableAttributedString()
+        for (i, line) in lines.enumerated() {
+            out.append(NSAttributedString(
+                string: line + (i == lines.count - 1 ? "" : "\n"),
+                attributes: [
+                    .font: mono,
+                    .paragraphStyle: para,
+                    // Whole-line comments read muted — the design's monochrome
+                    // nod to syntax without an IDE rainbow.
+                    .foregroundColor: Self.isComment(line) ? mute : ink,
+                ]
+            ))
+        }
+        tv.textStorage?.setAttributedString(out)
+
+        if let ruler = scroll.verticalRulerView as? V2LineNumberRuler {
+            ruler.numberColor = NSColor(v2.faint)
+            ruler.backgroundFill = NSColor(v2.paper)
+            ruler.needsDisplay = true
+        }
+    }
+
+    private static func isComment(_ line: String) -> Bool {
+        let t = line.trimmingCharacters(in: .whitespaces)
+        return t.hasPrefix("//") || t.hasPrefix("#") || t.hasPrefix("/*") || t.hasPrefix("* ") || t.hasPrefix("--")
+    }
+}
+
+/// Vertical ruler drawing right-aligned line numbers — scrolls with the text
+/// but is not part of it, so selection/copy never picks the numbers up.
+private final class V2LineNumberRuler: NSRulerView {
+    weak var textView: NSTextView?
+    var numberColor: NSColor = .tertiaryLabelColor
+    var backgroundFill: NSColor = .clear
+    private let numberFont = NSFont.monospacedSystemFont(ofSize: 10.5, weight: .regular)
+
+    init(scrollView: NSScrollView, textView: NSTextView) {
+        self.textView = textView
+        super.init(scrollView: scrollView, orientation: .verticalRuler)
+        clientView = textView
+        ruleThickness = 54
+    }
+    required init(coder: NSCoder) { fatalError("unsupported") }
+
+    override func drawHashMarksAndLabels(in rect: NSRect) {
+        guard let tv = textView, let lm = tv.layoutManager, let tc = tv.textContainer else { return }
+        backgroundFill.setFill()
+        bounds.fill()
+
+        let visible = tv.visibleRect
+        let glyphRange = lm.glyphRange(forBoundingRect: visible, in: tc)
+        let text = tv.string as NSString
+        let attrs: [NSAttributedString.Key: Any] = [.font: numberFont, .foregroundColor: numberColor]
+
+        // Line number of the first visible glyph (no wrapping → fragments = lines).
+        let firstChar = lm.characterIndexForGlyph(at: glyphRange.location)
+        var lineNumber = firstChar == 0
+            ? 1
+            : text.substring(to: firstChar).components(separatedBy: "\n").count
+        var glyphIndex = glyphRange.location
+
+        while glyphIndex < NSMaxRange(glyphRange) {
+            var lineGlyphRange = NSRange()
+            let frag = lm.lineFragmentRect(forGlyphAt: glyphIndex, effectiveRange: &lineGlyphRange)
+            let label = "\(lineNumber)" as NSString
+            let size = label.size(withAttributes: attrs)
+            let yInTV = frag.minY + tv.textContainerOrigin.y
+            let y = convert(NSPoint(x: 0, y: yInTV), from: tv).y + (frag.height - size.height) / 2
+            label.draw(at: NSPoint(x: ruleThickness - size.width - 12, y: y), withAttributes: attrs)
+            lineNumber += 1
+            glyphIndex = NSMaxRange(lineGlyphRange)
+        }
     }
 }
 
