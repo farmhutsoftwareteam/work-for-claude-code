@@ -6,6 +6,33 @@
         <description>Updates for Work</description>
         <language>en</language>
         <item>
+            <title>Version 2.4.0</title>
+            <pubDate>Fri, 03 Jul 2026 15:32:48 +0400</pubDate>
+            <sparkle:version>32</sparkle:version>
+            <sparkle:shortVersionString>2.4.0</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>15.0</sparkle:minimumSystemVersion>
+            <description><![CDATA[
+                <h3>Atelier 2.4.0 — the co-driven terminal</h3>
+                <h4>Claude and you, one terminal</h4>
+                <ul>
+                    <li><b>Interactive commands finally work.</b> Claude runs them in a visible terminal pane — a real PTY — answers routine prompts itself ("Which build? [1]"), and asks you in chat for anything it can't decide. You can click in and type at any time.</li>
+                    <li><b>Secrets never touch the model.</b> Password prompts flip the pane into a clay-bordered secure state: Claude's reads are withheld and its typing is rejected — enforced in the engine, not just the UI. You type directly, hidden from the agent.</li>
+                    <li><b>Fully attributable</b>: an INPUT strip shows exactly what the agent typed, a dovetail mark pulses while it's watching, and the header carries live elapsed / exit status.</li>
+                    <li>When Claude reaches for an interactive command via plain Bash, the permission card offers <b>Run co-driven</b> — one click reroutes it to the shared terminal.</li>
+                </ul>
+                <h4>Model selection, finished</h4>
+                <ul>
+                    <li><b>Your model choice sticks</b> — picking a model also sets the default for new sessions; no more silent reverts to Opus 4.8.</li>
+                    <li>The model list comes from <b>your Claude Code binary itself</b>, is remembered across launches, and the picker now works even before a session starts.</li>
+                </ul>
+            ]]></description>
+            <enclosure
+                url="https://work.munyamakosa.com/Work.dmg"
+                length="11653183"
+                type="application/octet-stream"
+                sparkle:edSignature="koPqc9WkzFb7sHENeHR0iWbNo/mbtwvbfeqn+TefMY+vzmIE06f6KuHnAUOcm4It1/tA1+0RhxcFShSibfdWCA==" />
+        </item>
+        <item>
             <title>Version 2.3.0</title>
             <pubDate>Thu, 02 Jul 2026 15:01:27 +0400</pubDate>
             <sparkle:version>31</sparkle:version>
