@@ -6,6 +6,31 @@
         <description>Updates for Work</description>
         <language>en</language>
         <item>
+            <title>Version 2.5.0</title>
+            <pubDate>Fri, 03 Jul 2026 16:06:20 +0400</pubDate>
+            <sparkle:version>33</sparkle:version>
+            <sparkle:shortVersionString>2.5.0</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>15.0</sparkle:minimumSystemVersion>
+            <description><![CDATA[
+                <h3>Atelier 2.5.0 — your projects, recognizable at a glance</h3>
+                <h4>Project favicons</h4>
+                <ul>
+                    <li><b>Tabs and the rail show each project's own logo</b> — discovered from canonical locations only (public/favicon.*, Next's app/favicon.ico, Expo's assets/icon.png, …) and quality-gated: must decode, be roughly square, sanely sized. Fails a check → the clean dot you already know.</li>
+                    <li><b>Status still wins</b>: the radar ring wraps the logo while working, the clay glow pulses behind it when a tab needs you, and the rail's live dot outranks branding.</li>
+                </ul>
+                <h4>Fold the terminal while it works</h4>
+                <ul>
+                    <li>The co-driven terminal <b>collapses to its slim header</b> — command + live timer stay, the output wall gets out of your way. A one-line tail ticks along while folded.</li>
+                    <li>When the command finishes, the header flips <b>✓ green or ✗ red</b> with total duration — a folded terminal still reports its outcome. Secure prompts force the pane open; a password needs your keyboard.</li>
+                </ul>
+            ]]></description>
+            <enclosure
+                url="https://work.munyamakosa.com/Work.dmg"
+                length="11698912"
+                type="application/octet-stream"
+                sparkle:edSignature="iKmI7h6Iw4+UdMlsQGo4XS2RhV/XlSiL/40p1HXXIVLuTb5/A3upChQ/UU2oyfXPJD9Bk5Wqm6IUnipNBAimDA==" />
+        </item>
+        <item>
             <title>Version 2.4.0</title>
             <pubDate>Fri, 03 Jul 2026 15:32:48 +0400</pubDate>
             <sparkle:version>32</sparkle:version>
