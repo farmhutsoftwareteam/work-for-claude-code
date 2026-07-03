@@ -377,6 +377,11 @@ final class V2AppState: ObservableObject {
 
     func close(tabId: UUID) {
         let wasActive = (activeTabId == tabId)
+        // Tear down any co-driven terminals BEFORE the tab (and its session)
+        // goes away — their processes must not outlive the tab.
+        if let session = tabs.first(where: { $0.id == tabId })?.streamSession {
+            CoTerminalManager.shared.closeAll(scope: ObjectIdentifier(session))
+        }
         _ = terminals?.close(tabId, force: true)
         resumeIds.removeValue(forKey: tabId)
         sessionStateSubs[tabId] = nil   // cancel the state subscription (was leaked)

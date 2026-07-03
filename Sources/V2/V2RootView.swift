@@ -176,13 +176,18 @@ struct V2RootView: View {
                     // Permission request is now a window-level modal overlay
                     // (see body's ZStack) rather than an inline card that was
                     // easy to scroll past / miss entirely.
-                    V2LiveTranscript(session: session, projectCwd: tab.projectCwd)
-                        .frame(maxWidth: .infinity, maxHeight: .infinity)
-                        // Key by tab so each tab keeps its own scroll
-                        // position — without this, switching tabs reuses the
-                        // same transcript view identity and the scroll state
-                        // bleeds between conversations.
-                        .id(tab.id)
+                    VStack(spacing: 0) {
+                        V2LiveTranscript(session: session, projectCwd: tab.projectCwd)
+                            .frame(maxWidth: .infinity, maxHeight: .infinity)
+                        // Co-driven terminal panes (#56) — shared PTYs Claude
+                        // and the user drive together; empty ⇒ renders nothing.
+                        CoTerminalStrip(session: session)
+                    }
+                    // Key by tab so each tab keeps its own scroll
+                    // position — without this, switching tabs reuses the
+                    // same transcript view identity and the scroll state
+                    // bleeds between conversations.
+                    .id(tab.id)
                 } else {
                     invalidStateView
                 }

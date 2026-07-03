@@ -61,6 +61,37 @@ struct V2LivePermissionCard: View {
                     .overlay(Rectangle().stroke(v2.line, lineWidth: 1))
                     .textSelection(.enabled)
 
+                // Interactive command → offer the co-driven pane (#57). Deny
+                // with steering: Claude re-runs it via terminal_run and you
+                // both drive one visible terminal.
+                if let cmd = pending.interactiveCommand {
+                    Button {
+                        session.respondToPermission(
+                            allow: false,
+                            message: InteractiveCommandDetector.steering(command: cmd)
+                        )
+                    } label: {
+                        HStack(spacing: 9) {
+                            Image(systemName: "terminal")
+                                .font(.system(size: 11, weight: .medium))
+                            VStack(alignment: .leading, spacing: 1) {
+                                Text("Run co-driven")
+                                    .font(.system(size: 12, weight: .medium, design: .monospaced))
+                                Text("this command asks questions — run it in a shared terminal")
+                                    .font(.system(size: 10, design: .monospaced))
+                                    .foregroundColor(v2.mute)
+                            }
+                            Spacer()
+                        }
+                        .foregroundColor(v2.ink)
+                        .padding(.horizontal, 13).padding(.vertical, 9)
+                        .background(v2.paper2)
+                        .overlay(Rectangle().stroke(v2.ink, lineWidth: 1))
+                        .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                }
+
                 HStack(spacing: 9) {
                     Button { session.respondToPermission(allow: true) } label: {
                         Text("Approve")

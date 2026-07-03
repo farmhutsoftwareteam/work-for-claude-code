@@ -155,6 +155,17 @@ final class StreamSession: ObservableObject {
     private var process: Process?
     private var inputWriter: StreamInputWriter?
 
+    /// Co-driven terminal bridge (#55): the atelier-terminal MCP server for
+    /// THIS session, plus the --mcp-config file that points claude at it.
+    /// Created lazily on first spawn; survives restarts (same socket).
+    private(set) var terminalBridge: TerminalBridge?
+    private var terminalMCPConfigURL: URL?
+
+    deinit {
+        terminalBridge?.closeBridge()
+        if let url = terminalMCPConfigURL { try? FileManager.default.removeItem(at: url) }
+    }
+
     // Resume liveness tracking: if a resumed spawn dies before producing any
     // substantive event (session already running, or its transcript was
     // cleaned up), handleStreamEnd surfaces a friendly endError instead of a
@@ -296,6 +307,29 @@ final class StreamSession: ObservableObject {
             "--include-partial-messages",
             "--verbose"
         ]
+
+        // Co-driven terminal (#55): host the atelier-terminal MCP server for
+        // this session and point claude at it via --mcp-config. Degrades
+        // silently — a bridge failure must never block a session.
+        if terminalBridge == nil {
+            terminalBridge = try? TerminalBridge(scope: ObjectIdentifier(self), defaultCwd: cwd.path)
+        }
+        if let bridge = terminalBridge {
+            if terminalMCPConfigURL == nil {
+                let cfg: [String: Any] = ["mcpServers": ["atelier-terminal": [
+                    "command": "/usr/bin/nc",
+                    "args": ["-U", bridge.socketPath],
+                ]]]
+                let url = URL(fileURLWithPath: NSTemporaryDirectory() + "at-mcp-\(UUID().uuidString.prefix(8)).json")
+                if let data = try? JSONSerialization.data(withJSONObject: cfg),
+                   (try? data.write(to: url)) != nil {
+                    terminalMCPConfigURL = url
+                }
+            }
+            if let cfgURL = terminalMCPConfigURL {
+                args += ["--mcp-config", cfgURL.path]
+            }
+        }
         if let resumeId, !resumeId.isEmpty {
             args.append("--resume")
             args.append(resumeId)
@@ -980,10 +1014,20 @@ final class StreamSession: ObservableObject {
         }
 
         let preview = makePermissionPreview(toolName: req.request.toolName, input: req.request.input)
+        // Interactive-looking Bash gets the "Run co-driven" offer on the card
+        // (#57) — only meaningful when this session has the terminal bridge.
+        var interactive: String?
+        if req.request.toolName == "Bash",
+           terminalBridge != nil,
+           let cmd = req.request.input?.dig("command")?.asString,
+           InteractiveCommandDetector.looksInteractive(cmd) {
+            interactive = cmd
+        }
         pendingPermission = PendingPermission(
             requestId: req.requestId,
             toolName: req.request.toolName ?? "unknown",
-            previewText: preview
+            previewText: preview,
+            interactiveCommand: interactive
         )
         state = .awaitingPermission
     }
@@ -1009,6 +1053,9 @@ struct PendingPermission: Identifiable, Equatable {
     let requestId: String
     let toolName: String
     let previewText: String
+    /// Set when this is a Bash call that looks interactive — the permission
+    /// card offers "Run co-driven" and steers via deny-with-message (#57).
+    var interactiveCommand: String? = nil
 }
 
 /// A single row in the live transcript. The UI maps each to a SwiftUI view.
