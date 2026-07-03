@@ -72,6 +72,7 @@ struct V2SessionTabs: View {
 
 private struct V2TabChip: View {
     @Environment(\.v2) private var v2
+    @ObservedObject private var iconLoader = ProjectIconLoader.shared
     let tab: TerminalTab
     let status: V2TabStatus
     let isActive: Bool
@@ -114,20 +115,46 @@ private struct V2TabChip: View {
 
     @ViewBuilder
     private var statusGlyph: some View {
-        ZStack {
-            switch status {
-            case .idle:
-                Circle().stroke(v2.faint, lineWidth: 1).frame(width: 9, height: 9)
-            case .working:
-                V2PulseDot(size: 9, color: v2.ink)
-                V2RadarRing(color: v2.ink)
-            case .doneUnseen:
-                Circle().fill(v2.add).frame(width: 9, height: 9)
-            case .needsYou:
-                V2GlowDot(color: v2.del)
+        // Chrome's favicon↔spinner pattern: the project logo is the RESTING
+        // visual; status overlays it (radar ring while working, clay glow when
+        // blocked). No logo (or none that passed the quality gates) → the
+        // original dot language, unchanged.
+        if let icon = iconLoader.icon(for: tab.projectCwd) {
+            ZStack {
+                if status == .needsYou {
+                    V2PulseDot(size: 19, color: v2.del.opacity(0.45))
+                }
+                Image(nsImage: icon)
+                    .resizable()
+                    .interpolation(.high)
+                    .frame(width: 14, height: 14)
+                if status == .working {
+                    V2RadarRing(color: v2.ink)
+                }
+                if status == .doneUnseen {
+                    // Sage corner tick — the underline carries the state; this
+                    // keeps it legible even when the underline is off-screen.
+                    Circle().fill(v2.add).frame(width: 6, height: 6)
+                        .offset(x: 6, y: -6)
+                }
             }
+            .frame(width: 14, height: 14)
+        } else {
+            ZStack {
+                switch status {
+                case .idle:
+                    Circle().stroke(v2.faint, lineWidth: 1).frame(width: 9, height: 9)
+                case .working:
+                    V2PulseDot(size: 9, color: v2.ink)
+                    V2RadarRing(color: v2.ink)
+                case .doneUnseen:
+                    Circle().fill(v2.add).frame(width: 9, height: 9)
+                case .needsYou:
+                    V2GlowDot(color: v2.del)
+                }
+            }
+            .frame(width: 9, height: 9)
         }
-        .frame(width: 9, height: 9)
     }
 
     @ViewBuilder

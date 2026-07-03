@@ -385,6 +385,7 @@ struct V2LeftRail: View {
 
 private struct V2ProjectRow: View {
     @Environment(\.v2) private var v2
+    @ObservedObject private var iconLoader = ProjectIconLoader.shared
     let name: String
     let cwd: String
     let sessionCount: Int
@@ -396,10 +397,21 @@ private struct V2ProjectRow: View {
     var body: some View {
         Button(action: onTap) {
             HStack(spacing: 10) {
-                Circle()
-                    .fill(live ? v2.ink : Color.clear)
-                    .overlay(Circle().stroke(live ? Color.clear : v2.line2, lineWidth: 1))
-                    .frame(width: 7, height: 7)
+                // Project logo when one passed the quality gates; the live dot
+                // still wins the slot (status beats branding). No logo → the
+                // original hollow/filled circle.
+                if !live, let icon = iconLoader.icon(for: cwd) {
+                    Image(nsImage: icon)
+                        .resizable()
+                        .interpolation(.high)
+                        .frame(width: 12, height: 12)
+                } else {
+                    Circle()
+                        .fill(live ? v2.ink : Color.clear)
+                        .overlay(Circle().stroke(live ? Color.clear : v2.line2, lineWidth: 1))
+                        .frame(width: 7, height: 7)
+                        .frame(width: 12)
+                }
                 Text(name)
                     .font(.system(size: 13.5, weight: isActive ? .medium : .regular))
                     .kerning(-0.13)
