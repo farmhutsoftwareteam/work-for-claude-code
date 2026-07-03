@@ -1,8 +1,12 @@
-// Co-driven terminal panes in the session column (#56 — placeholder chrome;
-// final dual-driver design lands with Co-driven terminal.dc.html / #58).
-// Header: command chip · running elapsed / exit valence · secure badge ·
-// agent-input attribution · close. Body: the shared SwiftTerm view — click
-// to type; Claude reads/writes through the bridge.
+// Co-driven terminal panes (#58 — implements Co-driven terminal.dc.html).
+// One terminal, two drivers: header carries the command chip, the secure-
+// prompt state, the agent-watching dovetail, and running/exit status; the
+// body is a real SwiftTerm view (dark in both themes); the attribution strip
+// logs what the AGENT typed — user input shows in the terminal itself.
+//
+// Design deviation, deliberate: the artifact's footer hint says "esc returns
+// to composer", but ESC must reach the PTY (TUIs need it) — so the hint is
+// "click to type" only.
 
 import SwiftUI
 import SwiftTerm
@@ -18,7 +22,7 @@ struct CoTerminalStrip: View {
 
     var body: some View {
         let terms = manager.terminals(for: session)
-        VStack(spacing: 10) {
+        VStack(spacing: 14) {
             ForEach(terms) { t in
                 CoTerminalPaneView(terminal: t) {
                     manager.close(t, scope: ObjectIdentifier(session))
@@ -37,85 +41,158 @@ struct CoTerminalPaneView: View {
     let onClose: () -> Void
 
     var body: some View {
-        VStack(spacing: 0) {
-            header
-            if terminal.secureInput { secureBanner }
-            TerminalHostView(terminal: terminal)
-                .frame(height: 280)
-            if !terminal.agentInputs.isEmpty { attributionStrip }
+        VStack(alignment: .leading, spacing: 7) {
+            VStack(spacing: 0) {
+                header
+                TerminalHostView(terminal: terminal)
+                    .frame(height: 262)
+                if !terminal.agentInputs.isEmpty || terminal.secureInput {
+                    attributionStrip
+                }
+            }
+            .background(v2.card)
+            // Secure prompt = doubled clay border (1px inner + 1px outer ring,
+            // 2px apart) — the design's "impossible to skim past" treatment.
+            .overlay(Rectangle().stroke(terminal.secureInput ? v2.del : v2.line2, lineWidth: 1))
+            .overlay {
+                if terminal.secureInput {
+                    Rectangle().stroke(v2.del, lineWidth: 1).padding(-3)
+                }
+            }
+
+            Text("click to type")
+                .font(.system(size: 10.5, design: .monospaced))
+                .foregroundColor(v2.faint)
         }
-        .background(v2.card)
-        .overlay(Rectangle().stroke(terminal.secureInput ? v2.del : v2.line2,
-                                    lineWidth: terminal.secureInput ? 2 : 1))
     }
 
+    // MARK: Header (36px, paper2)
+
     private var header: some View {
-        HStack(spacing: 10) {
+        HStack(spacing: 11) {
             V2CommandChip(terminal.command)
+
+            if terminal.secureInput {
+                HStack(spacing: 7) {
+                    Image(systemName: "lock.fill").font(.system(size: 10))
+                    Text("secure prompt — type directly · hidden from the agent")
+                        .font(.system(size: 11, design: .monospaced))
+                        .lineLimit(1).truncationMode(.tail)
+                }
+                .foregroundColor(v2.del)
+            }
+
             Spacer(minLength: 8)
+
+            // Agent-watching dovetail: pulses when the agent read the screen
+            // recently, dims when idle; hidden during secure (locked out) and
+            // after exit.
+            if terminal.isRunning && !terminal.secureInput {
+                WatchingMark(lastReadAt: terminal.lastAgentReadAt)
+            }
+
             if terminal.isRunning {
                 HStack(spacing: 7) {
-                    V2PulseDot(size: 6, color: v2.ink)
+                    V2PulseDot(size: 7, color: v2.add)
                     TimelineView(.periodic(from: terminal.startedAt, by: 1)) { ctx in
-                        let s = max(0, Int(ctx.date.timeIntervalSince(terminal.startedAt)))
-                        Text("\(s / 60):" + String(format: "%02d", s % 60))
-                            .font(.system(size: 10.5, design: .monospaced))
+                        Text(Self.mmss(ctx.date.timeIntervalSince(terminal.startedAt)))
+                            .font(.system(size: 11, design: .monospaced))
                             .foregroundColor(v2.mute)
                             .monospacedDigit()
                     }
                 }
             } else {
                 let code = terminal.exitCode ?? -1
-                Text(code == 0 ? "✓ exit 0" : "✗ exit \(code)")
-                    .font(.system(size: 10.5, design: .monospaced))
-                    .foregroundColor(code == 0 ? v2.add : v2.del)
+                let dur = Self.mmss((terminal.endedAt ?? Date()).timeIntervalSince(terminal.startedAt))
+                HStack(spacing: 7) {
+                    Text(code == 0 ? "✓" : "✗").foregroundColor(code == 0 ? v2.add : v2.del)
+                    Text("exit \(code) · \(dur)").foregroundColor(code == 0 ? v2.mute : v2.del)
+                }
+                .font(.system(size: 11, design: .monospaced))
+                Button(action: onClose) {
+                    Image(systemName: "xmark")
+                        .font(.system(size: 10, weight: .medium))
+                        .foregroundColor(v2.mute)
+                        .frame(width: 18, height: 18)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .help("Close pane")
             }
-            // Agent-watching hint: recent tool reads → the mark is "looking".
-            if let read = terminal.lastAgentReadAt, Date().timeIntervalSince(read) < 10 {
-                V2DovetailMark(size: 12).foregroundColor(v2.mute)
-                    .help("Claude is watching this terminal")
-            }
-            Button(action: onClose) {
-                Image(systemName: "xmark")
-                    .font(.system(size: 9, weight: .medium))
-                    .foregroundColor(v2.mute)
-                    .frame(width: 18, height: 18)
-                    .contentShape(Rectangle())
-            }
-            .buttonStyle(.plain)
-            .help("Close terminal (terminates the process)")
         }
-        .padding(.horizontal, 12).padding(.vertical, 7)
+        .padding(.horizontal, 12)
+        .frame(height: 36)
+        .background(v2.paper2)
         .overlay(alignment: .bottom) { Rectangle().fill(v2.line).frame(height: 1) }
     }
 
-    private var secureBanner: some View {
-        HStack(spacing: 8) {
-            Image(systemName: "lock.fill").font(.system(size: 10))
-            Text("secure prompt — type directly · hidden from the agent")
-                .font(.system(size: 10.5, design: .monospaced))
-            Spacer()
-        }
-        .foregroundColor(v2.del)
-        .padding(.horizontal, 12).padding(.vertical, 6)
-        .background(v2.delBg)
-        .overlay(alignment: .bottom) { Rectangle().fill(v2.line).frame(height: 1) }
-    }
+    // MARK: Attribution strip — what the AGENT typed
 
-    /// Attribution: what the AGENT typed (user input shows in the terminal
-    /// itself). Secure writes are rejected upstream, so no secret can land here.
     private var attributionStrip: some View {
-        HStack(spacing: 8) {
-            V2DovetailMark(size: 10).foregroundColor(v2.faint)
-            Text(terminal.agentInputs.suffix(3).joined(separator: "   "))
-                .font(.system(size: 10, design: .monospaced))
-                .foregroundColor(v2.mute)
-                .lineLimit(1).truncationMode(.head)
-            Spacer()
+        HStack(spacing: 14) {
+            Text("INPUT")
+                .font(.system(size: 9.5, design: .monospaced)).kerning(1.0)
+                .foregroundColor(v2.faint)
+            ForEach(Array(terminal.agentInputs.suffix(4).enumerated()), id: \.offset) { _, entry in
+                HStack(spacing: 5) {
+                    V2DovetailMark(size: 10).foregroundColor(v2.mute)
+                    Text(entry)
+                        .font(.system(size: 10.5, design: .monospaced))
+                        .foregroundColor(v2.mute)
+                        .lineLimit(1)
+                }
+                .help("typed by the agent")
+            }
+            Spacer(minLength: 8)
+            if terminal.secureInput {
+                Text("agent locked out")
+                    .font(.system(size: 10, design: .monospaced))
+                    .foregroundColor(v2.del)
+                    .padding(.horizontal, 7).padding(.vertical, 1)
+                    .overlay(Rectangle().stroke(v2.del, lineWidth: 1))
+            }
         }
-        .padding(.horizontal, 12).padding(.vertical, 5)
+        .padding(.horizontal, 12).padding(.vertical, 4)
+        .frame(minHeight: 26)
         .background(v2.paper2)
         .overlay(alignment: .top) { Rectangle().fill(v2.line).frame(height: 1) }
+    }
+
+    private static func mmss(_ interval: TimeInterval) -> String {
+        let s = max(0, Int(interval))
+        return "\(s / 60):" + String(format: "%02d", s % 60)
+    }
+}
+
+/// The header's agent-watching indicator: dovetail pulses while reads are
+/// recent (<10s), dims to faint when the agent hasn't looked lately.
+private struct WatchingMark: View {
+    @Environment(\.v2) private var v2
+    let lastReadAt: Date?
+
+    var body: some View {
+        TimelineView(.periodic(from: .now, by: 2)) { ctx in
+            let recent = lastReadAt.map { ctx.date.timeIntervalSince($0) < 10 } ?? false
+            V2DovetailMark(size: 13)
+                .foregroundColor(recent ? v2.ink : v2.faint)
+                .opacity(recent ? 1 : 0.8)
+                .modifier(PulseWhile(active: recent))
+                .help(recent ? "agent watching — read the screen recently"
+                             : "agent idle — hasn't read the screen recently")
+        }
+    }
+}
+
+/// Soft opacity pulse while `active` (the design's 1.6s ease pulse).
+private struct PulseWhile: ViewModifier {
+    let active: Bool
+    @State private var dim = false
+    func body(content: Content) -> some View {
+        content
+            .opacity(active && dim ? 0.25 : 1)
+            .animation(active ? .easeInOut(duration: 0.8).repeatForever(autoreverses: true) : .default, value: dim)
+            .onAppear { if active { dim = true } }
+            .onChange(of: active) { _, now in dim = now }
     }
 }
 

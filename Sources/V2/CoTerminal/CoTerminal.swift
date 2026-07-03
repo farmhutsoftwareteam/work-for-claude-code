@@ -77,6 +77,8 @@ final class CoTerminal: NSObject, ObservableObject, Identifiable {
 
     @Published private(set) var isRunning = true
     @Published private(set) var exitCode: Int32?
+    /// Set on process exit — freezes the header's duration readout.
+    @Published private(set) var endedAt: Date?
     @Published private(set) var secureInput = false
     /// Agent-typed input, for the pane's attribution strip. Secure writes are
     /// rejected upstream, so secrets can never land here.
@@ -93,8 +95,12 @@ final class CoTerminal: NSObject, ObservableObject, Identifiable {
         self.command = command
         self.cwd = cwd
         super.init()
-        view = SwiftTerm.TerminalView(frame: NSRect(x: 0, y: 0, width: 800, height: 280))
+        view = SwiftTerm.TerminalView(frame: NSRect(x: 0, y: 0, width: 800, height: 262))
         view.terminalDelegate = self
+        // Design: the terminal body is dark in BOTH themes (--term-bg #161719,
+        // --term-ink #d9dad6) — a terminal is a terminal.
+        view.nativeBackgroundColor = NSColor(red: 0x16/255, green: 0x17/255, blue: 0x19/255, alpha: 1)
+        view.nativeForegroundColor = NSColor(red: 0xd9/255, green: 0xda/255, blue: 0xd6/255, alpha: 1)
         process = LocalProcess(delegate: self, dispatchQueue: ioQueue)
         var env = ProcessInfo.processInfo.environment
         env["TERM"] = "xterm-256color"
@@ -178,6 +184,7 @@ extension CoTerminal: LocalProcessDelegate {
         Task { @MainActor in
             self.isRunning = false
             self.exitCode = exitCode
+            self.endedAt = Date()
             self.secureInput = false
             self.ring.clearSecure()
         }
