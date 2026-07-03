@@ -22,18 +22,43 @@ final class ProjectIconLoader: ObservableObject {
     @Published private(set) var icons: [String: NSImage] = [:]
     private var attempted: Set<String> = []
 
-    /// Canonical, conventional locations only — grow the list, never the fuzziness.
+    /// Canonical, conventional locations only — grow the list, never the
+    /// fuzziness. Grouped by ecosystem; order = intentionality (an explicit
+    /// favicon beats a platform icon beats a generic logo file).
     nonisolated private static let candidates: [String] = [
+        // Web favicons (next/nuxt/vite/svelte/astro/laravel/rails serve /public)
         "public/favicon.svg", "public/favicon.png", "public/favicon.ico",
         "app/favicon.ico", "src/app/favicon.ico",          // next.js app router
+        "src/favicon.ico",                                  // angular
+        "web/favicon.png",                                  // flutter web
+        "static/favicon.png", "static/favicon.ico",         // sveltekit / nuxt static
         "favicon.ico", "favicon.png",
         "public/apple-touch-icon.png", "apple-touch-icon.png",
-        "assets/icon.png", "assets/images/icon.png",       // expo / rn
+        // App / desktop / extension icons
+        "assets/icon.png", "assets/images/icon.png",        // expo / rn
+        "android/app/src/main/res/mipmap-xxxhdpi/ic_launcher.png",  // rn / flutter android
+        "android/app/src/main/res/mipmap-xxhdpi/ic_launcher.png",
+        "app/src/main/res/mipmap-xxxhdpi/ic_launcher.png",  // native android
+        "src-tauri/icons/128x128.png", "src-tauri/icons/icon.png",   // tauri
+        "build/icon.png", "build/icon.icns",                // electron-builder
+        "resources/icon.png",
+        "icons/icon128.png", "icons/icon-128.png",          // browser extensions
+        "images/icon.png", "media/icon.png",                // vs code extensions
+        "src/images/icon.png",                              // gatsby
+        // Generic-but-conventional logo files
         "public/logo.svg", "public/logo.png", "public/icon.png",
-        "src/assets/logo.svg", "src/assets/logo.png", "assets/logo.png",
-        "static/favicon.png", "static/favicon.ico",
+        "src/assets/logo.svg", "src/assets/logo.png",
+        "assets/logo.svg", "assets/logo.png",
         "public/images/logo.png",
-        "docs/favicon-32.png",
+        "docs/logo.png", "docs/favicon-32.png",
+        ".github/logo.png",
+    ]
+
+    /// Directories never worth descending into during the one-level
+    /// AppIcon.appiconset scan.
+    nonisolated private static let skipDirs: Set<String> = [
+        "node_modules", ".git", "build", "dist", ".next", "Pods",
+        "DerivedData", "vendor", "target", ".build", "out", "coverage",
     ]
 
     /// Cached lookup; on first miss schedules discovery. Safe to call from
@@ -53,7 +78,8 @@ final class ProjectIconLoader: ObservableObject {
         return nil
     }
 
-    /// First allowlisted file that exists with a sane byte size.
+    /// First allowlisted file that exists with a sane byte size; falls back to
+    /// an Xcode AppIcon.appiconset (iOS / macOS / Flutter / RN apps).
     nonisolated private static func discover(cwd: String) -> String? {
         let fm = FileManager.default
         for c in candidates {
@@ -64,7 +90,60 @@ final class ProjectIconLoader: ObservableObject {
             else { continue }
             return p
         }
+        return discoverAppIconSet(cwd: cwd, fm: fm)
+    }
+
+    /// Xcode asset catalogs live under an APP-NAMED directory, so exact paths
+    /// can't reach them — instead: check the root + one bounded level of
+    /// children (and ios/ / macos/ containers) for
+    /// <dir>/(Assets|Images).xcassets/AppIcon.appiconset, then take the
+    /// largest sane PNG in the set. Still allowlist-shaped: only this exact
+    /// catalog structure, never a general search.
+    nonisolated private static func discoverAppIconSet(cwd: String, fm: FileManager) -> String? {
+        func appIconSet(in container: String) -> String? {
+            for catalog in ["Assets.xcassets", "Images.xcassets"] {
+                let set = container + "/" + catalog + "/AppIcon.appiconset"
+                var isDir: ObjCBool = false
+                if fm.fileExists(atPath: set, isDirectory: &isDir), isDir.boolValue {
+                    return largestPNG(in: set, fm: fm)
+                }
+            }
+            return nil
+        }
+        func children(of dir: String, cap: Int) -> [String] {
+            guard let names = try? fm.contentsOfDirectory(atPath: dir) else { return [] }
+            return names.prefix(cap)
+                .filter { !$0.hasPrefix(".") && !skipDirs.contains($0) }
+                .map { dir + "/" + $0 }
+        }
+
+        if let hit = appIconSet(in: cwd) { return hit }
+        for child in children(of: cwd, cap: 60) {
+            if let hit = appIconSet(in: child) { return hit }
+        }
+        // RN / Flutter platform folders nest one level deeper (ios/Runner/…).
+        for platform in ["ios", "macos"] {
+            for child in children(of: cwd + "/" + platform, cap: 20) {
+                if let hit = appIconSet(in: child) { return hit }
+            }
+        }
         return nil
+    }
+
+    /// Biggest PNG in an appiconset that fits the byte gate — app icon sets
+    /// ship many sizes; the largest downscales best.
+    nonisolated private static func largestPNG(in dir: String, fm: FileManager) -> String? {
+        guard let names = try? fm.contentsOfDirectory(atPath: dir) else { return nil }
+        var best: (path: String, size: Int)?
+        for n in names where n.lowercased().hasSuffix(".png") {
+            let p = dir + "/" + n
+            guard let attrs = try? fm.attributesOfItem(atPath: p),
+                  let size = attrs[.size] as? Int,
+                  (100...1_000_000).contains(size)
+            else { continue }
+            if best == nil || size > best!.size { best = (p, size) }
+        }
+        return best?.path
     }
 
     /// Decode + quality gates + one-time downscale to 32px. Main-actor because
