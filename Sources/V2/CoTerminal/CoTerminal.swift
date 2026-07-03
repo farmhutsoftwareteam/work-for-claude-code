@@ -79,6 +79,10 @@ final class CoTerminal: NSObject, ObservableObject, Identifiable {
     @Published private(set) var exitCode: Int32?
     /// Set on process exit — freezes the header's duration readout.
     @Published private(set) var endedAt: Date?
+    /// Pane folded to its header (Chrome download-shelf style). Lives on the
+    /// model so it survives tab switches; forced open when a secure prompt
+    /// appears (it requires the user's typing).
+    @Published var isCollapsed = false
     @Published private(set) var secureInput = false
     /// Agent-typed input, for the pane's attribution strip. Secure writes are
     /// rejected upstream, so secrets can never land here.

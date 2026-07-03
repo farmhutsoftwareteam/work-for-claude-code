@@ -44,11 +44,22 @@ struct CoTerminalPaneView: View {
         VStack(alignment: .leading, spacing: 7) {
             VStack(spacing: 0) {
                 header
-                TerminalHostView(terminal: terminal)
-                    .frame(height: 262)
-                if !terminal.agentInputs.isEmpty || terminal.secureInput {
-                    attributionStrip
+                if terminal.isCollapsed {
+                    // Folded: keep a live one-line tail while it runs, so the
+                    // collapsed pane still says what's happening. On exit the
+                    // header's ✓/✗ carries the outcome.
+                    if terminal.isRunning { collapsedTail }
+                } else {
+                    TerminalHostView(terminal: terminal)
+                        .frame(height: 262)
+                    if !terminal.agentInputs.isEmpty || terminal.secureInput {
+                        attributionStrip
+                    }
                 }
+            }
+            // A secure prompt needs the USER's keyboard — never stay folded.
+            .onChange(of: terminal.secureInput) { _, secure in
+                if secure { terminal.isCollapsed = false }
             }
             .background(v2.card)
             // Secure prompt = doubled clay border (1px inner + 1px outer ring,
@@ -60,10 +71,39 @@ struct CoTerminalPaneView: View {
                 }
             }
 
-            Text("click to type")
-                .font(.system(size: 10.5, design: .monospaced))
-                .foregroundColor(v2.faint)
+            if !terminal.isCollapsed {
+                Text("click to type")
+                    .font(.system(size: 10.5, design: .monospaced))
+                    .foregroundColor(v2.faint)
+            }
         }
+    }
+
+    /// Last meaningful output line, ANSI-stripped — the folded pane's pulse.
+    /// Refreshes once a second (the ring updates without publishes by design).
+    private var collapsedTail: some View {
+        TimelineView(.periodic(from: .now, by: 1)) { _ in
+            Text(Self.lastLine(of: terminal))
+                .font(.system(size: 10.5, design: .monospaced))
+                .foregroundColor(v2.mute)
+                .lineLimit(1).truncationMode(.head)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.horizontal, 12).padding(.vertical, 5)
+                .background(v2.paper2)
+                .overlay(alignment: .top) { Rectangle().fill(v2.line).frame(height: 1) }
+        }
+    }
+
+    private static func lastLine(of terminal: CoTerminal) -> String {
+        let raw = terminal.ring.read(since: nil).text
+        let clean = raw
+            .replacingOccurrences(of: "\u{1B}\\][^\u{07}]*\u{07}", with: "", options: .regularExpression)
+            .replacingOccurrences(of: "\u{1B}\\[[0-9;?]*[A-Za-z]", with: "", options: .regularExpression)
+        return clean
+            .split(whereSeparator: { $0 == "\n" || $0 == "\r" })
+            .reversed()
+            .first { !$0.trimmingCharacters(in: .whitespaces).isEmpty }
+            .map(String.init) ?? "…"
     }
 
     // MARK: Header (36px, paper2)
@@ -119,10 +159,24 @@ struct CoTerminalPaneView: View {
                 .buttonStyle(.plain)
                 .help("Close pane")
             }
+
+            // Fold/unfold — collapse the terminal to this header while it works;
+            // the header keeps the timer and flips ✓/✗ when done.
+            Button { terminal.isCollapsed.toggle() } label: {
+                Image(systemName: terminal.isCollapsed ? "chevron.down" : "chevron.up")
+                    .font(.system(size: 9, weight: .medium))
+                    .foregroundColor(v2.mute)
+                    .frame(width: 18, height: 18)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .help(terminal.isCollapsed ? "Expand terminal" : "Collapse to header — keeps running")
         }
         .padding(.horizontal, 12)
         .frame(height: 36)
         .background(v2.paper2)
+        .contentShape(Rectangle())
+        .onTapGesture { terminal.isCollapsed.toggle() }
         .overlay(alignment: .bottom) { Rectangle().fill(v2.line).frame(height: 1) }
     }
 
