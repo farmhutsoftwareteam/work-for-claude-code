@@ -130,6 +130,12 @@ struct V2ModelPicker: View {
         let isActive = isActive(option)
         return Button {
             appState.activeSession?.setModel(option.id)
+            // Persist the pick as the spawn default so NEW tabs/sessions keep
+            // it — previously only the live session switched, and every new
+            // spawn silently reverted to the stored default (opus-4-8).
+            // Picking "Default (recommended)" persists as empty, which start()
+            // treats as "omit --model" so the CLI's own default applies.
+            appState.defaultSpawnModel = (option.id == "default") ? "" : option.id
             isPresented = false
         } label: {
             VStack(alignment: .leading, spacing: 3) {

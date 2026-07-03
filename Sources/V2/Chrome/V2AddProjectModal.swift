@@ -513,9 +513,12 @@ struct V2AddProjectModal: View {
     // MARK: Helpers
 
     /// The model shown/used in the dialog: the in-dialog pick, falling back to
-    /// the current app default until the user has touched the menu.
+    /// the current app default until the user has touched the menu. An empty
+    /// default means "CLI default" (no --model on spawn) — label it honestly
+    /// instead of rendering a blank menu.
     private var effectiveModel: String {
-        model.selectedModel.isEmpty ? appState.defaultSpawnModel : model.selectedModel
+        let m = model.selectedModel.isEmpty ? appState.defaultSpawnModel : model.selectedModel
+        return m.isEmpty ? "default (CLI)" : m
     }
 
     private var modelOptions: [String] {
