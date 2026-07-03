@@ -1089,7 +1089,7 @@ enum TranscriptItem: Identifiable {
 /// One entry of the binary's model catalog. `value` is the alias `set_model`
 /// accepts ("sonnet", "opus[1m]"); `resolvedModel` is the concrete id it maps
 /// to ("claude-sonnet-5").
-struct V2AvailableModel: Identifiable, Equatable, Sendable {
+struct V2AvailableModel: Identifiable, Equatable, Sendable, Codable {
     let value: String
     let resolvedModel: String
     let displayName: String

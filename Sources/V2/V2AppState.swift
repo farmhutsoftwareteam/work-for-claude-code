@@ -65,6 +65,29 @@ final class V2AppState: ObservableObject {
     /// picker falls back to the active session's model when empty.
     @Published private(set) var discoveredModels: [V2DiscoveredModel] = []
 
+    /// Last-known model catalog from any session's initialize reply — the
+    /// binary's own list (aliases, resolved ids, display names). Persisted so
+    /// model pickers work BEFORE any session is live and across launches;
+    /// refreshed the moment any session inits.
+    @Published private(set) var modelCatalog: [V2AvailableModel] = []
+    private static let modelCatalogKey = "v2.modelCatalog"
+
+    func updateModelCatalog(_ models: [V2AvailableModel]) {
+        guard !models.isEmpty, models != modelCatalog else { return }
+        modelCatalog = models
+        if let data = try? JSONEncoder().encode(models) {
+            UserDefaults.standard.set(data, forKey: Self.modelCatalogKey)
+        }
+    }
+
+    private func loadPersistedModelCatalog() {
+        guard modelCatalog.isEmpty,
+              let data = UserDefaults.standard.data(forKey: Self.modelCatalogKey),
+              let cached = try? JSONDecoder().decode([V2AvailableModel].self, from: data)
+        else { return }
+        modelCatalog = cached
+    }
+
     /// model id → context window (max_input_tokens), sourced from Anthropic's
     /// Models API — NOT hardcoded. Empty until a fetch succeeds; persisted so
     /// a launch without network still has last-known values. When a model
@@ -142,7 +165,12 @@ final class V2AppState: ObservableObject {
         let otherSub = Publishers.MergeMany(otherSignals)
             .receive(on: RunLoop.main)
             .sink { [weak self] _ in self?.objectWillChange.send() }
-        sessionStateSubs[tabId] = AnyCancellable { stateSub.cancel(); otherSub.cancel() }
+        // Capture the binary's model catalog app-wide whenever a session inits,
+        // so pickers stay current even with no live session.
+        let catalogSub = session.$availableModels
+            .receive(on: RunLoop.main)
+            .sink { [weak self] models in self?.updateModelCatalog(models) }
+        sessionStateSubs[tabId] = AnyCancellable { stateSub.cancel(); otherSub.cancel(); catalogSub.cancel() }
     }
 
     /// Detect tab-status transitions and fire the matching attention cue.
@@ -199,6 +227,8 @@ final class V2AppState: ObservableObject {
     /// keep whatever's cached (possibly nothing) and let the meter show
     /// tokens-only. Call once at launch.
     func refreshModelCatalog() {
+        // Model catalog: restore the last-known list so pickers work pre-session.
+        loadPersistedModelCatalog()
         // Baseline: the committed snapshot — keyless, ships in the app.
         var map = V2ModelCatalog.bundledWindows() ?? [:]
         // Overlay a previous live pull, if any (fresher than the snapshot).

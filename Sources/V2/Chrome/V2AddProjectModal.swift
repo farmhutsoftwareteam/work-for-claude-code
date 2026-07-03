@@ -242,7 +242,7 @@ struct V2AddProjectModal: View {
                 field(label: "default model") {
                     Menu {
                         ForEach(modelOptions, id: \.self) { m in
-                            Button(m) { model.selectedModel = m }
+                            Button(modelLabel(m)) { model.selectedModel = m }
                         }
                     } label: {
                         HStack {
@@ -522,10 +522,20 @@ struct V2AddProjectModal: View {
     }
 
     private var modelOptions: [String] {
-        let discovered = appState.discoveredModels.map(\.id)
+        // Prefer the binary's own catalog (aliases like "sonnet", "opus[1m]" —
+        // exactly what --model accepts); fall back to history-discovered ids.
+        let catalog = appState.modelCatalog.map(\.value)
+        let source = catalog.isEmpty ? appState.discoveredModels.map(\.id) : catalog
         var seen = Set<String>(), out: [String] = []
-        for m in [effectiveModel] + discovered where seen.insert(m).inserted { out.append(m) }
+        for m in [effectiveModel] + source where !m.isEmpty && seen.insert(m).inserted { out.append(m) }
         return out
+    }
+
+    /// Menu label: the catalog's display name when we know it ("Sonnet ·
+    /// sonnet"), else the raw id.
+    private func modelLabel(_ value: String) -> String {
+        guard let m = appState.modelCatalog.first(where: { $0.value == value }) else { return value }
+        return "\(m.displayName) · \(value)"
     }
 
     private func field<Content: View>(label: String, @ViewBuilder _ content: () -> Content) -> some View {

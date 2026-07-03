@@ -25,14 +25,18 @@ struct V2ModelPicker: View {
     @Binding var isPresented: Bool
 
     private var activeId: String {
-        appState.activeSession?.model ?? ""
+        // Live session's model, else the persisted spawn default — so the
+        // checkmark is honest in both modes ("" default ⇒ the CLI default row).
+        appState.activeSession?.model ?? appState.defaultSpawnModel
     }
 
-    /// The binary's own model catalog from the initialize reply — the
-    /// authoritative, current list (new models appear here the day the CLI
-    /// ships them, no history required).
+    /// The binary's own model catalog — the authoritative, current list (new
+    /// models appear here the day the CLI ships them, no history required).
+    /// Live session's copy first; otherwise the app-wide persisted catalog, so
+    /// the picker works with NO session (sets the default for future spawns).
     private var available: [V2AvailableModel] {
-        appState.activeSession?.availableModels ?? []
+        if let live = appState.activeSession?.availableModels, !live.isEmpty { return live }
+        return appState.modelCatalog
     }
 
     private var models: [V2DiscoveredModel] {
@@ -82,7 +86,7 @@ struct V2ModelPicker: View {
         VStack(alignment: .leading, spacing: 0) {
             sectionHeader
             if models.isEmpty {
-                Text("No models in history yet — start a session to populate.")
+                Text("No model catalog yet — start one session to populate it.")
                     .font(.system(size: 11.5, design: .monospaced))
                     .foregroundColor(v2.faint)
                     .padding(.horizontal, 13)
@@ -114,7 +118,7 @@ struct V2ModelPicker: View {
     }
 
     private var footer: some View {
-        Text("takes effect on next message")
+        Text(appState.activeSession == nil ? "applies to new sessions" : "takes effect on next message")
             .font(.system(size: 10.5, design: .monospaced))
             .foregroundColor(v2.faint)
             .padding(.horizontal, 13)
@@ -129,12 +133,11 @@ struct V2ModelPicker: View {
     private func row(for option: V2DiscoveredModel) -> some View {
         let isActive = isActive(option)
         return Button {
+            // Live session (if any) switches now; the pick ALWAYS persists as
+            // the spawn default so new tabs/sessions keep it. Picking
+            // "Default (recommended)" persists as empty, which start() treats
+            // as "omit --model" so the CLI's own default applies.
             appState.activeSession?.setModel(option.id)
-            // Persist the pick as the spawn default so NEW tabs/sessions keep
-            // it — previously only the live session switched, and every new
-            // spawn silently reverted to the stored default (opus-4-8).
-            // Picking "Default (recommended)" persists as empty, which start()
-            // treats as "omit --model" so the CLI's own default applies.
             appState.defaultSpawnModel = (option.id == "default") ? "" : option.id
             isPresented = false
         } label: {
@@ -178,15 +181,17 @@ struct V2ModelPicker: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .disabled(appState.activeSession == nil)
     }
 
     private func isActive(_ option: V2DiscoveredModel) -> Bool {
         let raw = normalize(activeId)
+        // No session + empty default ⇒ the CLI's own default is in effect.
+        if appState.activeSession == nil && raw.isEmpty { return option.id == "default" }
         // Catalog rows: the option id is an alias ("sonnet") — compare the
-        // concrete model it RESOLVES to against what the session reports.
+        // concrete model it RESOLVES to against what the session reports, and
+        // the alias itself against a persisted default.
         if let avail = available.first(where: { $0.value == option.id }) {
-            return normalize(avail.resolvedModel) == raw
+            return normalize(avail.resolvedModel) == raw || normalize(avail.value) == raw
         }
         let opt = normalize(option.id)
         if raw == opt { return true }
@@ -208,10 +213,18 @@ struct V2ModelChip: View {
     @EnvironmentObject private var appState: V2AppState
     @State private var open = false
 
+    /// Chip label: live session's model, else the persisted spawn default
+    /// ("" ⇒ the CLI's own default).
+    private var chipLabel: String {
+        if let m = appState.activeSession?.model { return V2ModelOption.displayLabel(for: m) }
+        let d = appState.defaultSpawnModel
+        return d.isEmpty ? "default" : V2ModelOption.displayLabel(for: d)
+    }
+
     var body: some View {
         Button { open.toggle() } label: {
             HStack(spacing: 5) {
-                Text(V2ModelOption.displayLabel(for: appState.activeSession?.model ?? ""))
+                Text(chipLabel)
                     .font(.system(size: 11, design: .monospaced))
                     .foregroundColor(v2.ink)
                     .lineLimit(1)
@@ -229,7 +242,9 @@ struct V2ModelChip: View {
             .fixedSize(horizontal: true, vertical: false)
         }
         .buttonStyle(.plain)
-        .disabled(appState.activeSession == nil)
+        // Usable without a session once a catalog is known — picking then sets
+        // the default for future spawns.
+        .disabled(appState.activeSession == nil && appState.modelCatalog.isEmpty)
         .popover(isPresented: $open, arrowEdge: .bottom) {
             V2ModelPicker(isPresented: $open)
                 .environmentObject(appState)
