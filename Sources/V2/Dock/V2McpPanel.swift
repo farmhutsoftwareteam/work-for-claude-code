@@ -479,7 +479,16 @@ enum V2MCPAuth {
         await withCheckedContinuation { cont in
             DispatchQueue.global(qos: .userInitiated).async {
                 var master: Int32 = 0, slave: Int32 = 0
-                guard openpty(&master, &slave, nil, nil, nil) == 0 else {
+                // Allocate the PTY VERY WIDE. With a default (~80-col) window the
+                // CLI wraps long OAuth authorize URLs — the ones carrying a full
+                // scope list + PKCE challenge (Linear, Notion, Supabase, …) — by
+                // inserting a newline mid-URL. extractAuthURL then reads only up
+                // to that wrap and opens a truncated link, which the provider
+                // rejects with "Unrecognized client_id". Short-URL servers fit
+                // and worked, which is why it only hit *some* MCPs. A 4096-col
+                // window guarantees the URL prints on one unbroken line.
+                var winp = winsize(ws_row: 60, ws_col: 4096, ws_xpixel: 0, ws_ypixel: 0)
+                guard openpty(&master, &slave, nil, nil, &winp) == 0 else {
                     cont.resume(returning: .failed(output: "couldn't allocate a terminal")); return
                 }
                 let p = Process()
