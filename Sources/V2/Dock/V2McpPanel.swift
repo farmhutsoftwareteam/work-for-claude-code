@@ -280,6 +280,14 @@ struct V2McpPanel: View {
                 authNote = reconnected > 0
                     ? "\(name): signed in ✓ — reconnecting your session…"
                     : "\(name): signed in ✓ — connected."
+            case .connectorPending:
+                // claude.ai connector: we opened the claude.ai authorization
+                // page; the grant lands account-side and applies when the next
+                // session starts. NOT a failure — don't paint it red.
+                authFailedServer = nil
+                authNote = "\(name): finish authorizing in the browser — it connects on your next session."
+                store.loadMCPNeedsAuth()
+                await store.load()
             case .cancelled:
                 authFailedServer = nil
                 authNote = "\(name): sign-in cancelled. Click “sign in” to try again."
@@ -443,6 +451,11 @@ enum V2MCPAuthResult {
     case timedOut                  // no callback within the timeout (often a
                                    // browser-side error the loopback never saw)
     case cancelled                 // user cancelled
+    case connectorPending          // claude.ai connector: auth completes ON
+                                   // claude.ai (no loopback) and takes effect
+                                   // on the next session start — the CLI never
+                                   // exits, so hitting the timeout is NOT an
+                                   // error for this flow.
 }
 
 /// Cancellable handle for an in-flight sign-in. The panel holds one per server
@@ -519,6 +532,18 @@ enum V2MCPAuth {
                 let group = DispatchGroup()
                 var outData = Data()
                 var openedURL = false
+                // Two flows `claude mcp login` has that DON'T end in a clean
+                // exit — detected from output markers (verified against CLI
+                // 2.1.199):
+                // • claude.ai connectors: auth completes on claude.ai, no
+                //   loopback, CLI prints "Once authorized on claude.ai …" and
+                //   waits forever → reaching the timeout is expected, not an
+                //   error.
+                // • unknown server name: CLI prints "No MCP server named …"
+                //   and then HANGS instead of exiting → fail fast with the
+                //   real message instead of a 3-minute generic timeout.
+                var isConnectorFlow = false
+                var earlyFailure: String?
                 group.enter()
                 DispatchQueue.global().async {
                     var buffer = ""
@@ -526,8 +551,18 @@ enum V2MCPAuth {
                         let chunk = masterFH.availableData
                         if chunk.isEmpty { break }            // EOF — child closed slave
                         outData.append(chunk)
-                        if !openedURL, let s = String(data: chunk, encoding: .utf8) {
+                        if let s = String(data: chunk, encoding: .utf8) {
                             buffer += s
+                            if buffer.contains("Once authorized on claude.ai") {
+                                isConnectorFlow = true
+                            }
+                            if earlyFailure == nil, buffer.contains("No MCP server named") {
+                                earlyFailure = stripANSI(buffer)
+                                    .trimmingCharacters(in: .whitespacesAndNewlines)
+                                p.terminate()   // reader loop ends via EOF
+                            }
+                        }
+                        if !openedURL, !buffer.isEmpty {
                             // Only extract from COMPLETE lines (up to the last
                             // newline). The auth URL streams over the PTY and can
                             // arrive split across reads — matching the partial
@@ -551,8 +586,20 @@ enum V2MCPAuth {
                     group.leave()
                 }
                 var timedOut = false
-                if group.wait(timeout: .now() + timeout) == .timedOut {
-                    timedOut = true
+                var connectorHandoff = false
+                let deadline = Date().addingTimeInterval(timeout)
+                while group.wait(timeout: .now() + 1) == .timedOut {
+                    // Connector flow: the CLI never exits — once the claude.ai
+                    // page is open there is nothing to wait for locally. Give
+                    // the reader a few seconds to settle, then hand off.
+                    if isConnectorFlow && openedURL {
+                        Thread.sleep(forTimeInterval: 2)
+                        connectorHandoff = true
+                        break
+                    }
+                    if Date() >= deadline { timedOut = true; break }
+                }
+                if timedOut || connectorHandoff {
                     p.terminate()
                     group.wait()
                 }
@@ -561,6 +608,10 @@ enum V2MCPAuth {
                 let clean = stripANSI(String(data: outData, encoding: .utf8) ?? "")
                     .trimmingCharacters(in: .whitespacesAndNewlines)
                 if handle.wasCancelled      { cont.resume(returning: .cancelled) }
+                else if let msg = earlyFailure { cont.resume(returning: .failed(output: msg)) }
+                else if connectorHandoff || (timedOut && isConnectorFlow) {
+                    cont.resume(returning: .connectorPending)
+                }
                 else if timedOut            { cont.resume(returning: .timedOut) }
                 else if p.terminationStatus == 0 { cont.resume(returning: .ok(output: clean)) }
                 else                        { cont.resume(returning: .failed(output: clean)) }
@@ -577,7 +628,11 @@ enum V2MCPAuth {
         for m in matches {
             let str = ns.substring(with: m.range).trimmingCharacters(in: CharacterSet(charactersIn: ".,)]"))
             let lower = str.lowercased()
-            if lower.contains("authorize") || lower.contains("oauth") || lower.contains("/auth"),
+            // "start-auth": claude.ai connector URLs
+            // (…/mcp/start-auth/mcpsrv_…) match none of the classic OAuth
+            // markers — without it, connector sign-ins never opened a browser.
+            if lower.contains("authorize") || lower.contains("oauth")
+                || lower.contains("/auth") || lower.contains("start-auth"),
                let u = URL(string: str) {
                 return u
             }
