@@ -257,27 +257,24 @@ struct V2McpPanel: View {
     private func authenticate(_ name: String) {
         guard let binary = appState.claudeBinary else { authNote = "Can't find the claude binary."; return }
         let cwd = projectCwd ?? NSHomeDirectory()
-        // Retry after a failure ⇒ reset the CLI's cached OAuth state first
-        // (`claude mcp logout`). Providers expire the DYNAMIC CLIENT
-        // REGISTRATION the CLI caches per server; a stale one makes every
-        // sign-in open a perfectly-formed authorize URL the provider rejects
-        // with "Unrecognized client_id" — which we only ever see as a timeout,
+        // ALWAYS reset the CLI's cached OAuth state (`claude mcp logout`)
+        // before signing in. Providers expire the DYNAMIC CLIENT REGISTRATION
+        // the CLI caches per server; a stale one makes every sign-in open a
+        // perfectly-formed authorize URL the provider rejects with
+        // "Unrecognized client_id" — which we only ever see as a timeout,
         // because the error happens in the browser. Verified live against
-        // Supabase: logout → fresh registration → provider accepts. Harmless
-        // when the previous attempt failed — there are no credentials worth
-        // keeping.
-        let resetFirst = (authFailedServer == name)
+        // Supabase: logout → fresh registration → provider accepts (303 to
+        // the consent page). This is safe unconditionally: the sign-in button
+        // only appears for servers ALREADY in the needs-auth state, so there
+        // are never credentials worth keeping — and it makes the stale-
+        // registration case self-heal on the FIRST click, not a retry.
         let handle = V2AuthHandle()
         authHandles[name] = handle
         authing.insert(name)
         authFailedServer = nil
-        authNote = resetFirst
-            ? "\(name): resetting sign-in state, then opening your browser…"
-            : "\(name): opening your browser — authorise there, or cancel."
+        authNote = "\(name): opening your browser — authorise there, or cancel."
         Task {
-            if resetFirst {
-                await V2MCPAuth.logout(claudeBinary: binary, name: name, cwd: cwd)
-            }
+            await V2MCPAuth.logout(claudeBinary: binary, name: name, cwd: cwd)
             let result = await V2MCPAuth.login(claudeBinary: binary, name: name, cwd: cwd, handle: handle)
             authing.remove(name)
             authHandles[name] = nil
