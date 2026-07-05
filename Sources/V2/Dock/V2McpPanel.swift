@@ -257,12 +257,27 @@ struct V2McpPanel: View {
     private func authenticate(_ name: String) {
         guard let binary = appState.claudeBinary else { authNote = "Can't find the claude binary."; return }
         let cwd = projectCwd ?? NSHomeDirectory()
+        // Retry after a failure ⇒ reset the CLI's cached OAuth state first
+        // (`claude mcp logout`). Providers expire the DYNAMIC CLIENT
+        // REGISTRATION the CLI caches per server; a stale one makes every
+        // sign-in open a perfectly-formed authorize URL the provider rejects
+        // with "Unrecognized client_id" — which we only ever see as a timeout,
+        // because the error happens in the browser. Verified live against
+        // Supabase: logout → fresh registration → provider accepts. Harmless
+        // when the previous attempt failed — there are no credentials worth
+        // keeping.
+        let resetFirst = (authFailedServer == name)
         let handle = V2AuthHandle()
         authHandles[name] = handle
         authing.insert(name)
         authFailedServer = nil
-        authNote = "\(name): opening your browser — authorise there, or cancel."
+        authNote = resetFirst
+            ? "\(name): resetting sign-in state, then opening your browser…"
+            : "\(name): opening your browser — authorise there, or cancel."
         Task {
+            if resetFirst {
+                await V2MCPAuth.logout(claudeBinary: binary, name: name, cwd: cwd)
+            }
             let result = await V2MCPAuth.login(claudeBinary: binary, name: name, cwd: cwd, handle: handle)
             authing.remove(name)
             authHandles[name] = nil
@@ -482,6 +497,32 @@ final class V2AuthHandle: @unchecked Sendable {
 }
 
 enum V2MCPAuth {
+    /// `claude mcp logout <name>` — clears the CLI's stored OAuth credentials
+    /// AND its cached dynamic client registration for the server. Fast, no
+    /// TTY needed; failures are ignored (nothing to clear is fine).
+    static func logout(claudeBinary: URL, name: String, cwd: String) async {
+        await withCheckedContinuation { (cont: CheckedContinuation<Void, Never>) in
+            DispatchQueue.global(qos: .userInitiated).async {
+                let p = Process()
+                p.executableURL = claudeBinary
+                p.arguments = ["mcp", "logout", name]
+                p.currentDirectoryURL = URL(fileURLWithPath: cwd)
+                var env = ProcessInfo.processInfo.environment
+                for k in env.keys where k == "CLAUDECODE" || k.hasPrefix("CLAUDE_CODE") { env.removeValue(forKey: k) }
+                p.environment = env
+                p.standardOutput = Pipe(); p.standardError = Pipe()
+                guard (try? p.run()) != nil else { cont.resume(); return }
+                // Bounded wait — logout is instant; never let it wedge the UI.
+                let deadline = Date().addingTimeInterval(10)
+                while p.isRunning && Date() < deadline {
+                    Thread.sleep(forTimeInterval: 0.1)
+                }
+                if p.isRunning { p.terminate() }
+                cont.resume()
+            }
+        }
+    }
+
     /// Run `claude mcp login <name> --no-browser` attached to a HIDDEN
     /// pseudo-terminal — the CLI's TTY check passes, but nothing is rendered.
     /// We parse the authorization URL it prints and open the browser ourselves;
