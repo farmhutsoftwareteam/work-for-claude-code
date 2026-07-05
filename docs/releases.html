@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Changelog - Atelier</title>
-    <meta name="description" content="Every release of Atelier, dated and itemised. Latest: v2.5.1 (july 3, 2026).">
+    <meta name="description" content="Every release of Atelier, dated and itemised. Latest: v2.5.2 (july 4, 2026).">
     <link rel="canonical" href="https://work.munyamakosa.com/releases.html">
     <link rel="alternate" type="application/rss+xml" title="Atelier appcast" href="https://work.munyamakosa.com/appcast.xml">
 
@@ -184,13 +184,31 @@
         </div>
 
         
+    <article id="v2-5-2" class="release-article" style="display:grid;grid-template-columns:200px 1fr;gap:40px;padding:38px 0;border-bottom:1px solid var(--line);">
+      <div>
+        <div style="font-family:var(--helv);font-weight:500;font-size:22px;letter-spacing:-.01em;">
+          <a href="#v2-5-2" style="color:var(--ink);text-decoration:none;">v2.5.2</a>
+        </div>
+        <div style="font-family:var(--mono);font-size:11px;color:var(--mute);margin-top:6px;">2026 · jul 4</div>
+        <div style="display:inline-block;font-family:var(--mono);font-size:10px;letter-spacing:.08em;text-transform:uppercase;border:1px solid var(--line2);padding:3px 8px;margin-top:12px;">latest</div>
+        <div style="font-family:var(--mono);font-size:10px;color:var(--mute);margin-top:10px;">macOS 15.0+</div>
+      </div>
+      <div class="release-body" style="font-family:var(--helv);font-size:16px;line-height:1.6;color:rgba(27,28,30,.82);">
+        <h3>MCP sign-in that heals itself</h3>
+        <ul>
+          <li><b>Sign-in self-heals.</b> Providers quietly expire the OAuth client registration cached on your machine — every later sign-in opened a perfect link they rejected ("Unrecognized client_id"). Atelier now resets that state automatically on every sign-in: one click, fresh registration, working consent page.</li>
+          <li><b>claude.ai connectors sign in properly</b> — Atelier now opens the right claude.ai page (previously the browser never opened for these) and says plainly: finish authorizing there, it connects on your next session.</li>
+          <li><b>Real errors, fast</b> — unknown servers report the CLI's actual message in seconds instead of a silent 3-minute timeout. Plus extra-wide sign-in terminal hardening.</li>
+        </ul>
+      </div>
+    </article>
+
     <article id="v2-5-1" class="release-article" style="display:grid;grid-template-columns:200px 1fr;gap:40px;padding:38px 0;border-bottom:1px solid var(--line);">
       <div>
         <div style="font-family:var(--helv);font-weight:500;font-size:22px;letter-spacing:-.01em;">
           <a href="#v2-5-1" style="color:var(--ink);text-decoration:none;">v2.5.1</a>
         </div>
         <div style="font-family:var(--mono);font-size:11px;color:var(--mute);margin-top:6px;">2026 · jul 3</div>
-        <div style="display:inline-block;font-family:var(--mono);font-size:10px;letter-spacing:.08em;text-transform:uppercase;border:1px solid var(--line2);padding:3px 8px;margin-top:12px;">latest</div>
         <div style="font-family:var(--mono);font-size:10px;color:var(--mute);margin-top:10px;">macOS 15.0+</div>
       </div>
       <div class="release-body" style="font-family:var(--helv);font-size:16px;line-height:1.6;color:rgba(27,28,30,.82);">

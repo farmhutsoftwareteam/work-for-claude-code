@@ -6,6 +6,27 @@
         <description>Updates for Work</description>
         <language>en</language>
         <item>
+            <title>Version 2.5.2</title>
+            <pubDate>Sun, 05 Jul 2026 22:25:18 +0400</pubDate>
+            <sparkle:version>35</sparkle:version>
+            <sparkle:shortVersionString>2.5.2</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>15.0</sparkle:minimumSystemVersion>
+            <description><![CDATA[
+                <h3>Atelier 2.5.2 — MCP sign-in that heals itself</h3>
+                <ul>
+                    <li><b>Sign-in self-heals.</b> Providers quietly expire the OAuth client registration cached on your machine — every later sign-in opened a perfect link they rejected ("Unrecognized client_id"). Atelier now resets that state automatically on every sign-in: one click, fresh registration, working consent page.</li>
+                    <li><b>claude.ai connectors sign in properly.</b> Gmail/Calendar/Drive authorize on claude.ai itself — Atelier now opens the right page (previously the browser never opened for these) and tells you plainly: finish there, it connects on your next session. No more false red errors.</li>
+                    <li><b>Real errors, fast</b> — unknown servers report the CLI's actual message in seconds instead of a silent 3-minute timeout.</li>
+                    <li>Hardening: the hidden sign-in terminal is extra-wide so long authorization URLs can never wrap mid-link.</li>
+                </ul>
+            ]]></description>
+            <enclosure
+                url="https://work.munyamakosa.com/Work.dmg"
+                length="11715429"
+                type="application/octet-stream"
+                sparkle:edSignature="U4oyS95Qddbspj4K0EoUf6gtuHP+P5fnM4OxE7GlFPb+TNbiKAUoCfge/fqQwH9/u1bw9jS0+3cSG5SZbSBgDw==" />
+        </item>
+        <item>
             <title>Version 2.5.1</title>
             <pubDate>Fri, 03 Jul 2026 16:27:10 +0400</pubDate>
             <sparkle:version>34</sparkle:version>
