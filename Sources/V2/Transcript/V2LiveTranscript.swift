@@ -15,6 +15,14 @@ struct V2LiveTranscript: View {
 
     private let bottomAnchorID = "v2-transcript-bottom"
 
+    /// Whether the view is "pinned" to the bottom — the ONLY state in which
+    /// auto-scroll may fire. Scrolling up unpins (so reading during a
+    /// streaming turn is never fought); scrolling back to the bottom re-pins;
+    /// sending a message always re-pins. Without this, the scrollKey change
+    /// (~30×/s while streaming) yanked the user to the bottom continuously —
+    /// the transcript was unreadable during long turns.
+    @State private var pinned = true
+
     var body: some View {
         // Profiling marker: one Point-of-Interest per transcript render. During
         // a stream this should track the ~30fps flush cadence, not the token
@@ -80,21 +88,44 @@ struct V2LiveTranscript: View {
                 // spans the whole pane and meets the scrollbar at the edge.
                 .frame(maxWidth: .infinity, alignment: .leading)
             }
+            // Pinned tracking: within 60pt of the content bottom counts as
+            // pinned (covers padding + the anchor row). This is the feedback
+            // loop auto-scroll was missing — scroll up and it stops fighting
+            // you; return to the bottom and tracking resumes.
+            .onScrollGeometryChange(for: Bool.self) { geo in
+                geo.contentOffset.y + geo.containerSize.height >= geo.contentSize.height - 60
+            } action: { _, atBottom in
+                if pinned != atBottom { pinned = atBottom }
+            }
             // scrollKey changes on every signal that grows the content: new
             // item, streaming growth of the last text block, state change,
-            // result arrival. The old onChange watched only transcript.count,
-            // so it never fired while a single reply streamed in token-by-token.
-            // Auto-scroll to the bottom as content grows. NOT animated: an
-            // animated scrollTo fired on every token stacks dozens of competing
-            // animations a second and stutters. A plain scrollTo tracks the
-            // streaming text smoothly and cheaply.
+            // result arrival. Auto-scroll ONLY while pinned, and NOT animated:
+            // an animated scrollTo fired per token stacks dozens of competing
+            // animations a second and stutters.
             .onChange(of: scrollKey) { _, _ in
+                guard pinned else { return }
                 proxy.scrollTo(bottomAnchorID, anchor: .bottom)
+            }
+            // Sending a message is an unambiguous "take me to the reply" —
+            // re-pin even if the user had scrolled up. Only fires on .userText
+            // appends: tool rows the agent appends mid-turn never steal the
+            // scroll position.
+            .onChange(of: session.transcript.count) { _, _ in
+                if case .userText = session.transcript.last {
+                    pinned = true
+                    proxy.scrollTo(bottomAnchorID, anchor: .bottom)
+                }
             }
             .onAppear {
                 // Jump to the bottom when a tab first shows — matters for
-                // resumed sessions that open with preloaded history.
+                // resumed sessions that open with preloaded history. Two
+                // passes: LazyVStack hasn't laid out row heights on the first,
+                // so a single scrollTo undershoots and opens mid-history.
+                pinned = true
                 proxy.scrollTo(bottomAnchorID, anchor: .bottom)
+                DispatchQueue.main.async {
+                    proxy.scrollTo(bottomAnchorID, anchor: .bottom)
+                }
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
