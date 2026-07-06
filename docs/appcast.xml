@@ -6,6 +6,26 @@
         <description>Updates for Work</description>
         <language>en</language>
         <item>
+            <title>Version 2.5.3</title>
+            <pubDate>Mon, 06 Jul 2026 12:51:22 +0400</pubDate>
+            <sparkle:version>36</sparkle:version>
+            <sparkle:shortVersionString>2.5.3</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>15.0</sparkle:minimumSystemVersion>
+            <description><![CDATA[
+                <h3>Atelier 2.5.3 — the transcript stops fighting your scroll</h3>
+                <ul>
+                    <li><b>Scroll up during a streaming reply and the view stays put.</b> Before, auto-scroll yanked you back to the bottom ~30 times a second while the agent worked — reading anything mid-turn was impossible. The transcript now knows whether you're at the bottom: pinned → it follows the stream; scrolled up → it holds perfectly still; back to the bottom → tracking resumes on its own.</li>
+                    <li><b>Sending a message always snaps to your reply</b> — and the agent's own tool activity can never steal your scroll position.</li>
+                    <li><b>Resumed sessions open at the latest message</b> instead of landing mid-history.</li>
+                </ul>
+            ]]></description>
+            <enclosure
+                url="https://work.munyamakosa.com/Work.dmg"
+                length="11715902"
+                type="application/octet-stream"
+                sparkle:edSignature="7dcr4IOvFPUEkjiJr0GM6MYvE3NZwkVVN2FMPW0TBYhZUVX3ZNbkdLxsnT4VMoJAiQCz7as6c9OpSmHEgKh4DA==" />
+        </item>
+        <item>
             <title>Version 2.5.2</title>
             <pubDate>Sun, 05 Jul 2026 22:25:18 +0400</pubDate>
             <sparkle:version>35</sparkle:version>
