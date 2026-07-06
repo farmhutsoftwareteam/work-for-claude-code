@@ -15,13 +15,6 @@ struct V2LiveTranscript: View {
 
     private let bottomAnchorID = "v2-transcript-bottom"
 
-    /// Whether the view is "pinned" to the bottom — the ONLY state in which
-    /// auto-scroll may fire. Scrolling up unpins (so reading during a
-    /// streaming turn is never fought); scrolling back to the bottom re-pins;
-    /// sending a message always re-pins. Without this, the scrollKey change
-    /// (~30×/s while streaming) yanked the user to the bottom continuously —
-    /// the transcript was unreadable during long turns.
-    @State private var pinned = true
 
     var body: some View {
         // Profiling marker: one Point-of-Interest per transcript render. During
@@ -88,42 +81,24 @@ struct V2LiveTranscript: View {
                 // spans the whole pane and meets the scrollbar at the edge.
                 .frame(maxWidth: .infinity, alignment: .leading)
             }
-            // Pinned tracking: within 60pt of the content bottom counts as
-            // pinned (covers padding + the anchor row). This is the feedback
-            // loop auto-scroll was missing — scroll up and it stops fighting
-            // you; return to the bottom and tracking resumes.
-            .onScrollGeometryChange(for: Bool.self) { geo in
-                geo.contentOffset.y + geo.containerSize.height >= geo.contentSize.height - 60
-            } action: { _, atBottom in
-                if pinned != atBottom { pinned = atBottom }
-            }
-            // scrollKey changes on every signal that grows the content: new
-            // item, streaming growth of the last text block, state change,
-            // result arrival. Auto-scroll ONLY while pinned, and NOT animated:
-            // an animated scrollTo fired per token stacks dozens of competing
-            // animations a second and stutters.
-            .onChange(of: scrollKey) { _, _ in
-                guard pinned else { return }
-                proxy.scrollTo(bottomAnchorID, anchor: .bottom)
-            }
+            // Bottom anchoring is the SYSTEM's job, not ours. This is Apple's
+            // chat/console API: at the bottom → content stays bottom-anchored
+            // as it grows, maintained DURING layout (no scrollTo corrections,
+            // so the scrollbar never dances); scrolled up → the view holds
+            // still; scrolled back to the bottom → anchoring re-engages.
+            // History: v1 scrollTo'd per streamTick unconditionally (yanked
+            // the reader ~30×/s); v2 gated it on hand-tracked pinned state,
+            // which stopped the yank but kept per-tick post-layout scrollTo
+            // corrections + LazyVStack height re-estimation = visible
+            // scrollbar jitter even in an idle open chat. Anchoring at layout
+            // time replaces both.
+            .defaultScrollAnchor(.bottom)
             // Sending a message is an unambiguous "take me to the reply" —
-            // re-pin even if the user had scrolled up. Only fires on .userText
-            // appends: tool rows the agent appends mid-turn never steal the
+            // jump even if the user had scrolled up. Only fires on .userText
+            // appends: rows the agent appends mid-turn never steal the
             // scroll position.
             .onChange(of: session.transcript.count) { _, _ in
                 if case .userText = session.transcript.last {
-                    pinned = true
-                    proxy.scrollTo(bottomAnchorID, anchor: .bottom)
-                }
-            }
-            .onAppear {
-                // Jump to the bottom when a tab first shows — matters for
-                // resumed sessions that open with preloaded history. Two
-                // passes: LazyVStack hasn't laid out row heights on the first,
-                // so a single scrollTo undershoots and opens mid-history.
-                pinned = true
-                proxy.scrollTo(bottomAnchorID, anchor: .bottom)
-                DispatchQueue.main.async {
                     proxy.scrollTo(bottomAnchorID, anchor: .bottom)
                 }
             }
@@ -183,17 +158,6 @@ struct V2LiveTranscript: View {
             }
             .padding(.top, 2)
         }
-    }
-
-    /// Cheap signature of everything that should trigger an auto-scroll.
-    /// Includes the last block's character count so streaming growth (which
-    /// leaves transcript.count untouched) still moves the view.
-    private var scrollKey: String {
-        // streamTick replaces the old O(n) grapheme count of the streaming
-        // block — same "content grew" signal, O(1) to read.
-        let working = session.state == .working ? 1 : 0
-        let hasResult = session.latestResult == nil ? 0 : 1
-        return "\(session.transcript.count)-\(session.streamTick)-\(working)-\(hasResult)-\(session.isRetrying ? 1 : 0)"
     }
 
     @ViewBuilder
