@@ -329,7 +329,8 @@ struct V2SessionHeader: View {
                         V2PulseDot(size: 7, color: v2.ink)
                     case .terminated:
                         Circle().fill(v2.del).frame(width: 7, height: 7)
-                    case .idle:
+                    case .idle, .hibernated:
+                        // Resting reads as quiet, not dead — hollow like idle.
                         Circle().stroke(v2.line2, lineWidth: 1).frame(width: 7, height: 7)
                     default:
                         Circle().fill(v2.ink).frame(width: 7, height: 7)
@@ -353,6 +354,7 @@ struct V2SessionHeader: View {
             switch s.state {
             case .idle: return "Idle"
             case .ready: return "Ready"
+            case .hibernated: return "Resting"
             case .spawning: return "Spawning"
             case .initializing: return "Initializing"
             case .working: return s.isRetrying ? "Retrying" : "Running"

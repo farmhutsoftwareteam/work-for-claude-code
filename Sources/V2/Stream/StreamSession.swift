@@ -35,11 +35,32 @@ final class StreamSession: ObservableObject {
         /// Between turns — session alive and ready for the next message.
         /// Composer should be visible, Send button (not Stop).
         case ready
+        /// Subprocess terminated to reclaim its ~0.5GB while the tab idles —
+        /// transcript and UI stay intact; send() respawns via --resume
+        /// transparently. Entered only from .ready by the hibernation scanner.
+        case hibernated
         case closing
         case terminated(reason: String)
     }
 
-    @Published private(set) var state: LifecycleState = .idle
+    @Published private(set) var state: LifecycleState = .idle {
+        didSet { lastActivityAt = Date() }
+    }
+
+    /// Last lifecycle change — read by the hibernation scanner. Deliberately
+    /// NOT @Published: it updates alongside streaming state flips and must
+    /// not add fan-out (PERFORMANCE.md rule 2).
+    private(set) var lastActivityAt = Date()
+
+    /// Everything needed to respawn this session transparently after
+    /// hibernation, captured on every start().
+    private var wakeCwd: URL?
+    private var wakeClaudeURL: URL?
+    private var wakeModel: String?
+    private var wakePermissionMode: String?
+    /// Message typed into a hibernated tab — buffered through the respawn and
+    /// flushed the moment the new subprocess's stdin writer exists.
+    private var pendingWakeText: String?
     @Published private(set) var sessionId: String?
     @Published private(set) var model: String = "claude-sonnet"
     @Published private(set) var permissionMode: String = "default"
@@ -267,9 +288,14 @@ final class StreamSession: ObservableObject {
         // (.terminated carries an associated reason, so it can't be compared
         // with ==; pattern-match instead.)
         switch state {
-        case .idle, .terminated: break
+        case .idle, .terminated, .hibernated: break
         default: return
         }
+        // Capture the wake recipe — hibernation respawns with exactly these.
+        wakeCwd = cwd
+        wakeClaudeURL = claudeURL
+        wakeModel = model
+        wakePermissionMode = permissionMode
         // Clear transient per-run state so a restart doesn't inherit a stale
         // retry banner or permission card. Transcript is intentionally kept
         // so the conversation stays on screen across the restart.
@@ -392,6 +418,14 @@ final class StreamSession: ObservableObject {
         self.inputWriter = writer
         self.state = .initializing
 
+        // Wake-from-hibernation: the message that triggered the respawn goes
+        // out now that stdin exists — it queues in the pipe and claude picks
+        // it up right after the init handshake.
+        if let queued = pendingWakeText {
+            pendingWakeText = nil
+            send(text: queued)
+        }
+
         // CRITICAL: claude with --input-format stream-json sits idle until
         // it receives the SDK's `initialize` control_request handshake on
         // stdin. Without this, system/init is never emitted and the session
@@ -476,7 +510,9 @@ final class StreamSession: ObservableObject {
         // previously leave the composer enabled and the permission card up
         // while the process was actually dead.
         switch state {
-        case .terminated, .closing, .idle:
+        case .terminated, .closing, .idle, .hibernated:
+            // .hibernated: WE killed the process — the EOF is expected and the
+            // state must survive it (send() wakes via --resume).
             break
         case .spawning, .initializing, .ready, .working, .awaitingPermission:
             // A resume that died before any event at all (e.g. the session is
@@ -551,6 +587,12 @@ final class StreamSession: ObservableObject {
 
     /// Send a user turn. Triggers a new assistant cycle from the binary.
     func send(text: String) {
+        // Typing into a hibernated tab IS the wake gesture — respawn with
+        // --resume and deliver this message once the new writer exists.
+        if state == .hibernated {
+            wake(thenSend: text)
+            return
+        }
         guard let inputWriter else { return }
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }
@@ -702,6 +744,43 @@ final class StreamSession: ObservableObject {
     }
 
     /// Close stdin (clean EOF) and terminate the child.
+    /// Reclaim the idle subprocess's memory (~0.4–0.6GB per tab) while keeping
+    /// the tab fully intact — transcript on screen, composer live. The next
+    /// send() respawns via --resume and delivers the message transparently.
+    /// Quiet teardown by design: no .closing/.terminated transition, so no
+    /// sounds, no tab-status churn, no "session ended" chrome.
+    func hibernate() {
+        guard state == .ready, sessionId != nil else { return }
+        log.info("StreamSession hibernating session=\(self.sessionId ?? "-", privacy: .public)")
+        eventConsumer?.cancel()
+        stderrConsumer?.cancel()
+        stdoutHandle?.readabilityHandler = nil
+        stderrHandle?.readabilityHandler = nil
+        stdoutHandle = nil
+        stderrHandle = nil
+        let writer = inputWriter
+        let proc = process
+        inputWriter = nil
+        process = nil
+        Task {
+            try? await writer?.close()
+            proc?.terminate()
+        }
+        state = .hibernated
+    }
+
+    /// Respawn after hibernation, buffering `text` until the new stdin writer
+    /// exists (flushed right after spawn in start()).
+    private func wake(thenSend text: String) {
+        guard let cwd = wakeCwd, let claude = wakeClaudeURL else {
+            state = .terminated(reason: "can't wake: no spawn recipe")
+            return
+        }
+        pendingWakeText = text
+        start(cwd: cwd, claudeURL: claude, resumeId: sessionId,
+              model: wakeModel, permissionMode: wakePermissionMode)
+    }
+
     func stop() {
         finalizeStreamingText()   // commit any partial reply before teardown
         state = .closing

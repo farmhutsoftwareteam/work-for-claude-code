@@ -226,9 +226,43 @@ final class V2AppState: ObservableObject {
     /// Models API if an API key is available. No key (OAuth/subscription) ⇒
     /// keep whatever's cached (possibly nothing) and let the meter show
     /// tokens-only. Call once at launch.
+    // MARK: - Idle-session hibernation
+
+    /// Background tab idle this long → its claude subprocess is terminated
+    /// (each holds 0.4–0.6GB doing nothing) and respawned via --resume on the
+    /// next message. 10 minutes: long enough to never interrupt a working
+    /// rhythm, short enough that six open tabs stop costing 3GB overnight.
+    static let hibernateAfterSeconds: TimeInterval = 10 * 60
+    private var hibernationTimer: Timer?
+
+    func startHibernationScanner() {
+        guard hibernationTimer == nil else { return }
+        hibernationTimer = Timer.scheduledTimer(withTimeInterval: 60, repeats: true) { [weak self] _ in
+            // Timer fires on the main run loop; hop is a formality for Swift 6.
+            MainActor.assumeIsolated { self?.hibernateIdleSessions() }
+        }
+    }
+
+    private func hibernateIdleSessions() {
+        let now = Date()
+        for tab in tabs {
+            // Never the tab the user is looking at — the next message is most
+            // likely here, and it shouldn't pay respawn latency.
+            guard tab.id != activeTabId,
+                  let session = tab.streamSession,
+                  session.state == .ready,
+                  now.timeIntervalSince(session.lastActivityAt) > Self.hibernateAfterSeconds,
+                  // A running co-driven terminal is live user-visible work.
+                  CoTerminalManager.shared.terminals(for: session).allSatisfy({ !$0.isRunning })
+            else { continue }
+            session.hibernate()
+        }
+    }
+
     func refreshModelCatalog() {
         // Model catalog: restore the last-known list so pickers work pre-session.
         loadPersistedModelCatalog()
+        startHibernationScanner()
         // Baseline: the committed snapshot — keyless, ships in the app.
         var map = V2ModelCatalog.bundledWindows() ?? [:]
         // Overlay a previous live pull, if any (fresher than the snapshot).

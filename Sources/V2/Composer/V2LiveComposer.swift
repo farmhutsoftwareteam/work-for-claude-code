@@ -674,6 +674,7 @@ struct V2LiveComposer: View {
         switch session.state {
         case .idle, .terminated:    return "Ask, or / for commands, or set a goal to run a loop…"
         case .ready:                return "Reply, or / for commands…"
+        case .hibernated:           return "Reply to wake this session…"
         case .spawning:             return "Spawning…"
         case .initializing:         return "Initializing…"
         case .working:              return "Reply, or ⎋ to interrupt…"
@@ -684,7 +685,9 @@ struct V2LiveComposer: View {
 
     private var canType: Bool {
         switch session.state {
-        case .idle, .working, .initializing, .ready: return true
+        // .hibernated: typing IS the wake gesture — send() respawns via
+        // --resume and delivers the message.
+        case .idle, .working, .initializing, .ready, .hibernated: return true
         default: return false
         }
     }
