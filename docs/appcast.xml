@@ -6,6 +6,25 @@
         <description>Updates for Work</description>
         <language>en</language>
         <item>
+            <title>Version 2.5.4</title>
+            <pubDate>Mon, 06 Jul 2026 13:26:44 +0400</pubDate>
+            <sparkle:version>37</sparkle:version>
+            <sparkle:shortVersionString>2.5.4</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>15.0</sparkle:minimumSystemVersion>
+            <description><![CDATA[
+                <h3>Atelier 2.5.4 — a perfectly still scrollbar</h3>
+                <ul>
+                    <li><b>The scrollbar stops dancing.</b> 2.5.3 stopped the transcript yanking you to the bottom, but its correction still ran after every layout pass — so the bar visibly jittered even in an idle open chat. Scroll anchoring is now handled by the system during layout: at the bottom it follows the stream, scrolled up it holds perfectly still, back at the bottom tracking re-engages on its own.</li>
+                    <li>Sending a message still always jumps to your reply; resumed sessions open bottom-anchored.</li>
+                </ul>
+            ]]></description>
+            <enclosure
+                url="https://work.munyamakosa.com/Work.dmg"
+                length="11714264"
+                type="application/octet-stream"
+                sparkle:edSignature="JuoQJ4yIwkiP/HhscfGauj9ve3dYyyr53nDuUjdTTe3Q1vhcgatP8zRnzm7qIc6cbEhvzRaU2gx/XbuMhWIXCg==" />
+        </item>
+        <item>
             <title>Version 2.5.3</title>
             <pubDate>Mon, 06 Jul 2026 12:51:22 +0400</pubDate>
             <sparkle:version>36</sparkle:version>
