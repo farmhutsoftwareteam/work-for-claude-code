@@ -6,6 +6,28 @@
         <description>Updates for Work</description>
         <language>en</language>
         <item>
+            <title>Version 2.5.5</title>
+            <pubDate>Wed, 08 Jul 2026 20:06:15 +0400</pubDate>
+            <sparkle:version>38</sparkle:version>
+            <sparkle:shortVersionString>2.5.5</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>15.0</sparkle:minimumSystemVersion>
+            <description><![CDATA[
+                <h3>Atelier 2.5.5 — snappier tabs, calmer memory, no more paste glitches</h3>
+                <ul>
+                    <li><b>Tab switching is instant.</b> Switching used to rebuild the entire chat view from scratch. Now it updates in place — immediate even in long chats.</li>
+                    <li><b>Long chats scroll like new ones</b> — only the most recent messages are laid out at once, with "show earlier" on demand.</li>
+                    <li><b>The composer stopped stealing focus</b> from the transcript or a co-driven terminal while a reply streamed.</li>
+                    <li><b>Pasting long text no longer glitches the app</b> — the expensive work now happens once instead of dozens of times a second.</li>
+                    <li><b>Idle tabs stop costing memory</b> — a background tab left for 10 minutes rests quietly ("Resting") instead of holding half a gigabyte, and wakes instantly on reply.</li>
+                </ul>
+            ]]></description>
+            <enclosure
+                url="https://work.munyamakosa.com/Work.dmg"
+                length="11727480"
+                type="application/octet-stream"
+                sparkle:edSignature="AIvKhtF8LrYdck3f+GSFosOHCf88RiZdKernmNm0gP48SG2XZtV8q8bjqgZVFRrASsTYfuLVPK+wGTe7p7ZqBA==" />
+        </item>
+        <item>
             <title>Version 2.5.4</title>
             <pubDate>Mon, 06 Jul 2026 13:26:44 +0400</pubDate>
             <sparkle:version>37</sparkle:version>
