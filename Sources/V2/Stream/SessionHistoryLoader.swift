@@ -77,13 +77,38 @@ enum SessionHistoryLoader {
         return Preload(events: trimmed, omittedUserTurns: omittedUserTurns)
     }
 
+    /// Claude's on-disk directory encoding replaces EVERY non-alphanumeric
+    /// character with "-" (space, `.`, `(`, `)`, `/`, …), one-for-one — e.g.
+    /// "web assesment" → "web-assesment". Naively handling only "/" pointed
+    /// at a directory that doesn't exist for any cwd containing a space or
+    /// other punctuation, so resuming a session in such a project silently
+    /// preloaded an EMPTY transcript (this file simply didn't exist at the
+    /// guessed path) — the "I chat with it but it doesn't show" bug.
+    ///
+    /// Rather than re-deriving Claude's exact encoding rule (risk: a
+    /// character we haven't observed gets guessed wrong again), fall back to
+    /// a sessionId-keyed search: the id is a UUID, globally unique, so
+    /// whichever project directory contains "<sessionId>.jsonl" IS the right
+    /// one — no cwd decoding needed at all. Bounded to this machine's actual
+    /// project count (dozens), only runs on the rare guess-miss.
     static func jsonlURL(sessionId: String, projectCwd: String) -> URL {
         let home = FileManager.default.homeDirectoryForCurrentUser
-        let encoded = projectCwd.replacingOccurrences(of: "/", with: "-")
-        return home
-            .appendingPathComponent(".claude")
-            .appendingPathComponent("projects")
-            .appendingPathComponent(encoded)
+        let projectsRoot = home.appendingPathComponent(".claude").appendingPathComponent("projects")
+        let guessed = projectsRoot
+            .appendingPathComponent(projectCwd.replacingOccurrences(of: "/", with: "-"))
             .appendingPathComponent(sessionId + ".jsonl")
+        if FileManager.default.fileExists(atPath: guessed.path) { return guessed }
+
+        let fm = FileManager.default
+        if let dirs = try? fm.contentsOfDirectory(at: projectsRoot, includingPropertiesForKeys: nil) {
+            for dir in dirs {
+                let candidate = dir.appendingPathComponent(sessionId + ".jsonl")
+                if fm.fileExists(atPath: candidate.path) {
+                    logger.notice("history: guessed path missed, found via scan: \(candidate.path, privacy: .public)")
+                    return candidate
+                }
+            }
+        }
+        return guessed   // let the caller's fileExists check log+fail as before
     }
 }

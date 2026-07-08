@@ -21,6 +21,12 @@ final class Store: ObservableObject {
     private var pendingFirstPromptLoads: Set<String> = []
     private var pendingSlugLoads: Set<String> = []
 
+    /// sessionId → its real .jsonl URL on disk, from the LAST disk scan
+    /// (readDiskSessions). Ground truth for refreshSlug/loadFirstPrompt —
+    /// see the comment there for why re-deriving the encoded directory name
+    /// from cwd is unreliable.
+    private var sessionFileURLs: [String: URL] = [:]
+
     // Extensions data (global)
     @Published var plugins: [ClaudePlugin] = []
     @Published var standaloneSkills: [ClaudeSkill] = []
@@ -203,12 +209,17 @@ final class Store: ObservableObject {
         loadGeneration &+= 1
         let myGeneration = loadGeneration
         let dir = claudeDir
-        let built = await Task.detached(priority: .userInitiated) {
+        let (built, fileURLs) = await Task.detached(priority: .userInitiated) {
             let active = Self.readActiveSessions(claudeDir: dir)
             let entries = Self.readHistory(claudeDir: dir)
             let knownPaths = Self.readKnownProjectPaths()
-            return Self.buildProjects(from: entries, active: active, knownPaths: knownPaths)
+            let disk = Self.readDiskSessions(claudeDir: dir)
+            let projects = Self.buildProjects(
+                from: entries, active: active, knownPaths: knownPaths, diskSessions: disk.byProject
+            )
+            return (projects, disk.fileURLs)
         }.value
+        sessionFileURLs = fileURLs
         let prevSelected = selectedProject
         let prevProjects = projects
         var merged = built
@@ -453,13 +464,17 @@ final class Store: ObservableObject {
         let dir = claudeDir
         let sessionId = session.id
         let cwd = session.projectCwd
+        // Ground truth from the last disk scan (readDiskSessions) when
+        // available — the naive "/" → "-" encoding below is a fallback for a
+        // session that hasn't been through a scan yet, and is WRONG for any
+        // cwd containing a space or other punctuation (Claude's own encoding
+        // maps every non-alphanumeric character to "-", not just "/").
+        let knownURL = sessionFileURLs[sessionId]
 
         let slug = await Task.detached(priority: .background) { () -> String? in
-            // This encoding must match what Claude writes on disk — it always uses / → -
-            let encoded = cwd.replacingOccurrences(of: "/", with: "-")
-            let jsonlURL = dir
+            let jsonlURL = knownURL ?? dir
                 .appendingPathComponent("projects")
-                .appendingPathComponent(encoded)
+                .appendingPathComponent(cwd.replacingOccurrences(of: "/", with: "-"))
                 .appendingPathComponent(sessionId + ".jsonl")
             return Self.readSlugFromTail(at: jsonlURL)
         }.value
@@ -485,12 +500,12 @@ final class Store: ObservableObject {
         let dir = claudeDir
         let sessionId = session.id
         let cwd = session.projectCwd
+        let knownURL = sessionFileURLs[sessionId]   // see refreshSlug for why
 
         let prompt = await Task.detached(priority: .background) { () -> String in
-            let encoded = cwd.replacingOccurrences(of: "/", with: "-")
-            let jsonlURL = dir
+            let jsonlURL = knownURL ?? dir
                 .appendingPathComponent("projects")
-                .appendingPathComponent(encoded)
+                .appendingPathComponent(cwd.replacingOccurrences(of: "/", with: "-"))
                 .appendingPathComponent(sessionId + ".jsonl")
             return Self.readFirstPromptFromHead(at: jsonlURL) ?? ""
         }.value
@@ -759,10 +774,101 @@ final class Store: ObservableObject {
         return paths
     }
 
+    private struct CwdProbe: Decodable { let cwd: String? }
+
+    /// Ground-truth session discovery straight from `~/.claude/projects/*/*.jsonl`
+    /// — the transcripts every session writes, whether it was typed into the
+    /// interactive CLI or spawned headlessly (`claude -p --output-format
+    /// stream-json`, exactly how Atelier drives every chat). `history.jsonl`
+    /// (readHistory, above) is ONLY written by the CLI's own interactive
+    /// readline history — a session run programmatically never appends to it,
+    /// no matter how much real activity happens in it. Since `buildProjects`
+    /// used to source session existence/count/recency solely from
+    /// `history.jsonl`, any project used exclusively through Atelier showed 0
+    /// sessions and sorted to `.distantPast` (bottom of the list, below every
+    /// other project) — indistinguishable from one that was never touched.
+    /// This scan is the fix: it's the source of truth for BOTH invocation
+    /// modes, so recency and counts are finally honest.
+    ///
+    /// Also fixes a second bug for free: Claude's on-disk directory encoding
+    /// replaces every non-alphanumeric character (space, `.`, `(`, `)`, `/`,
+    /// …) with `-`, one-for-one — e.g. "web assesment" → "web-assesment". The
+    /// naive `cwd.replacingOccurrences(of: "/", with: "-")` used elsewhere
+    /// (refreshSlug/loadFirstPrompt) only ever handled `/`, so any path with a
+    /// space or other punctuation pointed at a directory that doesn't exist —
+    /// those lookups silently found nothing. Returning the REAL file URL per
+    /// sessionId (read straight off disk, no guessing) sidesteps the encoding
+    /// question entirely.
+    ///
+    /// Cost: this machine has 47 project dirs / 89 session files / ~1GB total
+    /// — a `contentsOfDirectory` per project dir plus one bounded, incremental
+    /// read per file (see probeCwd; transcripts run to tens of MB, a full
+    /// read is never needed).
+    private nonisolated static func readDiskSessions(
+        claudeDir: URL
+    ) -> (byProject: [String: [(id: String, mtime: Date)]], fileURLs: [String: URL]) {
+        let fm = FileManager.default
+        let root = claudeDir.appendingPathComponent("projects")
+        guard let projectDirs = try? fm.contentsOfDirectory(
+            at: root, includingPropertiesForKeys: nil
+        ) else { return ([:], [:]) }
+
+        var byProject: [String: [(id: String, mtime: Date)]] = [:]
+        var fileURLs: [String: URL] = [:]
+
+        for dir in projectDirs {
+            guard let files = try? fm.contentsOfDirectory(at: dir, includingPropertiesForKeys: nil)
+            else { continue }
+            for file in files where file.pathExtension == "jsonl" {
+                let sessionId = file.deletingPathExtension().lastPathComponent
+                guard let cwd = probeCwd(at: file) else { continue }
+                let mtime = (try? fm.attributesOfItem(atPath: file.path))?[.modificationDate] as? Date
+                    ?? .distantPast
+                byProject[cwd, default: []].append((id: sessionId, mtime: mtime))
+                fileURLs[sessionId] = file
+            }
+        }
+        return (byProject, fileURLs)
+    }
+
+    /// The `cwd` field lives on an early line (`user`/`attachment` turns) —
+    /// bounded read, never the whole transcript. NOT a fixed single read: a
+    /// verification pass against real data found a 922KB transcript whose
+    /// very first line (a queued paste) alone was 195KB, pushing the `cwd`
+    /// line past a naive 64KB cutoff and silently producing a false miss.
+    /// Read incrementally instead — 256KB at a time, up to 4MB — so one
+    /// unusually large preamble line doesn't defeat the probe, while still
+    /// never approaching the cost of reading a full 60MB+ transcript.
+    private nonisolated static func probeCwd(at url: URL) -> String? {
+        guard let fh = FileHandle(forReadingAtPath: url.path) else { return nil }
+        defer { try? fh.close() }
+        let decoder = JSONDecoder()
+        var buffer = Data()
+        var scanned = buffer.startIndex
+
+        while buffer.count < 4 * 1024 * 1024 {
+            let next = fh.readData(ofLength: 256 * 1024)
+            if next.isEmpty { break }   // EOF before any cwd line — genuine miss
+            buffer.append(next)
+
+            while let nl = buffer[scanned...].firstIndex(of: 0x0A) {
+                defer { scanned = buffer.index(after: nl) }
+                let line = buffer[scanned..<nl]
+                guard !line.isEmpty,
+                      let probe = try? decoder.decode(CwdProbe.self, from: Data(line)),
+                      let cwd = probe.cwd, !cwd.isEmpty
+                else { continue }
+                return cwd
+            }
+        }
+        return nil
+    }
+
     private nonisolated static func buildProjects(
         from entries: [HistoryEntry],
         active: (cwds: Set<String>, sessionIds: Set<String>),
-        knownPaths: Set<String> = []
+        knownPaths: Set<String> = [],
+        diskSessions: [String: [(id: String, mtime: Date)]] = [:]
     ) -> [Project] {
 
         struct SessionAccum {
@@ -792,6 +898,30 @@ final class Store: ObservableObject {
                         preview: String(entry.display.prefix(200)),
                         date: date
                     )
+                }
+            }
+            projectMap[cwd] = proj
+        }
+
+        // Backfill from real JSONL transcripts on disk — session existence,
+        // count, and recency the `entries` loop above can't see (see
+        // readDiskSessions for why: history.jsonl never receives entries for
+        // sessions run programmatically, exactly how Atelier drives every
+        // chat). A session already known from history.jsonl gets its disk
+        // mtime folded in too — programmatic follow-up turns on an otherwise-
+        // interactive session bump recency without a matching history line.
+        for (cwd, sessions) in diskSessions {
+            var proj = projectMap[cwd] ?? (sessions: [:], lastActivity: .distantPast)
+            for (sessionId, mtime) in sessions {
+                if mtime > proj.lastActivity { proj.lastActivity = mtime }
+                if var s = proj.sessions[sessionId] {
+                    if mtime > s.date { s.date = mtime }
+                    proj.sessions[sessionId] = s
+                } else {
+                    // No history.jsonl preview — the per-row lazy loader
+                    // (loadFirstPrompt) reads one straight from the JSONL
+                    // head the moment this session renders.
+                    proj.sessions[sessionId] = SessionAccum(preview: "", date: mtime)
                 }
             }
             projectMap[cwd] = proj
