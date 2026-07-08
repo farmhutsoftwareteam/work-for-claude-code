@@ -183,11 +183,14 @@ struct V2RootView: View {
                         // and the user drive together; empty ⇒ renders nothing.
                         CoTerminalStrip(session: session)
                     }
-                    // Key by tab so each tab keeps its own scroll
-                    // position — without this, switching tabs reuses the
-                    // same transcript view identity and the scroll state
-                    // bleeds between conversations.
-                    .id(tab.id)
+                    // Deliberately NOT keyed by tab id. Keying tore down and
+                    // rebuilt the ENTIRE transcript tree on every tab switch —
+                    // every visible row's NSTextView recreated + laid out
+                    // synchronously on main = the switch lag. Keeping one view
+                    // identity lets SwiftUI update rows IN PLACE (cheap); the
+                    // transcript handles the switch itself (detects the
+                    // session change, resets its window, jumps to the bottom)
+                    // so scroll state still never bleeds between conversations.
                 } else {
                     invalidStateView
                 }

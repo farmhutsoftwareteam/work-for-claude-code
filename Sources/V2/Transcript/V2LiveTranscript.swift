@@ -121,6 +121,17 @@ struct V2LiveTranscript: View {
                     proxy.scrollTo(bottomAnchorID, anchor: .bottom)
                 }
             }
+            // Tab switch: the view identity is intentionally kept (rebuilding
+            // the whole tree per switch was the tab-lag), so the SESSION
+            // changes under this view. Reset the render window and land at
+            // the new conversation's bottom — scroll state never bleeds.
+            .onChange(of: ObjectIdentifier(session)) { _, _ in
+                extraVisible = 0
+                proxy.scrollTo(bottomAnchorID, anchor: .bottom)
+                DispatchQueue.main.async {
+                    proxy.scrollTo(bottomAnchorID, anchor: .bottom)
+                }
+            }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(v2.paper)
