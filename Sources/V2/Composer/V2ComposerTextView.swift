@@ -118,11 +118,20 @@ struct V2ComposerTextView: NSViewRepresentable {
         if tv.placeholderColor != placeholderColor { tv.placeholderColor = placeholderColor }
         if tv.isEditable != isEnabled { tv.isEditable = isEnabled }
 
-        if focused && tv.window?.firstResponder !== tv {
+        // Claim focus ONLY on a rising edge of the binding (false→true), never
+        // on a routine re-render. This view re-renders per streamed token, and
+        // `focused` was write-only-true — so once the user clicked into the
+        // transcript or a co-driven terminal mid-stream, EVERY token yanked
+        // first-responder back into the composer: text selection broke, the
+        // terminal dropped keystrokes, and interaction felt haunted. The
+        // coordinator now syncs the binding false on resign (textDidEndEditing),
+        // so intentional focus requests (send, tab switch, ⌘L) still land.
+        if focused && !context.coordinator.lastFocusRequest && tv.window?.firstResponder !== tv {
             DispatchQueue.main.async {
                 tv.window?.makeFirstResponder(tv)
             }
         }
+        context.coordinator.lastFocusRequest = focused
     }
 
     func makeCoordinator() -> Coordinator {
@@ -143,6 +152,9 @@ struct V2ComposerTextView: NSViewRepresentable {
         var popoverPick: () -> Void = {}
         var popoverDismiss: () -> Void = {}
         var backspaceAtStart: () -> Bool = { false }
+        /// Last value of `focused` seen by updateNSView — focus is claimed
+        /// only when this flips false→true (rising edge).
+        var lastFocusRequest = false
 
         init(text: Binding<String>, focused: Binding<Bool>) {
             self.textBinding = text
@@ -153,6 +165,13 @@ struct V2ComposerTextView: NSViewRepresentable {
             guard let tv = notification.object as? ComposerNSTextView else { return }
             textBinding.wrappedValue = tv.string
             tv.needsDisplay = true   // refresh placeholder visibility
+        }
+
+        /// Focus moved elsewhere (transcript selection, co-driven terminal,
+        /// another field) — reflect reality in the binding so the next
+        /// intentional `focused = true` is a real rising edge.
+        func textDidEndEditing(_ notification: Notification) {
+            if focusedBinding.wrappedValue { focusedBinding.wrappedValue = false }
         }
 
         /// Catch Enter / Shift+Enter / Cmd+Enter — and, when the slash

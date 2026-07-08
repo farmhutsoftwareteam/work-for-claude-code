@@ -15,6 +15,21 @@ struct V2LiveTranscript: View {
 
     private let bottomAnchorID = "v2-transcript-bottom"
 
+    /// Render window: only the most recent N transcript items are in the
+    /// layout by default. A long chat's scroll weirdness is LazyVStack
+    /// ESTIMATING the heights of hundreds of unbuilt rows above the viewport
+    /// — every estimate revision recomputes the scrollbar and shifts content,
+    /// which is why an old chat felt broken while a fresh tab was fine. With
+    /// a capped window, a month-old conversation scrolls exactly like a new
+    /// one; "show earlier" extends the window on demand. Data is untouched —
+    /// this bounds LAYOUT, not history.
+    private static let renderWindow = 120
+    @State private var extraVisible = 0
+
+    private var firstVisibleIndex: Int {
+        max(0, session.transcript.count - Self.renderWindow - extraVisible)
+    }
+
 
     var body: some View {
         // Profiling marker: one Point-of-Interest per transcript render. During
@@ -38,12 +53,16 @@ struct V2LiveTranscript: View {
                     if session.preloadOmittedTurns > 0 {
                         earlierMessagesHint
                     }
+                    if firstVisibleIndex > 0 {
+                        showEarlierButton
+                    }
                     // Index-keyed identity: the transcript is append-only with
                     // the last text block mutated in place while streaming.
                     // Content-hash ids changed every token (tearing down and
                     // rebuilding the streaming row + resetting text selection);
-                    // a stable index keeps the row alive as its text grows.
-                    ForEach(session.transcript.indices, id: \.self) { i in
+                    // a stable ABSOLUTE index keeps the row alive as its text
+                    // grows — and stays stable as the render window slides.
+                    ForEach(firstVisibleIndex..<session.transcript.count, id: \.self) { i in
                         row(for: session.transcript[i])
                     }
 
@@ -107,6 +126,28 @@ struct V2LiveTranscript: View {
         .background(v2.paper)
         .overlay { if session.isResuming { resumingOverlay } }
         .enableInjection()
+    }
+
+    /// Top-of-window expander: the older rows exist in data, just not in the
+    /// layout. Extending re-renders with a bigger window; identity is
+    /// absolute-index so existing rows don't rebuild.
+    private var showEarlierButton: some View {
+        Button { extraVisible += 300 } label: {
+            HStack(spacing: 8) {
+                Image(systemName: "chevron.up")
+                    .font(.system(size: 9, weight: .medium))
+                Text("show \(min(firstVisibleIndex, 300)) earlier messages · \(firstVisibleIndex) hidden")
+                    .font(.system(size: 11, design: .monospaced))
+            }
+            .foregroundColor(v2.mute)
+            .padding(.horizontal, 11).padding(.vertical, 6)
+            .background(v2.paper2)
+            .overlay(Rectangle().stroke(v2.line, lineWidth: 1))
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .frame(maxWidth: .infinity, alignment: .center)
+        .padding(.bottom, 4)
     }
 
     /// Shown while a resumed session reads its history off disk — so clicking

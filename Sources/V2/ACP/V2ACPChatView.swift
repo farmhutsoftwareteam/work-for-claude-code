@@ -110,31 +110,24 @@ struct V2ACPChatView: View {
     // MARK: - Transcript
 
     private var transcript: some View {
-        ScrollViewReader { proxy in
-            ScrollView {
-                VStack(alignment: .leading, spacing: 20) {
-                    ForEach(session.transcript) { item in
-                        row(item).id(item.id)
-                    }
-                    Color.clear.frame(height: 1).id("acp-bottom")
+        // Same scroll architecture as the main transcript (see
+        // V2LiveTranscript): LAZY rows + system bottom anchoring. The old
+        // shape here — eager VStack + an ANIMATED scrollTo fired per streamed
+        // token, unconditionally — was the exact bug class that made the main
+        // chat unusable (stacked animations, fights the user's scroll).
+        ScrollView {
+            LazyVStack(alignment: .leading, spacing: 20) {
+                ForEach(session.transcript) { item in
+                    row(item).id(item.id)
                 }
-                .padding(.horizontal, 28)
-                .padding(.vertical, 22)
-                .frame(maxWidth: 1000, alignment: .leading)
+                Color.clear.frame(height: 1).id("acp-bottom")
             }
-            .onChange(of: scrollKey) { _, _ in
-                withAnimation(.easeOut(duration: 0.18)) { proxy.scrollTo("acp-bottom", anchor: .bottom) }
-            }
+            .padding(.horizontal, 28)
+            .padding(.vertical, 22)
+            .frame(maxWidth: 1000, alignment: .leading)
         }
+        .defaultScrollAnchor(.bottom)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-    }
-
-    private var scrollKey: String {
-        let lastLen: Int = {
-            if case .message(let m) = session.transcript.last { return m.text.count }
-            return 0
-        }()
-        return "\(session.transcript.count)-\(lastLen)-\(session.status)"
     }
 
     @ViewBuilder
