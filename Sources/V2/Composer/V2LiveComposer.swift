@@ -49,7 +49,7 @@ struct V2LiveComposer: View {
                 composerBox
                 if slashOpen {
                     slashPopover
-                        .offset(y: -(composerHeight + 36))
+                        .offset(y: -(cachedHeight + 36))
                 }
             }
             helperRow
