@@ -6,6 +6,25 @@
         <description>Updates for Work</description>
         <language>en</language>
         <item>
+            <title>Version 2.5.6</title>
+            <pubDate>Wed, 08 Jul 2026 20:57:02 +0400</pubDate>
+            <sparkle:version>39</sparkle:version>
+            <sparkle:shortVersionString>2.5.6</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>15.0</sparkle:minimumSystemVersion>
+            <description><![CDATA[
+                <h3>Atelier 2.5.6 — projects you actually chat with, actually show up</h3>
+                <ul>
+                    <li><b>Fixed: a project used only through Atelier could look untouched forever.</b> Session activity was being counted from a log that Atelier's own chats never write to — a heavily-used project could show zero sessions and sink to the bottom of your list, indistinguishable from one you'd never opened. Activity is now read from the real conversation files on disk, which every chat writes to.</li>
+                    <li><b>Fixed: reopening a session in a project with a space or punctuation in its folder name could show an empty conversation</b> — the real history was on disk, Atelier was just guessing the wrong location. It now finds the right one.</li>
+                </ul>
+            ]]></description>
+            <enclosure
+                url="https://work.munyamakosa.com/Work.dmg"
+                length="11751807"
+                type="application/octet-stream"
+                sparkle:edSignature="xSMpEcmX7ohaAoFFa0JKUrywRm7L8etswO81ExQYOxioLLwwMRJOPi1Zsw7DaAgv2hbAgRxZjIVdO2pxxY5aBA==" />
+        </item>
+        <item>
             <title>Version 2.5.5</title>
             <pubDate>Wed, 08 Jul 2026 20:06:15 +0400</pubDate>
             <sparkle:version>38</sparkle:version>
