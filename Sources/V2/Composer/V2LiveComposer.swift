@@ -20,6 +20,9 @@ struct V2LiveComposer: View {
     @ObservedObject var session: StreamSession
     @StateObject private var attachments = V2AttachmentStore()
     @State private var draft: String = ""
+    /// Composer height, recomputed only when the draft EDITS (O(draft) scan)
+    /// — read O(1) in body, which re-runs per streamed token. 27 = one line.
+    @State private var cachedHeight: CGFloat = 27
     @State private var inputFocused: Bool = false
     @State private var slashActive: Int = 0   // highlighted row in the popover
     /// User-authored commands loaded from .claude/commands + ~/.claude/commands.
@@ -118,12 +121,18 @@ struct V2LiveComposer: View {
                 if slashActive >= slashResults.count { slashActive = 0 }
                 // Persist the draft on the session so it survives a tab switch.
                 session.composerDraft = draft
+                // Height is O(draft) to compute (newline + wrap scan) — do it
+                // once per EDIT here, not in body: the composer re-renders per
+                // streamed token, and re-scanning a big pasted draft 30×/s
+                // was part of the long-paste glitch.
+                cachedHeight = Self.height(for: draft)
             }
+            .onAppear { cachedHeight = Self.height(for: draft) }
             // Size to actual text content. 19pt per line approximates the
             // monospaced 13pt with default leading + the scrollview's 4pt
             // top inset. Cap at 8 lines — beyond that, the inner NSScrollView
             // kicks in.
-            .frame(height: composerHeight)
+            .frame(height: cachedHeight)
 
             attachButton
 
@@ -723,8 +732,10 @@ struct V2LiveComposer: View {
 
     /// One line by default; grows with explicit newlines up to 8 lines.
     /// Soft-wrapped long lines also count via a rough column estimate so
-    /// pasted paragraphs don't snap to a single row.
-    private var composerHeight: CGFloat {
+    /// pasted paragraphs don't snap to a single row. Computed once per edit
+    /// into `cachedHeight` (see onChange) — NOT in body, which re-runs per
+    /// streamed token.
+    private static func height(for draft: String) -> CGFloat {
         let lineHeight: CGFloat = 19
         let topBottomPadding: CGFloat = 8
         let newlines = draft.filter { $0 == "\n" }.count

@@ -85,6 +85,10 @@ struct V2ComposerTextView: NSViewRepresentable {
         tv.isVerticallyResizable = true
         tv.textContainer?.widthTracksTextView = true
         tv.textContainer?.containerSize = NSSize(width: 0, height: CGFloat.greatestFiniteMagnitude)
+        // Big pastes: lay out only what's visible instead of the whole
+        // document per edit — a giant single paragraph otherwise re-wraps
+        // end-to-end on every keystroke.
+        tv.layoutManager?.allowsNonContiguousLayout = true
 
         context.coordinator.textView = tv
         return scroll

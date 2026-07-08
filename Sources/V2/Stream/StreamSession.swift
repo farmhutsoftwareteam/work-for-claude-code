@@ -68,7 +68,13 @@ final class StreamSession: ObservableObject {
     /// Unsent composer text, persisted on the (per-tab) session so a draft
     /// survives switching tabs and back — the composer view's @State is torn
     /// down when its tab goes off-screen, so the draft has to live here.
-    @Published var composerDraft: String = ""
+    /// Draft persistence for tab switches. Deliberately NOT @Published: the
+    /// composer writes this on EVERY keystroke, and a publish here fans out
+    /// to everything observing the session — the entire transcript re-rendered
+    /// per character typed (worst with a long paste + long chat: the "app
+    /// glitches when I paste" bug). Nothing observes it; it's only read back
+    /// when the composer for this session reappears. (PERFORMANCE.md rule 2.)
+    var composerDraft: String = ""
 
     /// MCP servers reported by the binary on `system/init`. Populated once the
     /// session is initialized; empty before then. Drives the right-dock MCP
