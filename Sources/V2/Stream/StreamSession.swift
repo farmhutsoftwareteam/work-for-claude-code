@@ -946,7 +946,15 @@ final class StreamSession: ObservableObject {
                     // Already in transcript via appendStreamingText.
                     break
                 case .toolUse(let id, let name, let input):
-                    if V2SubagentParser.isAgentSpawn(toolName: name) {
+                    // Guard against a second .assistant snapshot for the same
+                    // turn re-delivering an already-seen tool_use id (seen
+                    // after resume/retry) — an unguarded append would leave
+                    // subagentRuns with two entries sharing one toolUseId,
+                    // which crashed the transcript's Dictionary(uniqueKeys
+                    // WithValues:) the next time it rendered (e.g. on tab
+                    // switch, whenever this session's view next appeared).
+                    if V2SubagentParser.isAgentSpawn(toolName: name),
+                       !subagentRuns.contains(where: { $0.toolUseId == id }) {
                         subagentRuns.append(V2SubagentRun(
                             toolUseId: id,
                             description: input.dig("description")?.asString ?? "agent",

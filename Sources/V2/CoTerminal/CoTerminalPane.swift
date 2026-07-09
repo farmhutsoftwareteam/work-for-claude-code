@@ -149,15 +149,22 @@ struct CoTerminalPaneView: View {
                     Text("exit \(code) · \(dur)").foregroundColor(code == 0 ? v2.mute : v2.del)
                 }
                 .font(.system(size: 11, design: .monospaced))
+                // A real, labeled dismiss — the old 18px bare ✕ was easy to
+                // miss, and finished panes otherwise stack forever.
                 Button(action: onClose) {
-                    Image(systemName: "xmark")
-                        .font(.system(size: 10, weight: .medium))
-                        .foregroundColor(v2.mute)
-                        .frame(width: 18, height: 18)
-                        .contentShape(Rectangle())
+                    HStack(spacing: 5) {
+                        Image(systemName: "xmark").font(.system(size: 9, weight: .medium))
+                        Text("dismiss")
+                    }
+                    .font(.system(size: 10.5, design: .monospaced))
+                    .foregroundColor(v2.ink)
+                    .padding(.horizontal, 8).padding(.vertical, 3)
+                    .background(v2.card)
+                    .overlay(Rectangle().stroke(v2.line2, lineWidth: 1))
+                    .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
-                .help("Close pane")
+                .help("Dismiss this terminal")
             }
 
             // Fold/unfold — collapse the terminal to this header while it works;

@@ -191,6 +191,11 @@ extension CoTerminal: LocalProcessDelegate {
             self.endedAt = Date()
             self.secureInput = false
             self.ring.clearSecure()
+            // Clean exit folds to the one-line header (✓ · exit 0 · duration)
+            // — a finished pane shouldn't keep costing ~262pt of the session
+            // column. Failures stay expanded: that output is exactly what
+            // the user needs to read next.
+            if exitCode == 0 { self.isCollapsed = true }
         }
     }
 
@@ -342,6 +347,14 @@ final class CoTerminalManager: ObservableObject {
                 return e
             }
             return (json(["terminals": list]), false)
+
+        case "terminal_close":
+            guard let t = requireTerminal(args, scope: scope) else {
+                return (json(["error": "unknown terminal_id"]), true)
+            }
+            let wasRunning = t.isRunning
+            close(t, scope: scope)
+            return (json(["ok": true, "was_running": wasRunning]), false)
 
         default:
             return (json(["error": "unknown tool \(name)"]), true)

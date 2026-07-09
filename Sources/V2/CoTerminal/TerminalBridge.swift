@@ -185,7 +185,7 @@ final class TerminalBridge: @unchecked Sendable {
     nonisolated(unsafe) private static let toolSchemas: [[String: Any]] = [
         [
             "name": "terminal_run",
-            "description": "Run a command in a VISIBLE terminal pane shared with the user (a real PTY — interactive CLIs work). Use this instead of Bash for commands that ask questions (logins, submissions, installers). Returns terminal_id. The user sees the same terminal and can type in it; secure prompts (passwords) are hidden from you — ask the user to type those directly.",
+            "description": "Run a command in a VISIBLE terminal pane shared with the user (a real PTY — interactive CLIs work). Use this instead of Bash for commands that ask questions (logins, submissions, installers). Returns terminal_id. The user sees the same terminal and can type in it; secure prompts (passwords) are hidden from you — ask the user to type those directly. When the run has finished and you've read its output, close the pane with terminal_close.",
             "inputSchema": [
                 "type": "object",
                 "properties": [
@@ -233,6 +233,15 @@ final class TerminalBridge: @unchecked Sendable {
             "name": "terminal_list",
             "description": "List this session's co-driven terminals (id, command, running, exit code).",
             "inputSchema": ["type": "object", "properties": [String: Any]()],
+        ],
+        [
+            "name": "terminal_close",
+            "description": "Close a co-driven terminal's pane. Use this once a terminal you opened has finished and you've read what you need — finished panes otherwise stay on the user's screen until they dismiss each one by hand. Terminates the process if it is still running, so only close a running terminal when the user asked you to stop it.",
+            "inputSchema": [
+                "type": "object",
+                "properties": ["terminal_id": ["type": "string"]],
+                "required": ["terminal_id"],
+            ],
         ],
     ]
 }

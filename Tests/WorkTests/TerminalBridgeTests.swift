@@ -155,12 +155,12 @@ final class TerminalBridgeTests: XCTestCase {
 
         let result = try XCTUnwrap(obj["result"] as? [String: Any])
         let tools = try XCTUnwrap(result["tools"] as? [[String: Any]])
-        XCTAssertEqual(tools.count, 5)
+        XCTAssertEqual(tools.count, 6)
 
         // Order matters — it's a static array in the source (Self.toolSchemas).
         let names = tools.compactMap { $0["name"] as? String }
         XCTAssertEqual(names, [
-            "terminal_run", "terminal_read", "terminal_write", "terminal_status", "terminal_list",
+            "terminal_run", "terminal_read", "terminal_write", "terminal_status", "terminal_list", "terminal_close",
         ])
     }
 

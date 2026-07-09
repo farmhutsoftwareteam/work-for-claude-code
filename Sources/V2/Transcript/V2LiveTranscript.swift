@@ -77,7 +77,15 @@ struct V2LiveTranscript: View {
                     // a stable ABSOLUTE index keeps the row alive as its text
                     // grows — and stays stable as the render window slides.
                     // Per-list lookups built ONCE here, not per row (perf §4).
-                    let runsById = Dictionary(uniqueKeysWithValues: session.subagentRuns.map { ($0.toolUseId, $0) })
+                    // uniquingKeysWith, NOT uniqueKeysWithValues: the latter
+                    // is a fatal crash on a duplicate key, and this must
+                    // never bring down the transcript even if subagentRuns
+                    // ever ends up with one (belt-and-suspenders alongside
+                    // the append-site guard in StreamSession).
+                    let runsById = Dictionary(
+                        session.subagentRuns.map { ($0.toolUseId, $0) },
+                        uniquingKeysWith: { _, latest in latest }
+                    )
                     let sessionDir = session.sessionDir
                     ForEach(firstVisibleIndex..<session.transcript.count, id: \.self) { i in
                         row(for: session.transcript[i], runs: runsById, sessionDir: sessionDir)
