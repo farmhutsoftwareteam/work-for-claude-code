@@ -150,12 +150,33 @@ enum SkillOperations {
 
     // MARK: - Delete
 
-    /// Moves the skill to the user's Trash (not permanent). Returns the URL it
-    /// was moved from so callers can surface it in a confirmation toast.
-    static func deleteSkill(_ skill: ClaudeSkill) throws -> URL {
-        var resultingURL: NSURL? = nil
+    /// Moves the skill to the user's Trash (not permanent). Returns both the
+    /// original location and where it landed in Trash, so a caller can offer
+    /// a real "undo" (moveItem back) rather than just a confirmation toast
+    /// with no way to actually reverse it.
+    @discardableResult
+    static func deleteSkill(_ skill: ClaudeSkill) throws -> (originalPath: URL, trashedAt: URL) {
+        var resultingURL: NSURL?
         try FileManager.default.trashItem(at: skill.path, resultingItemURL: &resultingURL)
-        return skill.path
+        guard let trashedAt = resultingURL as URL? else {
+            // Trashed successfully but macOS didn't report where — still a
+            // success (file is safe in Trash), just not undo-able from here.
+            return (skill.path, skill.path)
+        }
+        return (skill.path, trashedAt)
+    }
+
+    /// Reverses `deleteSkill` within the same run — moves the file back from
+    /// Trash to its original path. Fails harmlessly if the user already
+    /// emptied Trash or the original path is occupied again.
+    static func restoreFromTrash(originalPath: URL, trashedAt: URL) throws {
+        guard trashedAt != originalPath, FileManager.default.fileExists(atPath: trashedAt.path) else {
+            throw SkillOperationError.notFound
+        }
+        guard !FileManager.default.fileExists(atPath: originalPath.path) else {
+            throw SkillOperationError.nameTaken(originalPath)
+        }
+        try FileManager.default.moveItem(at: trashedAt, to: originalPath)
     }
 
     // MARK: - Toggle invocability (skill-level)
@@ -202,6 +223,73 @@ enum SkillOperations {
             options: [.prettyPrinted, .sortedKeys]
         )
         try data.write(to: settingsURL, options: .atomic)
+    }
+
+    // MARK: - Edit (full field + body rewrite)
+
+    /// Rewrite an existing skill's frontmatter fields + body. Preserves every
+    /// frontmatter key not passed here (unknown keys, `disable-model-invocation`,
+    /// `user-invocable`, …) exactly as written — mirrors setFrontmatterBool's
+    /// round-trip discipline, generalized to string fields + the body.
+    /// `name` is intentionally NOT a parameter: renaming is a directory move,
+    /// out of scope (see #2's issue) — callers editing an existing skill never
+    /// touch it.
+    static func updateSkill(
+        _ skill: ClaudeSkill,
+        description: String,
+        whenToUse: String?,
+        model: String?,
+        effort: String?,
+        license: String?,
+        argumentHint: String?,
+        body: String
+    ) throws {
+        guard skill.packaging == .directory else {
+            throw SkillOperationError.writeFailed("Cannot edit a packaged .skill archive in place. Clone it first.")
+        }
+        let skillMd = skill.path.appendingPathComponent("SKILL.md")
+        let existing = ((try? String(contentsOf: skillMd, encoding: .utf8)) ?? "")
+            .replacingOccurrences(of: "\r\n", with: "\n")
+        var lines = existing.components(separatedBy: "\n")
+
+        guard let first = lines.firstIndex(where: { $0.trimmingCharacters(in: .whitespaces) == "---" }),
+              let second = lines[(first + 1)...].firstIndex(where: { $0.trimmingCharacters(in: .whitespaces) == "---" })
+        else {
+            throw SkillOperationError.writeFailed("Missing YAML frontmatter in SKILL.md")
+        }
+
+        // key -> new value (nil value = remove the key if present)
+        let updates: [(String, String?)] = [
+            ("description", description),
+            ("when_to_use", whenToUse?.isEmpty == false ? whenToUse : nil),
+            ("model", model?.isEmpty == false ? model : nil),
+            ("effort", effort?.isEmpty == false ? effort : nil),
+            ("license", license?.isEmpty == false ? license : nil),
+            ("argument-hint", argumentHint?.isEmpty == false ? argumentHint : nil),
+        ]
+
+        var frontmatterLines = Array(lines[(first + 1)..<second])
+        for (key, value) in updates {
+            frontmatterLines.removeAll {
+                $0.trimmingCharacters(in: .whitespaces).hasPrefix("\(key):")
+            }
+            if let value {
+                frontmatterLines.append("\(key): \(yamlEscape(value))")
+            }
+        }
+
+        lines.replaceSubrange((first + 1)..<second, with: frontmatterLines)
+        // Body: everything after the closing fence, replaced wholesale. The
+        // closing-fence index shifts by however much the frontmatter grew/shrank.
+        let newSecond = first + 1 + frontmatterLines.count
+        let head = Array(lines[0...newSecond])
+        let newContent = (head + ["", body]).joined(separator: "\n")
+
+        do {
+            try newContent.write(to: skillMd, atomically: true, encoding: .utf8)
+        } catch {
+            throw SkillOperationError.writeFailed(error.localizedDescription)
+        }
     }
 
     // MARK: - Internal helpers

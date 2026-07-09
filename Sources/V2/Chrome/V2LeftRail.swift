@@ -371,9 +371,13 @@ struct V2LeftRail: View {
             showingMCPSheet = true
         case "Usage":
             appState.mainView = .usage
-        case "Plugins", "Skills", "Market":
-            // No v2 surface for these yet — fall through. Plugins/Skills
-            // are still managed via the v1 Extensions window for now.
+        case "Skills", "Market":
+            // Market opens straight into the same panel's marketplace tab —
+            // both tiles land on one surface, matching the design spec.
+            appState.openDock(.skills)
+        case "Plugins":
+            // No v2 surface for this yet — still managed via the v1
+            // Extensions window for now.
             break
         default:
             break

@@ -104,6 +104,7 @@ struct V2RightDock: View {
                 case .harness: V2HarnessPanel()
                 case .agents:  V2AgentsPanel()
                 case .mcp:     V2McpPanel()
+                case .skills:  V2SkillsPanel()
                 }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -120,6 +121,7 @@ struct V2RightDock: View {
         case .harness: return "checkerboard.rectangle"
         case .agents:  return "person.3"
         case .mcp:     return "powerplug"
+        case .skills:  return "sparkles"
         }
     }
 
@@ -155,6 +157,13 @@ struct V2RightDock: View {
             loads at session start (filesystem, github, linear, etc.).
             This panel shows what's connected for the active session
             and lets you add new ones to your global config.
+            """
+        case .skills:
+            return """
+            Skills — instructions + resources claude loads on demand
+            (personal, project, and plugin-bundled). Create one by hand,
+            describe one in plain language and let claude draft it, or
+            browse installed marketplaces for more.
             """
         }
     }
