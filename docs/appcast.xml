@@ -6,6 +6,27 @@
         <description>Updates for Work</description>
         <language>en</language>
         <item>
+            <title>Version 2.7.0</title>
+            <pubDate>Thu, 09 Jul 2026 21:36:40 +0400</pubDate>
+            <sparkle:version>45</sparkle:version>
+            <sparkle:shortVersionString>2.7.0</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>15.0</sparkle:minimumSystemVersion>
+            <description><![CDATA[
+                <h3>Atelier 2.7.0 — see what's running behind a session</h3>
+                <ul>
+                    <li><b>Background tasks now show up.</b> Anything Claude runs in the background appears in a live strip above the composer — command, elapsed time, and a one-line tail of what it's printing right now.</li>
+                    <li><b>Click a running task to watch it live.</b> The output peek follows along as it prints; if nothing new has arrived in a while it tells you exactly how long, instead of leaving a stalled task looking identical to a healthy one.</li>
+                    <li><b>Tabs signal background work</b> — a session with something running behind it gets a distinct slow pulse in the tab strip.</li>
+                    <li><b>Co-driven terminal catches interactive commands in Bypass Permissions mode too</b> — flagged in the transcript instead of silently hanging.</li>
+                </ul>
+            ]]></description>
+            <enclosure
+                url="https://work.munyamakosa.com/Work.dmg"
+                length="12600888"
+                type="application/octet-stream"
+                sparkle:edSignature="YwyDnBbQv0GxBIzk7TZCF7NDq8bMauWHuzpD+TnscH5FT6Zl6kQddnhdzIJtFq/ljOd64zVamuecePsMaUfeDg==" />
+        </item>
+        <item>
             <title>Version 2.6.4</title>
             <pubDate>Thu, 09 Jul 2026 20:33:54 +0400</pubDate>
             <sparkle:version>44</sparkle:version>
