@@ -94,10 +94,28 @@ enum SkillOperations {
 
     // MARK: - Clone
 
+    /// Sidecar filename recording where a cloned skill came from — kept
+    /// alongside SKILL.md, never merged into its frontmatter (that content
+    /// belongs to the skill author, not to Atelier's bookkeeping). Presence
+    /// of this file is also what scopes update-detection: only skills
+    /// Atelier itself cloned get an "update available" check, never a
+    /// skill the user wrote that happens to share a name with something in
+    /// a marketplace.
+    private static let provenanceFilename = ".atelier-clone-source.json"
+
+    struct CloneProvenance: Codable {
+        let pluginId: String   // "name@marketplace" — the store.pluginSkills key
+        let skillName: String
+    }
+
     /// Copies a plugin-scoped skill into ~/.claude/skills/ so the user can edit
     /// a personal override. Appends a suffix if the target name is taken.
+    /// `pluginId` (the full "name@marketplace" key, when known) is stamped as
+    /// a sidecar file so a later update-check can find the skill's current
+    /// upstream content — pass nil for sources with no ongoing upstream to
+    /// track (e.g. a one-off community git clone).
     @discardableResult
-    static func cloneToPersonal(_ skill: ClaudeSkill) throws -> URL {
+    static func cloneToPersonal(_ skill: ClaudeSkill, pluginId: String? = nil) throws -> URL {
         let base = FileManager.default.homeDirectoryForCurrentUser
             .appendingPathComponent(".claude")
             .appendingPathComponent("skills")
@@ -145,7 +163,37 @@ enum SkillOperations {
             }
         }
 
+        if let pluginId {
+            let provenance = CloneProvenance(pluginId: pluginId, skillName: skill.name)
+            if let data = try? JSONEncoder().encode(provenance) {
+                try? data.write(to: target.appendingPathComponent(provenanceFilename))
+            }
+        }
+
         return target
+    }
+
+    /// Reads back a clone's provenance, if any. nil means either this skill
+    /// wasn't cloned by Atelier, or its source had no ongoing upstream.
+    static func cloneProvenance(for skill: ClaudeSkill) -> CloneProvenance? {
+        guard skill.packaging == .directory else { return nil }
+        let marker = skill.path.appendingPathComponent(provenanceFilename)
+        guard let data = try? Data(contentsOf: marker) else { return nil }
+        return try? JSONDecoder().decode(CloneProvenance.self, from: data)
+    }
+
+    /// Overwrites a cloned skill's SKILL.md with its current upstream
+    /// content — the "take theirs" side of the update-diff flow. Always an
+    /// explicit, user-confirmed call; nothing in this file calls it silently.
+    static func applyUpdate(_ skill: ClaudeSkill, newContent: String) throws {
+        guard skill.packaging == .directory else {
+            throw SkillOperationError.writeFailed("Cannot update a packaged .skill archive in place.")
+        }
+        do {
+            try newContent.write(to: skill.path.appendingPathComponent("SKILL.md"), atomically: true, encoding: .utf8)
+        } catch {
+            throw SkillOperationError.writeFailed(error.localizedDescription)
+        }
     }
 
     // MARK: - Delete

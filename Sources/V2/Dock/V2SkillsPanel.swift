@@ -17,6 +17,19 @@ struct V2SkillsPanel: View {
     @State private var expandedPlugins: Set<String> = []
     @State private var editing: EditTarget?
     @State private var showingMarketplace = false
+    struct UpdateDiffTarget: Identifiable {
+        let skill: ClaudeSkill
+        let newContent: String
+        var id: String { skill.id }
+    }
+    @State private var showingUpdateDiff: UpdateDiffTarget?
+
+    /// skill id -> the plugin's current SKILL.md content, ONLY when it
+    /// differs from what's on disk locally. Populated lazily per row (file
+    /// reads, kept out of body — same discipline as Store's firstPrompt/slug
+    /// lazy loaders) and only for skills carrying an Atelier clone-provenance
+    /// marker, so a coincidental name match never falsely flags an update.
+    @State private var updatesAvailable: [String: String] = [:]
 
     /// Skill id → its real trash round-trip info, kept only while the undo
     /// strip is showing. The delete already happened (real Trash move) the
@@ -45,6 +58,7 @@ struct V2SkillsPanel: View {
                     if personalSkills.isEmpty && (projectSkills?.isEmpty ?? true) && store.pluginSkills.isEmpty {
                         emptyState
                     } else {
+                        if !duplicateArchives.isEmpty { duplicateBanner }
                         section(title: "personal · \(personalSkills.count)", skills: personalSkills, badge: "personal")
                         if let projectSkills, !projectSkills.isEmpty {
                             section(
@@ -71,6 +85,16 @@ struct V2SkillsPanel: View {
         }
         .sheet(isPresented: $showingMarketplace) {
             V2SkillsMarketplaceSheet(onInstalled: { reload() })
+        }
+        .sheet(item: $showingUpdateDiff) { target in
+            V2SkillUpdateDiffSheet(
+                skill: target.skill,
+                newContent: target.newContent,
+                onApplied: {
+                    updatesAvailable[target.skill.id] = nil
+                    reload()
+                }
+            )
         }
         .enableInjection()
     }
@@ -128,7 +152,7 @@ struct V2SkillsPanel: View {
                 if topRule { Rectangle().fill(v2.line).frame(height: 1) }
             }
         ForEach(skills) { skill in
-            row(skill, badge: badge, indent: false)
+            row(skill, badge: badge, pluginId: nil, indent: false)
         }
     }
 
@@ -161,7 +185,7 @@ struct V2SkillsPanel: View {
 
             if expanded {
                 ForEach(skills) { skill in
-                    row(skill, badge: displayName, indent: true)
+                    row(skill, badge: displayName, pluginId: pluginId, indent: true)
                 }
             }
         }
@@ -170,7 +194,7 @@ struct V2SkillsPanel: View {
     // MARK: - Row
 
     @ViewBuilder
-    private func row(_ skill: ClaudeSkill, badge: String, indent: Bool) -> some View {
+    private func row(_ skill: ClaudeSkill, badge: String, pluginId: String?, indent: Bool) -> some View {
         let disabled = skill.disableModelInvocation
         let confirming = pendingDeletes[skill.id] != nil
         VStack(spacing: 0) {
@@ -193,6 +217,16 @@ struct V2SkillsPanel: View {
                                 .padding(.horizontal, 5).padding(.vertical, 1)
                                 .overlay(Rectangle().stroke(v2.line2, lineWidth: 1))
                         }
+                        if let newContent = updatesAvailable[skill.id] {
+                            Button { showingUpdateDiff = UpdateDiffTarget(skill: skill, newContent: newContent) } label: {
+                                Text("update available")
+                                    .font(.system(size: 9, design: .monospaced))
+                                    .foregroundColor(v2.add)
+                                    .padding(.horizontal, 5).padding(.vertical, 1)
+                                    .overlay(Rectangle().stroke(v2.add, lineWidth: 1))
+                            }
+                            .buttonStyle(.plain)
+                        }
                     }
                     Text(skill.skillDescription)
                         .font(.system(size: 10.5, design: .monospaced))
@@ -213,7 +247,8 @@ struct V2SkillsPanel: View {
             .padding(.vertical, 9)
             .contentShape(Rectangle())
             .onTapGesture { editing = .edit(skill) }
-            .overlay(alignment: .trailing) { rowActions(skill, disabled: disabled) }
+            .overlay(alignment: .trailing) { rowActions(skill, pluginId: pluginId, disabled: disabled) }
+            .task(id: skill.id) { await checkForUpdate(skill) }
 
             if confirming {
                 HStack(spacing: 10) {
@@ -236,14 +271,14 @@ struct V2SkillsPanel: View {
         .background(RowHover(v2: v2))
     }
 
-    private func rowActions(_ skill: ClaudeSkill, disabled: Bool) -> some View {
+    private func rowActions(_ skill: ClaudeSkill, pluginId: String?, disabled: Bool) -> some View {
         HStack(spacing: 3) {
             actionButton("pencil", help: "Edit") { editing = .edit(skill) }
             actionButton(disabled ? "power" : "power", help: disabled ? "Enable" : "Disable") {
                 toggleDisabled(skill)
             }
             if case .plugin = skill.source {
-                actionButton("doc.on.doc", help: "Clone to personal") { clone(skill) }
+                actionButton("doc.on.doc", help: "Clone to personal") { clone(skill, pluginId: pluginId) }
             }
             actionButton("trash", help: "Delete") { delete(skill) }
         }
@@ -302,6 +337,38 @@ struct V2SkillsPanel: View {
         return store.pluginSkills.keys.filter { enabled.contains($0) }.sorted()
     }
 
+    /// The redundant .skill archives dedupedByPackaging drops from the list —
+    /// surfaced here so there's a real cleanup action, not just a display-
+    /// layer hide. Confirmed present on the reference machine (lead-eng/ +
+    /// lead-eng.skill both on disk for the same logical skill).
+    private var duplicateArchives: [ClaudeSkill] {
+        var byName: [String: [ClaudeSkill]] = [:]
+        for skill in store.standaloneSkills { byName[skill.name, default: []].append(skill) }
+        return byName.values
+            .filter { $0.contains { $0.packaging == .directory } && $0.contains { $0.packaging == .zipArchive } }
+            .compactMap { $0.first { $0.packaging == .zipArchive } }
+    }
+
+    private var duplicateBanner: some View {
+        HStack(spacing: 10) {
+            Text("\(duplicateArchives.count) skill\(duplicateArchives.count == 1 ? "" : "s") installed twice (a live copy + its old .skill archive)")
+                .font(.system(size: 10.5, design: .monospaced))
+                .foregroundColor(v2.mute)
+            Spacer()
+            Button("clean up") {
+                for archive in duplicateArchives { delete(archive) }
+            }
+            .buttonStyle(.plain)
+            .font(.system(size: 10.5, design: .monospaced))
+            .foregroundColor(v2.ink)
+            .underline()
+        }
+        .padding(.horizontal, 18)
+        .padding(.vertical, 9)
+        .background(v2.card)
+        .overlay(alignment: .bottom) { Rectangle().fill(v2.line).frame(height: 1) }
+    }
+
     private var personalSkills: [ClaudeSkill] { dedupedByPackaging(store.standaloneSkills) }
     private var projectSkills: [ClaudeSkill]? {
         guard let cwd = projectCwd else { return nil }
@@ -339,9 +406,27 @@ struct V2SkillsPanel: View {
         reload()
     }
 
-    private func clone(_ skill: ClaudeSkill) {
-        _ = try? SkillOperations.cloneToPersonal(skill)
+    private func clone(_ skill: ClaudeSkill, pluginId: String?) {
+        _ = try? SkillOperations.cloneToPersonal(skill, pluginId: pluginId)
         reload()
+    }
+
+    /// Lazy, per-row update check: only runs for skills carrying an Atelier
+    /// clone-provenance marker (never a coincidental name match), reads two
+    /// small files, and only publishes when the content genuinely differs.
+    private func checkForUpdate(_ skill: ClaudeSkill) async {
+        guard case .standalone = skill.source else { return }   // only ever the personal copy
+        guard let provenance = SkillOperations.cloneProvenance(for: skill) else { return }
+        guard let currentUpstream = store.pluginSkills[provenance.pluginId]?.first(where: { $0.name == provenance.skillName })
+        else { return }   // plugin no longer registered/enabled, or skill renamed upstream — nothing to compare
+        guard let mine = try? String(contentsOf: skill.path.appendingPathComponent("SKILL.md"), encoding: .utf8),
+              let theirs = try? String(contentsOf: currentUpstream.path.appendingPathComponent("SKILL.md"), encoding: .utf8)
+        else { return }
+        if mine != theirs {
+            updatesAvailable[skill.id] = theirs
+        } else {
+            updatesAvailable[skill.id] = nil
+        }
     }
 
     /// Moves the skill to Trash immediately (real operation, matches the

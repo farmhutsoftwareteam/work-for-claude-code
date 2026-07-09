@@ -117,7 +117,7 @@ struct V2SkillsMarketplaceSheet: View {
             }
             Spacer(minLength: 8)
             Button {
-                _ = try? SkillOperations.cloneToPersonal(entry.skill)
+                _ = try? SkillOperations.cloneToPersonal(entry.skill, pluginId: entry.pluginId)
                 installedFlash.insert(entry.skill.id)
                 onInstalled()
             } label: {
