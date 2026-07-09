@@ -6,6 +6,25 @@
         <description>Updates for Work</description>
         <language>en</language>
         <item>
+            <title>Version 2.6.1</title>
+            <pubDate>Thu, 09 Jul 2026 19:13:16 +0400</pubDate>
+            <sparkle:version>41</sparkle:version>
+            <sparkle:shortVersionString>2.6.1</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>15.0</sparkle:minimumSystemVersion>
+            <description><![CDATA[
+                <h3>Atelier 2.6.1 — skills fixes</h3>
+                <ul>
+                    <li><b>Fixed: editing a skill no longer silently pins its model.</b> By default a skill just runs under whatever model your session is already using. The editor now has a real "inherit" option and never forces a model or effort level you didn't choose.</li>
+                    <li><b>Fixed: pasting a link to one specific skill inside a larger repo now works.</b> Marketplaces like anthropics/skills bundle many skills together — pasting a link straight to one now clones the right branch and finds that exact skill instead of guessing across the whole repo.</li>
+                </ul>
+            ]]></description>
+            <enclosure
+                url="https://work.munyamakosa.com/Work.dmg"
+                length="12271343"
+                type="application/octet-stream"
+                sparkle:edSignature="YGL9aLwkVyB7/EjaSD7ypD43JpnWmGZtHMxA+uBVjXIgc45nBLCZGcx/zvkBezOvpnkgr4kkQYN8wdxmyaXcCg==" />
+        </item>
+        <item>
             <title>Version 2.6.0</title>
             <pubDate>Thu, 09 Jul 2026 18:41:38 +0400</pubDate>
             <sparkle:version>40</sparkle:version>
