@@ -14,7 +14,12 @@
 import SwiftUI
 import Inject
 
-enum V2TabStatus { case idle, working, needsYou, doneUnseen }
+// workingBackground (#69/#71 design "tab signaling"): the turn itself
+// finished, but a background task the turn started is still running in
+// this tab's project. Same dot as .working, deliberately calmer ring —
+// present, not urgent, so it never competes with a tab that's actually
+// replying right now.
+enum V2TabStatus { case idle, working, workingBackground, needsYou, doneUnseen }
 
 struct V2SessionTabs: View {
     @ObserveInjection private var inject
@@ -131,6 +136,9 @@ private struct V2TabChip: View {
                 if status == .working {
                     V2RadarRing(color: v2.ink)
                 }
+                if status == .workingBackground {
+                    V2RadarRing(color: v2.ink, slow: true)
+                }
                 if status == .doneUnseen {
                     // Sage corner tick — the underline carries the state; this
                     // keeps it legible even when the underline is off-screen.
@@ -147,6 +155,11 @@ private struct V2TabChip: View {
                 case .working:
                     V2PulseDot(size: 9, color: v2.ink)
                     V2RadarRing(color: v2.ink)
+                case .workingBackground:
+                    // Dot holds steady — the turn already said what it had
+                    // to say. Only the ring, slower, signals "still going."
+                    Circle().fill(v2.ink).frame(width: 9, height: 9)
+                    V2RadarRing(color: v2.ink, slow: true)
                 case .doneUnseen:
                     Circle().fill(v2.add).frame(width: 9, height: 9)
                 case .needsYou:
@@ -188,7 +201,10 @@ private struct V2TabChip: View {
             Rectangle().fill(v2.del).frame(height: 2).padding(.horizontal, 10)
         case .working:
             V2IndeterminateLine(color: v2.ink)
-        case .idle:
+        case .idle, .workingBackground:
+            // Deliberately no underline for the background-task case — the
+            // busy progress-bar reads as active foreground work, which is
+            // exactly what this state isn't. The dot+ring alone carries it.
             EmptyView()
         }
     }
@@ -206,15 +222,19 @@ private struct V2TabChip: View {
 /// A ring that scales out and fades — the "working" radar pulse.
 private struct V2RadarRing: View {
     let color: Color
+    /// The background-task variant: slower (2.6s vs 1.8s), dimmer at rest
+    /// (.32 vs .55), and a smaller max scale (2.3 vs 2.6) — matches the
+    /// design's radarslow keyframe exactly. "Present, not urgent."
+    var slow: Bool = false
     @State private var animate = false
     var body: some View {
         Circle()
             .stroke(color, lineWidth: 1)
             .frame(width: 9, height: 9)
-            .scaleEffect(animate ? 2.6 : 1)
-            .opacity(animate ? 0 : 0.55)
+            .scaleEffect(animate ? (slow ? 2.3 : 2.6) : 1)
+            .opacity(animate ? 0 : (slow ? 0.32 : 0.55))
             .onAppear {
-                withAnimation(.easeOut(duration: 1.8).repeatForever(autoreverses: false)) { animate = true }
+                withAnimation(.easeOut(duration: slow ? 2.6 : 1.8).repeatForever(autoreverses: false)) { animate = true }
             }
     }
 }

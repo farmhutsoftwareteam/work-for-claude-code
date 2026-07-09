@@ -185,6 +185,10 @@ struct V2RootView: View {
                     VStack(spacing: 0) {
                         V2LiveTranscript(session: session, projectCwd: tab.projectCwd)
                             .frame(maxWidth: .infinity, maxHeight: .infinity)
+                        // Background task visibility (#69) — every
+                        // run_in_background shell command, live; empty ⇒
+                        // renders nothing.
+                        V2BackgroundTasksStrip(session: session)
                         // Co-driven terminal panes (#56) — shared PTYs Claude
                         // and the user drive together; empty ⇒ renders nothing.
                         CoTerminalStrip(session: session)

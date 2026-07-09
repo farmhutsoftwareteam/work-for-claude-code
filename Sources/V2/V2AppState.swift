@@ -325,7 +325,12 @@ final class V2AppState: ObservableObject {
             switch s.state {
             case .working, .spawning, .initializing: return .working
             case .awaitingPermission:                return .needsYou
-            default: return unseenDone.contains(tab.id) ? .doneUnseen : .idle
+            default:
+                if unseenDone.contains(tab.id) { return .doneUnseen }
+                // Turn's finished, but a background task it started hasn't —
+                // "present, not urgent" (#69/#71 tab signaling).
+                if s.backgroundTasks.contains(where: { $0.state == .running }) { return .workingBackground }
+                return .idle
             }
         }
     }
@@ -335,10 +340,10 @@ final class V2AppState: ObservableObject {
         var w = 0, d = 0, n = 0
         for tab in tabs {
             switch tabStatus(tab) {
-            case .working:    w += 1
-            case .doneUnseen: d += 1
-            case .needsYou:   n += 1
-            case .idle:       break
+            case .working:            w += 1
+            case .doneUnseen:         d += 1
+            case .needsYou:           n += 1
+            case .idle, .workingBackground: break
             }
         }
         return (w, d, n)
