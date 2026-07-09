@@ -6,6 +6,25 @@
         <description>Updates for Work</description>
         <language>en</language>
         <item>
+            <title>Version 2.6.2</title>
+            <pubDate>Thu, 09 Jul 2026 19:31:21 +0400</pubDate>
+            <sparkle:version>42</sparkle:version>
+            <sparkle:shortVersionString>2.6.2</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>15.0</sparkle:minimumSystemVersion>
+            <description><![CDATA[
+                <h3>Atelier 2.6.2 — cleanup and update detection for skills</h3>
+                <ul>
+                    <li><b>Duplicate skill files get a real cleanup action.</b> A "clean up" banner removes a redundant installed-twice copy — moved to Trash, always undoable.</li>
+                    <li><b>Skills installed from a plugin now tell you when there's an update</b> — an "update available" badge, a side-by-side comparison, and an explicit choice to keep your copy or take the new one. Nothing overwrites automatically.</li>
+                </ul>
+            ]]></description>
+            <enclosure
+                url="https://work.munyamakosa.com/Work.dmg"
+                length="12364210"
+                type="application/octet-stream"
+                sparkle:edSignature="gjvl9UppOb/+nERTiFe2L/vd/04Ts/8ozO/F3uS6FRgfdv6G2JecDvBunq+/rwMQoOLevaJ/1eFGtsJKvpIiBw==" />
+        </item>
+        <item>
             <title>Version 2.6.1</title>
             <pubDate>Thu, 09 Jul 2026 19:13:16 +0400</pubDate>
             <sparkle:version>41</sparkle:version>
