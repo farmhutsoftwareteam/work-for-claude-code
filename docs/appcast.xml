@@ -6,6 +6,24 @@
         <description>Updates for Work</description>
         <language>en</language>
         <item>
+            <title>Version 2.6.3</title>
+            <pubDate>Thu, 09 Jul 2026 19:51:18 +0400</pubDate>
+            <sparkle:version>43</sparkle:version>
+            <sparkle:shortVersionString>2.6.3</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>15.0</sparkle:minimumSystemVersion>
+            <description><![CDATA[
+                <h3>Atelier 2.6.3 — the transcript stops bouncing</h3>
+                <ul>
+                    <li><b>Fixed: scrolling a long conversation would bounce up and down.</b> A long-chat performance cap was re-centering itself on every new message — once a conversation passed ~120 messages, scrolling near the top of that window while a reply streamed meant rows would appear and disappear under your cursor. The window is now set once when a conversation opens and never moves on its own.</li>
+                </ul>
+            ]]></description>
+            <enclosure
+                url="https://work.munyamakosa.com/Work.dmg"
+                length="12365183"
+                type="application/octet-stream"
+                sparkle:edSignature="/kLxgqS9IOuP4yVlKd/R/Jbq3OO1sfw/0fiNwi7z5tyc+86PlaFqWUNu18/cjGup2oQrileDaQvf/Xh6+SI4BQ==" />
+        </item>
+        <item>
             <title>Version 2.6.2</title>
             <pubDate>Thu, 09 Jul 2026 19:31:21 +0400</pubDate>
             <sparkle:version>42</sparkle:version>
