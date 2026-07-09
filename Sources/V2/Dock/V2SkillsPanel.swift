@@ -17,6 +17,7 @@ struct V2SkillsPanel: View {
     @State private var expandedPlugins: Set<String> = []
     @State private var editing: EditTarget?
     @State private var showingMarketplace = false
+    @State private var justCleanedUp: Int?
     struct UpdateDiffTarget: Identifiable {
         let skill: ClaudeSkill
         let newContent: String
@@ -351,22 +352,49 @@ struct V2SkillsPanel: View {
 
     private var duplicateBanner: some View {
         HStack(spacing: 10) {
-            Text("\(duplicateArchives.count) skill\(duplicateArchives.count == 1 ? "" : "s") installed twice (a live copy + its old .skill archive)")
-                .font(.system(size: 10.5, design: .monospaced))
-                .foregroundColor(v2.mute)
-            Spacer()
-            Button("clean up") {
-                for archive in duplicateArchives { delete(archive) }
+            if let justCleanedUp {
+                Text("cleaned up \(justCleanedUp) ✓")
+                    .font(.system(size: 10.5, design: .monospaced))
+                    .foregroundColor(v2.add)
+            } else {
+                Text("\(duplicateArchives.count) skill\(duplicateArchives.count == 1 ? "" : "s") installed twice (a live copy + its old .skill archive)")
+                    .font(.system(size: 10.5, design: .monospaced))
+                    .foregroundColor(v2.mute)
             }
-            .buttonStyle(.plain)
-            .font(.system(size: 10.5, design: .monospaced))
-            .foregroundColor(v2.ink)
-            .underline()
+            Spacer()
+            if justCleanedUp == nil {
+                Button("clean up") { cleanUpDuplicates() }
+                    .buttonStyle(.plain)
+                    .font(.system(size: 10.5, design: .monospaced))
+                    .foregroundColor(v2.ink)
+                    .underline()
+            }
         }
         .padding(.horizontal, 18)
         .padding(.vertical, 9)
         .background(v2.card)
         .overlay(alignment: .bottom) { Rectangle().fill(v2.line).frame(height: 1) }
+    }
+
+    /// Real, direct trash (not routed through the per-row delete+undo
+    /// mechanism — these archives never render as their own row, so that
+    /// undo strip would never be visible). Reloads IMMEDIATELY instead of
+    /// the per-row action's 5s-deferred reload: the previous version left
+    /// the banner and "clean up" button showing unchanged for up to 5
+    /// seconds after the files were already gone, with zero indication
+    /// anything happened — reads as "the button doesn't work" even though
+    /// the deletion genuinely succeeded. A visible "cleaned up ✓" beat,
+    /// then the banner disappearing once data refreshes, replaces that
+    /// silence with real confirmation.
+    private func cleanUpDuplicates() {
+        let targets = duplicateArchives
+        for archive in targets { _ = try? SkillOperations.deleteSkill(archive) }
+        justCleanedUp = targets.count
+        reload()
+        Task {
+            try? await Task.sleep(nanoseconds: 2_000_000_000)
+            justCleanedUp = nil
+        }
     }
 
     private var personalSkills: [ClaudeSkill] { dedupedByPackaging(store.standaloneSkills) }

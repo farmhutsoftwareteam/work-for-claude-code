@@ -27,7 +27,16 @@ struct V2SkillsMarketplaceSheet: View {
     @State private var gitURL = ""
     @State private var gitBusy = false
     @State private var gitError: String?
-    @State private var gitPreview: (skill: ClaudeSkill, cloneDir: URL)?
+    @State private var gitCloneDir: URL?
+    /// Every SKILL.md-bearing directory found in the clone. Real skill repos
+    /// routinely bundle many skills (anthropics/skills has 17, none of them
+    /// at the repo root or one level deep — the earlier version of this scan
+    /// only checked those two spots and silently found nothing, or worse,
+    /// grabbed the repo's authoring TEMPLATE by accident). One candidate ⇒
+    /// auto-selected, same as before; several ⇒ shown as a picker so nothing
+    /// gets chosen for the user.
+    @State private var gitCandidates: [ClaudeSkill] = []
+    @State private var gitSelected: ClaudeSkill?
 
     var body: some View {
         VStack(spacing: 0) {
@@ -165,7 +174,7 @@ struct V2SkillsMarketplaceSheet: View {
                     .buttonStyle(.plain)
                     .disabled(gitBusy || gitURL.trimmingCharacters(in: .whitespaces).isEmpty)
                 }
-                Text("Clones the repo, looks for a SKILL.md at its root or one level deep, and lets you review before installing. This is a different channel from the plugin marketplace above — Atelier doesn't vet these.")
+                Text("Clones the repo and finds every skill in it — many repos bundle several — so you can review before installing. This is a different channel from the plugin marketplace above — Atelier doesn't vet these.")
                     .font(.system(size: 10, design: .monospaced))
                     .foregroundColor(v2.faint)
                     .lineSpacing(3)
@@ -176,12 +185,56 @@ struct V2SkillsMarketplaceSheet: View {
                         .foregroundColor(v2.del)
                 }
 
-                if let gitPreview {
+                // Multiple skills found, none chosen yet — pick one.
+                if gitSelected == nil, gitCandidates.count > 1 {
+                    VStack(alignment: .leading, spacing: 0) {
+                        Text("\(gitCandidates.count) skills found in this repo — pick one")
+                            .font(.system(size: 10.5, design: .monospaced))
+                            .foregroundColor(v2.mute)
+                            .padding(.horizontal, 12).padding(.vertical, 8)
+                        ForEach(gitCandidates) { candidate in
+                            Button { gitSelected = candidate } label: {
+                                HStack(spacing: 10) {
+                                    VStack(alignment: .leading, spacing: 1) {
+                                        Text(candidate.name)
+                                            .font(.system(size: 12.5, weight: .medium))
+                                        Text(candidate.skillDescription)
+                                            .font(.system(size: 10, design: .monospaced))
+                                            .foregroundColor(v2.faint)
+                                            .lineLimit(1)
+                                    }
+                                    Spacer()
+                                }
+                                .padding(.horizontal, 12).padding(.vertical, 7)
+                                .contentShape(Rectangle())
+                            }
+                            .buttonStyle(.plain)
+                            if candidate.id != gitCandidates.last?.id {
+                                Rectangle().fill(v2.line).frame(height: 1)
+                            }
+                        }
+                    }
+                    .background(v2.card)
+                    .overlay(Rectangle().stroke(v2.line2, lineWidth: 1))
+                }
+
+                // Exactly one candidate (auto-selected) or a manual pick from
+                // the list above — show the install confirmation.
+                if let gitSelected {
                     HStack(spacing: 12) {
                         VStack(alignment: .leading, spacing: 2) {
-                            Text(gitPreview.skill.name)
-                                .font(.system(size: 13, weight: .medium))
-                            Text(gitPreview.skill.skillDescription)
+                            HStack(spacing: 8) {
+                                Text(gitSelected.name)
+                                    .font(.system(size: 13, weight: .medium))
+                                if gitCandidates.count > 1 {
+                                    Button("change") { self.gitSelected = nil }
+                                        .buttonStyle(.plain)
+                                        .font(.system(size: 10, design: .monospaced))
+                                        .foregroundColor(v2.mute)
+                                        .underline()
+                                }
+                            }
+                            Text(gitSelected.skillDescription)
                                 .font(.system(size: 10.5, design: .monospaced))
                                 .foregroundColor(v2.faint)
                                 .lineLimit(2)
@@ -275,20 +328,33 @@ struct V2SkillsMarketplaceSheet: View {
         }
 
         // Exact subpath first (the folder the pasted link actually pointed
-        // at) — only fall back to the shallow root/one-level scan if that
-        // specific spot doesn't pan out, e.g. the link was slightly off.
-        let exact = subpath.map { cloneDir.appendingPathComponent($0) }
-        let skillDir = exact.flatMap { dir -> URL? in
-            FileManager.default.fileExists(atPath: dir.appendingPathComponent("SKILL.md").path) ? dir : nil
-        } ?? findSkillDir(under: cloneDir)
+        // at) — if it resolves, that's the one, no need to scan the rest of
+        // the repo. Otherwise scan the WHOLE tree for every SKILL.md: real
+        // skill repos routinely nest skills 1-2 levels under a container
+        // folder (anthropics/skills: skills/<name>/SKILL.md, 17 of them,
+        // none at the root or one level deep) — verified live against that
+        // exact repo before shipping this. One match ⇒ use it directly;
+        // several ⇒ let the user pick, never silently grab the first one
+        // found (that's how a repo's authoring TEMPLATE could get installed
+        // as if it were a real skill).
+        var candidates: [URL] = []
+        if let subpath, FileManager.default.fileExists(
+            atPath: cloneDir.appendingPathComponent(subpath).appendingPathComponent("SKILL.md").path
+        ) {
+            candidates = [cloneDir.appendingPathComponent(subpath)]
+        } else {
+            candidates = Self.findAllSkillDirs(under: cloneDir)
+        }
 
-        guard let skillDir, let skill = parseForPreview(skillDir) else {
-            let hint = subpath.map { " (looked in \($0)/, then the repo root and one level deep)" } ?? ""
-            gitError = "No SKILL.md found at the repo root or one level deep\(hint)."
+        let skills = candidates.compactMap { parseForPreview($0) }
+        guard !skills.isEmpty else {
+            gitError = "No SKILL.md found anywhere in this repo."
             try? FileManager.default.removeItem(at: cloneDir)
             return
         }
-        gitPreview = (skill, cloneDir)
+        gitCloneDir = cloneDir
+        gitCandidates = skills
+        gitSelected = skills.count == 1 ? skills[0] : nil
     }
 
     /// Splits a pasted GitHub/GitLab browser URL into a cloneable repo URL
@@ -334,18 +400,38 @@ struct V2SkillsMarketplaceSheet: View {
         return (s, nil, nil)
     }
 
-    /// Root, or exactly one level deep (covers "repo IS the skill" and
-    /// "repo contains several skill folders, look for the first one").
-    private func findSkillDir(under root: URL) -> URL? {
+    /// Bounded recursive scan for EVERY SKILL.md under `root` (not just root
+    /// or one level deep). Stops descending once a directory is confirmed as
+    /// a skill (its references/scripts/assets subfolders never get walked
+    /// into looking for more). Depth-capped and skips the universally-safe
+    /// non-skill directories (.git, node_modules, .github) — deliberately
+    /// NOT filtering by name otherwise (a "docs" or "examples" folder could
+    /// legitimately be someone's real skill name); the picker UI is what
+    /// makes an unexpected match harmless; the user sees it labeled and can
+    /// just not pick it.
+    private static func findAllSkillDirs(under root: URL, maxDepth: Int = 4) -> [URL] {
         let fm = FileManager.default
-        if fm.fileExists(atPath: root.appendingPathComponent("SKILL.md").path) { return root }
-        guard let entries = try? fm.contentsOfDirectory(at: root, includingPropertiesForKeys: nil) else { return nil }
-        for entry in entries {
-            var isDir: ObjCBool = false
-            guard fm.fileExists(atPath: entry.path, isDirectory: &isDir), isDir.boolValue else { continue }
-            if fm.fileExists(atPath: entry.appendingPathComponent("SKILL.md").path) { return entry }
+        let skip: Set<String> = [".git", "node_modules", ".github"]
+        var found: [URL] = []
+
+        func walk(_ dir: URL, depth: Int) {
+            if fm.fileExists(atPath: dir.appendingPathComponent("SKILL.md").path) {
+                found.append(dir)
+                return
+            }
+            guard depth < maxDepth,
+                  let entries = try? fm.contentsOfDirectory(at: dir, includingPropertiesForKeys: [.isDirectoryKey])
+            else { return }
+            for entry in entries {
+                let name = entry.lastPathComponent
+                guard !name.hasPrefix("."), !skip.contains(name),
+                      (try? entry.resourceValues(forKeys: [.isDirectoryKey]))?.isDirectory == true
+                else { continue }
+                walk(entry, depth: depth + 1)
+            }
         }
-        return nil
+        walk(root, depth: 0)
+        return found
     }
 
     private func parseForPreview(_ dir: URL) -> ClaudeSkill? {
@@ -375,15 +461,17 @@ struct V2SkillsMarketplaceSheet: View {
     }
 
     private func installGitPreview() {
-        guard let gitPreview else { return }
-        _ = try? SkillOperations.cloneToPersonal(gitPreview.skill)
+        guard let gitSelected else { return }
+        _ = try? SkillOperations.cloneToPersonal(gitSelected)
         cleanupGitPreview()
         gitURL = ""
         onInstalled()
     }
 
     private func cleanupGitPreview() {
-        if let gitPreview { try? FileManager.default.removeItem(at: gitPreview.cloneDir) }
-        gitPreview = nil
+        if let gitCloneDir { try? FileManager.default.removeItem(at: gitCloneDir) }
+        gitCloneDir = nil
+        gitCandidates = []
+        gitSelected = nil
     }
 }
