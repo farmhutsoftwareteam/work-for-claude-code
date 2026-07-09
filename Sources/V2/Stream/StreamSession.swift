@@ -917,7 +917,22 @@ final class StreamSession: ObservableObject {
                     // Already in transcript via appendStreamingText.
                     break
                 case .toolUse(let id, let name, let input):
-                    if name == "Bash" { pendingBashCommands[id] = input.dig("command")?.asString ?? "" }
+                    if name == "Bash" {
+                        let command = input.dig("command")?.asString ?? ""
+                        pendingBashCommands[id] = command
+                        // Bypass mode skips the permission gate entirely, so
+                        // handleControlRequest's "Run co-driven" offer (#57)
+                        // never fires — this is the only place left to catch
+                        // a flagged command before it silently hangs.
+                        if permissionMode == "bypassPermissions",
+                           terminalBridge != nil,
+                           InteractiveCommandDetector.looksInteractive(command) {
+                            transcript.append(.systemNote(
+                                kind: .info,
+                                text: "This looked interactive — ask me to run it co-driven if it hangs: \(command)"
+                            ))
+                        }
+                    }
                     transcript.append(.assistantBlock(block))
                 case .toolResult, .thinking, .unknown:
                     transcript.append(.assistantBlock(block))
