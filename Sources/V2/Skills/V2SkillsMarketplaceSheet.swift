@@ -234,17 +234,27 @@ struct V2SkillsMarketplaceSheet: View {
     private func addFromGit() async {
         gitError = nil
         cleanupGitPreview()
-        let urlString = gitURL.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !urlString.isEmpty else { return }
+        let raw = gitURL.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !raw.isEmpty else { return }
         gitBusy = true
         defer { gitBusy = false }
+
+        // People share skills as a link straight to the skill's folder inside
+        // a bigger repo (anthropics/skills bundles many this way) — a browser
+        // "tree"/"blob" URL, not a bare clone URL. Parse the repo/branch/
+        // subpath out so we clone the right branch and look in the right
+        // place first, instead of guessing across the whole repo.
+        let (cloneURL, branch, subpath) = Self.parseRepoURL(raw)
 
         let cloneDir = FileManager.default.temporaryDirectory
             .appendingPathComponent("atelier-skill-source-\(UUID().uuidString.prefix(8))")
 
         let proc = Process()
         proc.executableURL = URL(fileURLWithPath: "/usr/bin/git")
-        proc.arguments = ["clone", "--depth", "1", urlString, cloneDir.path]
+        var args = ["clone", "--depth", "1"]
+        if let branch { args += ["--branch", branch] }
+        args += [cloneURL, cloneDir.path]
+        proc.arguments = args
         proc.standardOutput = FileHandle.nullDevice
         let errPipe = Pipe()
         proc.standardError = errPipe
@@ -264,14 +274,64 @@ struct V2SkillsMarketplaceSheet: View {
             return
         }
 
-        guard let skillDir = findSkillDir(under: cloneDir),
-              let skill = parseForPreview(skillDir)
-        else {
-            gitError = "No SKILL.md found at the repo root or one level deep."
+        // Exact subpath first (the folder the pasted link actually pointed
+        // at) — only fall back to the shallow root/one-level scan if that
+        // specific spot doesn't pan out, e.g. the link was slightly off.
+        let exact = subpath.map { cloneDir.appendingPathComponent($0) }
+        let skillDir = exact.flatMap { dir -> URL? in
+            FileManager.default.fileExists(atPath: dir.appendingPathComponent("SKILL.md").path) ? dir : nil
+        } ?? findSkillDir(under: cloneDir)
+
+        guard let skillDir, let skill = parseForPreview(skillDir) else {
+            let hint = subpath.map { " (looked in \($0)/, then the repo root and one level deep)" } ?? ""
+            gitError = "No SKILL.md found at the repo root or one level deep\(hint)."
             try? FileManager.default.removeItem(at: cloneDir)
             return
         }
         gitPreview = (skill, cloneDir)
+    }
+
+    /// Splits a pasted GitHub/GitLab browser URL into a cloneable repo URL
+    /// plus an optional branch and subpath, so a link straight to ONE skill
+    /// inside a multi-skill repo (e.g. github.com/anthropics/skills/tree/
+    /// main/skill-creator) clones the right branch and checks the right
+    /// folder first — instead of cloning the whole repo and guessing. A
+    /// plain repo URL (no /tree/ or /blob/) passes through unchanged, same
+    /// as before this fix.
+    static func parseRepoURL(_ raw: String) -> (cloneURL: String, branch: String?, subpath: String?) {
+        var s = raw
+        while s.hasSuffix("/") { s.removeLast() }
+
+        // github.com/<owner>/<repo>/(tree|blob)/<branch>/<path...>
+        // gitlab.com/<owner>/<repo>/-/(tree|blob)/<branch>/<path...>
+        let patterns = [
+            #"^(https://github\.com/[^/]+/[^/]+)/(tree|blob)/([^/]+)/(.+)$"#,
+            #"^(https://gitlab\.com/[^/]+/[^/]+)/-/(tree|blob)/([^/]+)/(.+)$"#,
+        ]
+        for pattern in patterns {
+            guard let re = try? NSRegularExpression(pattern: pattern),
+                  let m = re.firstMatch(in: s, range: NSRange(s.startIndex..., in: s)),
+                  m.numberOfRanges == 5
+            else { continue }
+            func group(_ i: Int) -> String {
+                guard let r = Range(m.range(at: i), in: s) else { return "" }
+                return String(s[r])
+            }
+            let repoURL = group(1)
+            let kind = group(2)
+            let branch = group(3)
+            var path = group(4)
+            // A "blob" link points at a FILE (…/tree/main/skill-x/SKILL.md);
+            // drop the filename to get the containing folder. "tree" links
+            // already point at a folder.
+            if kind == "blob", let lastSlash = path.lastIndex(of: "/") {
+                path = String(path[path.startIndex..<lastSlash])
+            } else if kind == "blob" {
+                path = ""   // blob URL with no subdirectory — file sits at repo root
+            }
+            return (repoURL, branch, path.isEmpty ? nil : path)
+        }
+        return (s, nil, nil)
     }
 
     /// Root, or exactly one level deep (covers "repo IS the skill" and

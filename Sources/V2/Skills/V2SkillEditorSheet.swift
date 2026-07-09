@@ -34,8 +34,14 @@ struct V2SkillEditorSheet: View {
     @State private var name = ""
     @State private var desc = ""
     @State private var whenToUse = ""
-    @State private var model = "sonnet"
-    @State private var effort = "medium"
+    // nil = "inherit" (no model:/effort: line written — the skill runs under
+    // whatever model/effort the session already has, which is the correct
+    // default per docs.claude.com/en/docs/skills: "model — Model to use when
+    // this skill is active... Accepts... or `inherit` to keep the active
+    // model." A concrete value is a genuine but TURN-SCOPED override, not a
+    // persistent pin — the session reverts on the next prompt.
+    @State private var model: String?
+    @State private var effort: String?
     @State private var license = ""
     @State private var argumentHint = ""
     @State private var modelInvocable = true
@@ -55,8 +61,10 @@ struct V2SkillEditorSheet: View {
             _name = State(initialValue: skill.name)
             _desc = State(initialValue: skill.skillDescription)
             _whenToUse = State(initialValue: skill.whenToUse ?? "")
-            _model = State(initialValue: skill.model ?? "sonnet")
-            _effort = State(initialValue: skill.effort ?? "medium")
+            // Load exactly what's on disk — nil stays nil (inherit), never
+            // defaulted to a concrete model/effort the skill never asked for.
+            _model = State(initialValue: skill.model)
+            _effort = State(initialValue: skill.effort)
             _license = State(initialValue: skill.license ?? "")
             _argumentHint = State(initialValue: skill.argumentHint ?? "")
             _modelInvocable = State(initialValue: !skill.disableModelInvocation)
@@ -308,16 +316,23 @@ struct V2SkillEditorSheet: View {
         .frame(maxWidth: .infinity, alignment: .leading)
     }
 
-    private func segmented(_ options: [String], selection: Binding<String>) -> some View {
+    /// "inherit" (nil) is a real, distinct option here, not a placeholder —
+    /// it's the correct default per the docs: no model:/effort: line means
+    /// the skill just runs under the session's current model/effort. A
+    /// concrete pick IS a real override, but scoped to the turn the skill
+    /// runs (see the `model`/`effort` @State doc comment above).
+    private func segmented(_ options: [String], selection: Binding<String?>) -> some View {
         HStack(spacing: 1) {
-            ForEach(options, id: \.self) { opt in
-                Button(opt == "medium" ? "med" : opt) { selection.wrappedValue = opt }
+            ForEach(["inherit"] + options, id: \.self) { opt in
+                let isInherit = opt == "inherit"
+                let isSelected = isInherit ? selection.wrappedValue == nil : selection.wrappedValue == opt
+                Button(opt == "medium" ? "med" : opt) { selection.wrappedValue = isInherit ? nil : opt }
                     .buttonStyle(.plain)
                     .font(.system(size: 11, design: .monospaced))
-                    .foregroundColor(selection.wrappedValue == opt ? v2.paper : v2.mute)
+                    .foregroundColor(isSelected ? v2.paper : v2.mute)
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 7)
-                    .background(selection.wrappedValue == opt ? v2.ink : v2.card)
+                    .background(isSelected ? v2.ink : v2.card)
                     .overlay(Rectangle().stroke(v2.line2, lineWidth: 1))
             }
         }
@@ -355,7 +370,9 @@ struct V2SkillEditorSheet: View {
                 name = draft.name
                 desc = draft.description
                 whenToUse = draft.whenToUse ?? ""
-                model = draft.model ?? "sonnet"
+                // No forced default — if Claude's draft didn't set a model,
+                // that means inherit, and the field stays nil.
+                model = draft.model
                 bodyText = draft.body
                 isAiGenerated = true
                 stage = .form
