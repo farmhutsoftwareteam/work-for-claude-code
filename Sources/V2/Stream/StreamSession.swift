@@ -102,6 +102,9 @@ final class StreamSession: ObservableObject {
     /// Background shell tasks (run_in_background: true) — see
     /// V2BackgroundTask.swift for the wire format this parses.
     @Published private(set) var backgroundTasks: [V2BackgroundTask] = []
+    /// Subagents delegated via the Task/Agent tool (#38) — see
+    /// V2SubagentRun.swift for the wire format this parses.
+    @Published private(set) var subagentRuns: [V2SubagentRun] = []
     /// toolUseId → command, populated when a Bash tool_use is seen, so the
     /// spawn-ack (which only carries a task id + output path) can be matched
     /// back to the real command it started. Small and short-lived — an
@@ -789,7 +792,29 @@ final class StreamSession: ObservableObject {
         streamBuffer = ""
         toolOutcomes.removeAll()
         backgroundTasks.removeAll()
+        subagentRuns.removeAll()
         pendingBashCommands.removeAll()
+    }
+
+    /// Where this session's on-disk artifacts live —
+    /// ~/.claude/projects/<encoded-cwd>/<session-id>/ — including the
+    /// subagents/ directory the delegation peek (#39) tails. Derived from
+    /// the transcript path so it inherits jsonlURL's guess-then-scan
+    /// robustness against cwd-encoding drift. Read per transcript body
+    /// eval (30fps while streaming), so the resolution — which stats the
+    /// filesystem — is cached once it's confirmed real; before the
+    /// transcript file exists (brand-new session) the guess is returned
+    /// uncached so a later scan can still correct it.
+    private var cachedSessionDir: (sessionId: String, url: URL)?
+    var sessionDir: URL? {
+        guard let sessionId, let cwd else { return nil }
+        if let cached = cachedSessionDir, cached.sessionId == sessionId { return cached.url }
+        let jsonl = SessionHistoryLoader.jsonlURL(sessionId: sessionId, projectCwd: cwd)
+        let dir = jsonl.deletingPathExtension()
+        if FileManager.default.fileExists(atPath: jsonl.path) {
+            cachedSessionDir = (sessionId, dir)
+        }
+        return dir
     }
 
     /// Any task still .running when the session ends has lost its only
@@ -801,6 +826,10 @@ final class StreamSession: ObservableObject {
         for i in backgroundTasks.indices where backgroundTasks[i].state == .running {
             backgroundTasks[i].state = .orphaned
             backgroundTasks[i].finishedAt = Date()
+        }
+        for i in subagentRuns.indices where subagentRuns[i].state == .running {
+            subagentRuns[i].state = .orphaned
+            subagentRuns[i].finishedAt = Date()
         }
     }
 
@@ -917,6 +946,15 @@ final class StreamSession: ObservableObject {
                     // Already in transcript via appendStreamingText.
                     break
                 case .toolUse(let id, let name, let input):
+                    if V2SubagentParser.isAgentSpawn(toolName: name) {
+                        subagentRuns.append(V2SubagentRun(
+                            toolUseId: id,
+                            description: input.dig("description")?.asString ?? "agent",
+                            agentType: input.dig("subagent_type")?.asString ?? "general-purpose",
+                            isBackground: input.dig("run_in_background")?.asBool ?? false,
+                            startedAt: Date()
+                        ))
+                    }
                     if name == "Bash" {
                         let command = input.dig("command")?.asString ?? ""
                         pendingBashCommands[id] = command
@@ -946,6 +984,25 @@ final class StreamSession: ObservableObject {
                     // Record the outcome so the originating tool-call row can
                     // show its ✓ / ✗ valence (agent vocabulary).
                     toolOutcomes[toolUseId] = (isError ?? false)
+                    // A subagent spawn's tool_result is either the background
+                    // launch ack (run keeps going, grab the agentId) or — for
+                    // a synchronous agent — the final report itself. Either
+                    // way the delegation card (#38) is the surface for it;
+                    // the raw result row would just duplicate the card (and
+                    // the ack literally says "internal ID - do not mention"),
+                    // so it's captured on the run instead of appended.
+                    if let runIdx = subagentRuns.firstIndex(where: { $0.toolUseId == toolUseId }) {
+                        let text = content.asString ?? ""
+                        if subagentRuns[runIdx].isBackground,
+                           let agentId = V2SubagentParser.agentId(fromSpawnAck: text) {
+                            subagentRuns[runIdx].agentId = agentId
+                        } else {
+                            subagentRuns[runIdx].state = (isError ?? false) ? .failed : .completed
+                            subagentRuns[runIdx].finishedAt = Date()
+                            subagentRuns[runIdx].resultText = text.isEmpty ? nil : text
+                        }
+                        continue
+                    }
                     transcript.append(.assistantBlock(block))
                     // A backgrounded Bash call's result is the spawn
                     // acknowledgment, not the command's real output — catch
@@ -968,6 +1025,15 @@ final class StreamSession: ObservableObject {
                        let idx = backgroundTasks.firstIndex(where: { $0.id == done.id }) {
                         backgroundTasks[idx].state = done.isError ? .failed(exitCode: done.exitCode) : .completed(exitCode: done.exitCode)
                         backgroundTasks[idx].finishedAt = Date()
+                    }
+                    // Same notification channel, subagent flavor (#38) —
+                    // the summary-prefix check keeps the two parsers from
+                    // ever both claiming one notification.
+                    if let done = V2SubagentParser.parseCompletion(from: text),
+                       let idx = subagentRuns.firstIndex(where: { $0.toolUseId == done.toolUseId }) {
+                        subagentRuns[idx].state = done.isError ? .failed : .completed
+                        subagentRuns[idx].finishedAt = Date()
+                        if let result = done.result { subagentRuns[idx].resultText = result }
                     }
                 }
             }

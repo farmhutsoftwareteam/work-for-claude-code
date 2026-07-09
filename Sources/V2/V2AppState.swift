@@ -327,9 +327,11 @@ final class V2AppState: ObservableObject {
             case .awaitingPermission:                return .needsYou
             default:
                 if unseenDone.contains(tab.id) { return .doneUnseen }
-                // Turn's finished, but a background task it started hasn't —
-                // "present, not urgent" (#69/#71 tab signaling).
+                // Turn's finished, but a background task or delegated agent
+                // it started hasn't — "present, not urgent" (#69/#71 tab
+                // signaling; #38 extends it to subagents).
                 if s.backgroundTasks.contains(where: { $0.state == .running }) { return .workingBackground }
+                if s.subagentRuns.contains(where: { $0.state == .running && $0.isBackground }) { return .workingBackground }
                 return .idle
             }
         }

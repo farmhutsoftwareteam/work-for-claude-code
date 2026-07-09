@@ -77,4 +77,9 @@ enum JSONValue: Codable, Sendable, Equatable {
         if case .array(let v) = self { return v }
         return nil
     }
+
+    var asBool: Bool? {
+        if case .bool(let v) = self { return v }
+        return nil
+    }
 }

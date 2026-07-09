@@ -76,8 +76,11 @@ struct V2LiveTranscript: View {
                     // rebuilding the streaming row + resetting text selection);
                     // a stable ABSOLUTE index keeps the row alive as its text
                     // grows — and stays stable as the render window slides.
+                    // Per-list lookups built ONCE here, not per row (perf §4).
+                    let runsById = Dictionary(uniqueKeysWithValues: session.subagentRuns.map { ($0.toolUseId, $0) })
+                    let sessionDir = session.sessionDir
                     ForEach(firstVisibleIndex..<session.transcript.count, id: \.self) { i in
-                        row(for: session.transcript[i])
+                        row(for: session.transcript[i], runs: runsById, sessionDir: sessionDir)
                     }
 
                     if session.isRetrying {
@@ -227,13 +230,14 @@ struct V2LiveTranscript: View {
     }
 
     @ViewBuilder
-    private func row(for item: TranscriptItem) -> some View {
+    private func row(for item: TranscriptItem, runs: [String: V2SubagentRun], sessionDir: URL?) -> some View {
         switch item {
         case .userText(let text):
             V2UserTurn(text: text)
         case .assistantBlock(let block):
             V2AssistantBlock(block: block, toolOutcomes: session.toolOutcomes,
-                             baseDir: session.cwd ?? projectCwd)
+                             baseDir: session.cwd ?? projectCwd,
+                             subagentRuns: runs, sessionDir: sessionDir)
         case .compactBoundary:
             V2CompactBoundary()
         case .systemNote(let kind, let text):
@@ -346,6 +350,10 @@ struct V2AssistantBlock: View {
     let block: ContentBlock
     var toolOutcomes: [String: Bool] = [:]
     var baseDir: String? = nil
+    /// toolUseId → run, for rendering Task/Agent tool calls as delegation
+    /// cards (#38). Built once per transcript body eval, not per row.
+    var subagentRuns: [String: V2SubagentRun] = [:]
+    var sessionDir: URL? = nil
     @State private var buttonHover = false
     @State private var copied = false
 
@@ -410,7 +418,15 @@ struct V2AssistantBlock: View {
             V2MarkdownText(text: s, baseDir: baseDir)
                 .foregroundColor(v2.ink)
         case .toolUse(let id, let name, let input):
-            if name == "TodoWrite", let todos = input.dig("todos")?.asArray {
+            if V2SubagentParser.isAgentSpawn(toolName: name) {
+                V2DelegationCard(
+                    run: subagentRuns[id],
+                    toolUseId: id,
+                    fallbackDescription: input.dig("description")?.asString ?? "agent",
+                    fallbackAgentType: input.dig("subagent_type")?.asString ?? "agent",
+                    sessionDir: sessionDir
+                )
+            } else if name == "TodoWrite", let todos = input.dig("todos")?.asArray {
                 V2LiveTodoBlock(todos: todos)
             } else {
                 V2LiveToolWidget(name: name, input: input, outcome: toolOutcomes[id])
