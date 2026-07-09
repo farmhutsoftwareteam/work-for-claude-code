@@ -6,6 +6,26 @@
         <description>Updates for Work</description>
         <language>en</language>
         <item>
+            <title>Version 2.6.0</title>
+            <pubDate>Thu, 09 Jul 2026 18:41:38 +0400</pubDate>
+            <sparkle:version>40</sparkle:version>
+            <sparkle:shortVersionString>2.6.0</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>15.0</sparkle:minimumSystemVersion>
+            <description><![CDATA[
+                <h3>Atelier 2.6.0 — Skills, finally reachable</h3>
+                <ul>
+                    <li><b>Skills panel.</b> Click "Skills" in the left rail and get a real panel — grouped by personal, project, and plugin, with live enable/disable, edit, and undoable delete. Full editing: name, description, when-to-use, model, effort, license, argument hints, invocation toggles, and the SKILL.md body itself.</li>
+                    <li><b>Let Claude write it for you.</b> Describe what you want in plain language and Claude drafts a complete, real SKILL.md — not a blank template. Review before anything saves; cancel and nothing touches your skills folder.</li>
+                    <li><b>Marketplace.</b> Browse skills across every plugin marketplace you have registered — install a single skill without installing its whole plugin. Add a skill from any git repo: Atelier clones it, finds the SKILL.md, and shows you what it is before installing.</li>
+                </ul>
+            ]]></description>
+            <enclosure
+                url="https://work.munyamakosa.com/Work.dmg"
+                length="12269939"
+                type="application/octet-stream"
+                sparkle:edSignature="X0DGB5hzbieUg4zruRHKNnUrALRJrXm4dAKw4x9GGgaxojKKvFQ/sEuXyvkbfT+ddr2uFN/b0V+sM4QCDTKLCg==" />
+        </item>
+        <item>
             <title>Version 2.5.6</title>
             <pubDate>Wed, 08 Jul 2026 20:57:02 +0400</pubDate>
             <sparkle:version>39</sparkle:version>
