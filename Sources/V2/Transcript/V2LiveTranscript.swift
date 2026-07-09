@@ -24,12 +24,26 @@ struct V2LiveTranscript: View {
     /// one; "show earlier" extends the window on demand. Data is untouched —
     /// this bounds LAYOUT, not history.
     private static let renderWindow = 120
-    @State private var extraVisible = 0
 
-    private var firstVisibleIndex: Int {
-        max(0, session.transcript.count - Self.renderWindow - extraVisible)
+    /// The window's start index — set ONCE per conversation (init, or the
+    /// session-switch handler below), never continuously recomputed from
+    /// live transcript.count. It used to be a computed property re-deriving
+    /// `count - renderWindow` on every render — meaning in a conversation
+    /// past 120 items, EVERY new appended message also dropped the oldest
+    /// rendered row off the top to keep the window size constant. Scrolling
+    /// near that boundary while a reply was actively streaming meant rows
+    /// were appearing/disappearing under the cursor in real time — the
+    /// "bounces and bounces" report. The cap only ever needed to bound the
+    /// INITIAL layout cost of a long resumed chat; once a conversation is
+    /// open, new messages should just extend the window's end, never slide
+    /// its start out from under an active scroll.
+    @State private var firstVisibleIndex: Int
+
+    init(session: StreamSession, projectCwd: String? = nil) {
+        self.session = session
+        self.projectCwd = projectCwd
+        _firstVisibleIndex = State(initialValue: max(0, session.transcript.count - Self.renderWindow))
     }
-
 
     var body: some View {
         // Profiling marker: one Point-of-Interest per transcript render. During
@@ -126,7 +140,7 @@ struct V2LiveTranscript: View {
             // changes under this view. Reset the render window and land at
             // the new conversation's bottom — scroll state never bleeds.
             .onChange(of: ObjectIdentifier(session)) { _, _ in
-                extraVisible = 0
+                firstVisibleIndex = max(0, session.transcript.count - Self.renderWindow)
                 proxy.scrollTo(bottomAnchorID, anchor: .bottom)
                 DispatchQueue.main.async {
                     proxy.scrollTo(bottomAnchorID, anchor: .bottom)
@@ -143,7 +157,7 @@ struct V2LiveTranscript: View {
     /// layout. Extending re-renders with a bigger window; identity is
     /// absolute-index so existing rows don't rebuild.
     private var showEarlierButton: some View {
-        Button { extraVisible += 300 } label: {
+        Button { firstVisibleIndex = max(0, firstVisibleIndex - 300) } label: {
             HStack(spacing: 8) {
                 Image(systemName: "chevron.up")
                     .font(.system(size: 9, weight: .medium))
