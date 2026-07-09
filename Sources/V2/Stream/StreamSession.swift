@@ -99,6 +99,14 @@ final class StreamSession: ObservableObject {
     /// tool_use_id → isError, recorded when a tool result arrives. Lets a
     /// tool-call row show its ✓ / ✗ valence (and a spinner while absent).
     @Published private(set) var toolOutcomes: [String: Bool] = [:]
+    /// Background shell tasks (run_in_background: true) — see
+    /// V2BackgroundTask.swift for the wire format this parses.
+    @Published private(set) var backgroundTasks: [V2BackgroundTask] = []
+    /// toolUseId → command, populated when a Bash tool_use is seen, so the
+    /// spawn-ack (which only carries a task id + output path) can be matched
+    /// back to the real command it started. Small and short-lived — an
+    /// entry is consumed the moment its matching tool_result arrives.
+    private var pendingBashCommands: [String: String] = [:]
 
     /// The models THIS binary supports, reported in the `initialize` reply.
     /// This is the authoritative, always-current list (it's how new models
@@ -566,6 +574,7 @@ final class StreamSession: ObservableObject {
             isRetrying = false
             lastRetry = nil
             pendingPermission = nil
+            orphanRunningBackgroundTasks()
             state = .terminated(reason: "stream closed")
         }
     }
@@ -779,6 +788,20 @@ final class StreamSession: ObservableObject {
         streamingIndex = nil
         streamBuffer = ""
         toolOutcomes.removeAll()
+        backgroundTasks.removeAll()
+        pendingBashCommands.removeAll()
+    }
+
+    /// Any task still .running when the session ends has lost its only
+    /// channel for a completion signal — mark it .orphaned rather than
+    /// leaving a "running" row that can never resolve (the exact
+    /// indistinguishable-from-hung failure mode #70's peek exists to catch,
+    /// except this is the session itself going away, not the task hanging).
+    private func orphanRunningBackgroundTasks() {
+        for i in backgroundTasks.indices where backgroundTasks[i].state == .running {
+            backgroundTasks[i].state = .orphaned
+            backgroundTasks[i].finishedAt = Date()
+        }
     }
 
     /// Close stdin (clean EOF) and terminate the child.
@@ -804,6 +827,12 @@ final class StreamSession: ObservableObject {
             try? await writer?.close()
             proc?.terminate()
         }
+        // Hibernation kills the claude process — any background task it
+        // spawned loses its only notification channel exactly like a real
+        // termination does, even though the session itself is "just
+        // resting." Waking the tab later starts a NEW claude process that
+        // never hears about the old task either way.
+        orphanRunningBackgroundTasks()
         state = .hibernated
     }
 
@@ -831,6 +860,7 @@ final class StreamSession: ObservableObject {
         Task {
             try? await inputWriter?.close()
             process?.terminate()
+            orphanRunningBackgroundTasks()
             state = .terminated(reason: "user_stop")
         }
     }
@@ -886,7 +916,10 @@ final class StreamSession: ObservableObject {
                 case .text:
                     // Already in transcript via appendStreamingText.
                     break
-                case .toolUse, .toolResult, .thinking, .unknown:
+                case .toolUse(let id, let name, let input):
+                    if name == "Bash" { pendingBashCommands[id] = input.dig("command")?.asString ?? "" }
+                    transcript.append(.assistantBlock(block))
+                case .toolResult, .thinking, .unknown:
                     transcript.append(.assistantBlock(block))
                 }
             }
@@ -894,11 +927,33 @@ final class StreamSession: ObservableObject {
             // Tool results echo back in user events — render as a result row.
             finalizeStreamingText()
             for block in m.message.content {
-                if case .toolResult(let toolUseId, _, let isError) = block {
+                if case .toolResult(let toolUseId, let content, let isError) = block {
                     // Record the outcome so the originating tool-call row can
                     // show its ✓ / ✗ valence (agent vocabulary).
                     toolOutcomes[toolUseId] = (isError ?? false)
                     transcript.append(.assistantBlock(block))
+                    // A backgrounded Bash call's result is the spawn
+                    // acknowledgment, not the command's real output — catch
+                    // it here and start tracking the task.
+                    if let spawn = V2BackgroundTaskParser.parseSpawn(from: content.asString) {
+                        let command = pendingBashCommands.removeValue(forKey: toolUseId) ?? ""
+                        backgroundTasks.append(V2BackgroundTask(
+                            id: spawn.id, command: command, outputPath: spawn.outputPath, startedAt: Date()
+                        ))
+                    }
+                } else if case .text(let text) = block {
+                    // Task-notifications arrive as injected context ahead of
+                    // the model's next turn — see V2BackgroundTask.swift for
+                    // why this is the primary hypothesis for the delivery
+                    // channel. A miss here just means the task never
+                    // resolves in the UI until the session ends (→
+                    // .orphaned) — never a crash or a rendered artifact,
+                    // since this branch was previously unhandled entirely.
+                    if let done = V2BackgroundTaskParser.parseCompletion(from: text),
+                       let idx = backgroundTasks.firstIndex(where: { $0.id == done.id }) {
+                        backgroundTasks[idx].state = done.isError ? .failed(exitCode: done.exitCode) : .completed(exitCode: done.exitCode)
+                        backgroundTasks[idx].finishedAt = Date()
+                    }
                 }
             }
         case .streamEvent(let s):
