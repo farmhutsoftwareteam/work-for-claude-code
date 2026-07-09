@@ -324,11 +324,23 @@ echo "────────────────────────�
 
 DMG_SIZE=$(stat -f%z "$DMG_NAME")
 PUBLISH_DATE=$(date -R)
+# Versioned filename for the appcast enclosure — every release gets its own
+# permanent, immutable URL (Work-2.7.0.dmg), never reused. This is the fix
+# for Sparkle's "the update is improperly signed" error: with every release
+# overwriting the SAME docs/Work.dmg, a CDN edge that hasn't yet propagated
+# a deploy can serve an OLD version's bytes at a URL the appcast now
+# advertises a NEW version's signature for — a real, observed failure mode,
+# not hypothetical. A versioned URL can never collide across releases: once
+# published its bytes never change again, so eventual CDN consistency can
+# never produce a mismatch. docs/Work.dmg (unversioned) is kept ONLY as a
+# "latest" alias for the marketing site's direct-download buttons — Sparkle
+# never reads that URL, so its caching behavior is irrelevant to updates.
+VERSIONED_DMG_NAME="Work-${VERSION}.dmg"
 # The CNAME work.munyamakosa.com → munyamakosa.github.io/work is the URL
 # baked into shipped binaries via SUFeedURL. Appcast enclosure URLs must
 # match that host so Sparkle's signature verification and download path
 # stay consistent across releases.
-DOWNLOAD_URL="https://work.munyamakosa.com/$DMG_NAME"
+DOWNLOAD_URL="https://work.munyamakosa.com/$VERSIONED_DMG_NAME"
 # Pull the build number from project.yml so sparkle:version matches what
 # Sparkle compares against in the installed app's Info.plist. Without
 # this, sparkle:version was the marketing string ("2.0.0") and Sparkle's
@@ -454,28 +466,41 @@ echo ""
 # Step 12: Stage the DMG into docs/ for the Vercel site
 # work.munyamakosa.com (and atelier.munyamakosa.com) serve the DMG from the
 # docs/ Vercel project, NOT from the GitHub release. The appcast's enclosure
-# length + edSignature are computed against THIS exact build, so docs/Work.dmg
-# MUST be the same bytes. Forgetting this copy means Sparkle downloads a stale
-# binary whose hash doesn't match the signature → "update is improperly
-# signed" and the update silently fails. Copy it here so it can never drift.
+# length + edSignature are computed against THIS exact build, so the staged
+# copy MUST be the same bytes. Two copies go out: the VERSIONED one is what
+# the appcast points to — permanent, never overwritten again, so a stale CDN
+# edge can never serve mismatched bytes for it (see the note above
+# VERSIONED_DMG_NAME). The unversioned Work.dmg is refreshed every release
+# purely as a "latest" alias for the marketing site's download buttons;
+# Sparkle never reads it, so its own caching lag doesn't matter.
 # ─────────────────────────────────────────────────────────────────────────────
 echo "──────────────────────────────────────────────────────────────"
 echo "  Step 12: Staging DMG into docs/"
 echo "──────────────────────────────────────────────────────────────"
 DOCS_DIR="$SCRIPT_DIR/docs"
 if [ -d "$DOCS_DIR" ]; then
-    cp "$DMG_NAME" "$DOCS_DIR/$DMG_NAME"
-    COPIED_SIZE=$(stat -f%z "$DOCS_DIR/$DMG_NAME")
     SRC_SIZE=$(stat -f%z "$DMG_NAME")
-    if [ "$COPIED_SIZE" = "$SRC_SIZE" ]; then
-        echo "✓ Copied $DMG_NAME → docs/ ($COPIED_SIZE bytes — matches appcast enclosure length)."
+
+    cp "$DMG_NAME" "$DOCS_DIR/$VERSIONED_DMG_NAME"
+    VERSIONED_COPIED_SIZE=$(stat -f%z "$DOCS_DIR/$VERSIONED_DMG_NAME")
+    if [ "$VERSIONED_COPIED_SIZE" = "$SRC_SIZE" ]; then
+        echo "✓ Copied $DMG_NAME → docs/$VERSIONED_DMG_NAME ($VERSIONED_COPIED_SIZE bytes — matches appcast enclosure length)."
     else
-        echo "⚠ docs/ copy size ($COPIED_SIZE) != source ($SRC_SIZE) — investigate before deploying."
+        echo "⚠ docs/$VERSIONED_DMG_NAME size ($VERSIONED_COPIED_SIZE) != source ($SRC_SIZE) — investigate before deploying."
+    fi
+
+    cp "$DMG_NAME" "$DOCS_DIR/$DMG_NAME"
+    LATEST_COPIED_SIZE=$(stat -f%z "$DOCS_DIR/$DMG_NAME")
+    if [ "$LATEST_COPIED_SIZE" = "$SRC_SIZE" ]; then
+        echo "✓ Copied $DMG_NAME → docs/$DMG_NAME (\"latest\" alias for the marketing site's download links)."
+    else
+        echo "⚠ docs/$DMG_NAME size ($LATEST_COPIED_SIZE) != source ($SRC_SIZE) — investigate before deploying."
     fi
     echo "  Deploy it with:  (cd docs && vercel --prod --yes)"
 else
     echo "⚠ docs/ not found at $DOCS_DIR — skipping. Copy $DMG_NAME to your"
-    echo "  Pages/Vercel source manually so it matches the appcast signature."
+    echo "  Pages/Vercel source manually (as both $DMG_NAME and $VERSIONED_DMG_NAME)"
+    echo "  so it matches the appcast signature."
 fi
 echo ""
 
@@ -505,13 +530,16 @@ echo "  • $DMG_NAME ($(du -h "$DMG_NAME" | cut -f1) — notarized & stapled)"
 echo ""
 echo "Next steps:"
 echo "  1. Add the appcast XML snippet above to docs/appcast.xml"
+echo "     (it points to the VERSIONED URL — $VERSIONED_DMG_NAME — never edit"
+echo "     an old entry's url/length/signature to match a later build)"
 echo "  2. Add a v${VERSION} <article> to docs/releases.html (top of the list)"
 echo "  3. Deploy the site:  (cd docs && vercel --prod --yes)"
-echo "     (docs/$DMG_NAME was already staged in Step 12 — no manual copy needed)"
+echo "     (docs/$VERSIONED_DMG_NAME and docs/$DMG_NAME were both already staged in Step 12)"
 echo "  4. git commit + push the version bump, appcast, releases.html, and"
 echo "     release-notes/v${VERSION}.md"
-echo "  5. Verify live size matches the appcast:"
-echo "     curl -sI https://work.munyamakosa.com/$DMG_NAME | grep -i content-length"
+echo "  5. Verify live size matches the appcast (check the VERSIONED url — this"
+echo "     is the one Sparkle actually downloads):"
+echo "     curl -sI https://work.munyamakosa.com/$VERSIONED_DMG_NAME | grep -i content-length"
 echo "  6. If the GH release step skipped above, run the command it printed"
 echo ""
 echo "────────────────────────────────────────────────────────────"
