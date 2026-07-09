@@ -6,6 +6,26 @@
         <description>Updates for Work</description>
         <language>en</language>
         <item>
+            <title>Version 2.6.4</title>
+            <pubDate>Thu, 09 Jul 2026 20:33:54 +0400</pubDate>
+            <sparkle:version>44</sparkle:version>
+            <sparkle:shortVersionString>2.6.4</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>15.0</sparkle:minimumSystemVersion>
+            <description><![CDATA[
+                <h3>Atelier 2.6.4 — your tabs come back</h3>
+                <ul>
+                    <li><b>Reopening Atelier restores your workspace.</b> Every tab comes back exactly where you left it — conversation on screen, resting quietly. Nothing heavy happens at launch: a restored tab uses zero resources until your next message, which wakes it instantly with its full history.</li>
+                    <li><b>Pasting a skills repo link now finds every skill in it</b> — repos like anthropics/skills bundle many in nested folders; Atelier scans the whole repo and shows a picker when there's more than one.</li>
+                    <li><b>The duplicate-skills "clean up" button confirms visibly</b> — "cleaned up N ✓" the moment you click.</li>
+                </ul>
+            ]]></description>
+            <enclosure
+                url="https://work.munyamakosa.com/Work.dmg"
+                length="12434504"
+                type="application/octet-stream"
+                sparkle:edSignature="d9BDw+jIJfwaG0DpSPnuzDUKD6hsTewQT2H51bHb5ZhzKH2OF5eaiLLlzR14ve3Rxwu26LFUznpKPDLTnswbAQ==" />
+        </item>
+        <item>
             <title>Version 2.6.3</title>
             <pubDate>Thu, 09 Jul 2026 19:51:18 +0400</pubDate>
             <sparkle:version>43</sparkle:version>
