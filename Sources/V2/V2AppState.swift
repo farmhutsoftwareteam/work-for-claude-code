@@ -178,6 +178,10 @@ final class V2AppState: ObservableObject {
         let old = lastTabState[tabId]
         lastTabState[tabId] = newState
         defer { objectWillChange.send() }   // republish so the tab strip re-renders
+        // Persist on every lifecycle transition — this is what captures a new
+        // session's id the moment the init reply reports it (newTab spawns
+        // before any id exists), plus hibernations, terminations, restarts.
+        persistWorkspace()
 
         // Skip the publisher's initial replay (no real transition yet).
         guard let old else { return }
@@ -195,6 +199,7 @@ final class V2AppState: ObservableObject {
             V2Sound.play(.done)
         }
     }
+
 
     // MARK: - Setup
 
@@ -353,6 +358,82 @@ final class V2AppState: ObservableObject {
         mainView = .chat   // leave the Usage view if we were on it
     }
 
+    // MARK: - Workspace restore (Chrome-style, process-free)
+
+    /// What survives a quit: each Mode-B tab that has a real claude session
+    /// behind it. Mode-A tabs are live PTYs — nothing to restore them TO —
+    /// and a Mode-B tab that never started a session isn't worth a slot.
+    private struct WorkspaceSnapshot: Codable {
+        struct TabEntry: Codable {
+            let projectCwd: String
+            let title: String
+            let sessionId: String
+        }
+        let tabs: [TabEntry]
+        let activeSessionId: String?
+    }
+    private static let workspaceKey = "v2.workspace"
+
+    /// Continuously persisted (every tab open/close/activate + every session
+    /// state transition), not saved-on-quit — a crash or force-quit loses
+    /// nothing. The payload is a handful of strings; encoding it on these
+    /// low-frequency events is effectively free.
+    func persistWorkspace() {
+        let entries: [WorkspaceSnapshot.TabEntry] = tabs.compactMap { tab in
+            guard tab.surface == .modeB else { return nil }
+            guard let sid = tab.streamSession?.sessionId ?? resumeIds[tab.id] else { return nil }
+            return .init(projectCwd: tab.projectCwd, title: tab.title, sessionId: sid)
+        }
+        let active = activeTabId
+            .flatMap { id in tabs.first { $0.id == id } }
+            .flatMap { $0.streamSession?.sessionId ?? resumeIds[$0.id] }
+        let snapshot = WorkspaceSnapshot(tabs: entries, activeSessionId: active)
+        if let data = try? JSONEncoder().encode(snapshot) {
+            UserDefaults.standard.set(data, forKey: Self.workspaceKey)
+        }
+    }
+
+    /// Reopen the previous workspace — every tab lands HIBERNATED: transcript
+    /// preloaded from disk (one bounded file read per tab), composer live,
+    /// header reading "Resting", and NO claude subprocess until the first
+    /// message wakes that tab via --resume. Restoring six tabs costs six
+    /// file reads and zero of the 0.4-0.6GB processes — the performance
+    /// concern that blocked this feature is what hibernation already solved.
+    func restoreWorkspaceIfNeeded() {
+        guard tabs.isEmpty, let terminals, let binary = claudeBinary else { return }
+        guard let data = UserDefaults.standard.data(forKey: Self.workspaceKey),
+              let snapshot = try? JSONDecoder().decode(WorkspaceSnapshot.self, from: data),
+              !snapshot.tabs.isEmpty else { return }
+
+        var activeCandidate: UUID?
+        for entry in snapshot.tabs {
+            // Snapshot hygiene: a session whose transcript is gone (cleaned
+            // up, machine changed) can't be resumed — skip it rather than
+            // restoring a tab whose first message would fail.
+            let transcript = SessionHistoryLoader.jsonlURL(sessionId: entry.sessionId, projectCwd: entry.projectCwd)
+            guard FileManager.default.fileExists(atPath: transcript.path) else { continue }
+
+            let id = terminals.openModeB(projectCwd: entry.projectCwd, title: entry.title)
+            resumeIds[id] = entry.sessionId
+            if let session = terminals.tabs.first(where: { $0.id == id })?.streamSession {
+                observeSessionState(session, tabId: id)
+                session.restoreHibernated(
+                    cwd: URL(fileURLWithPath: entry.projectCwd), claudeURL: binary,
+                    sessionId: entry.sessionId, model: defaultSpawnModel,
+                    permissionMode: defaultPermissionMode
+                )
+            }
+            if entry.sessionId == snapshot.activeSessionId { activeCandidate = id }
+        }
+        guard let id = activeCandidate ?? tabs.last?.id else { return }
+        activeTabId = id
+        mainView = .chat
+        if let tab = tabs.first(where: { $0.id == id }) {
+            selectedProjectCwd = URL(fileURLWithPath: tab.projectCwd)
+            selectedProjectName = (tab.projectCwd as NSString).lastPathComponent
+        }
+    }
+
     // MARK: - Tab management
 
     /// Create a new Mode-B tab in the selected project. Auto-activates it in
@@ -386,6 +467,7 @@ final class V2AppState: ObservableObject {
         guard tabs.contains(where: { $0.id == tabId }) else { return }
         activeTabId = tabId
         mainView = .chat
+        persistWorkspace()
     }
 
     /// Open `claude mcp login <server>` in an embedded terminal tab so the
@@ -454,6 +536,7 @@ final class V2AppState: ObservableObject {
         if wasActive {
             activeTabId = tabs.last?.id
         }
+        persistWorkspace()
     }
 
     /// Change the active session's permission mode. Persists the choice as

@@ -141,6 +141,12 @@ struct V2RootView: View {
         .task {
             appState.attach(terminals: terminals)
             appState.resolveBinary()
+            // Reopen the previous workspace — tabs come back HIBERNATED
+            // (transcript preloaded, zero subprocesses; first message wakes
+            // each via --resume). Must run after attach + resolveBinary:
+            // restore needs the terminals controller and the wake recipe's
+            // binary path.
+            appState.restoreWorkspaceIfNeeded()
             appState.refreshDiscoveredModels()
             appState.refreshModelCatalog()
             // Aged composer pastes (>24h) get cleaned up here rather than

@@ -281,6 +281,38 @@ final class StreamSession: ObservableObject {
         }
     }
 
+    /// Restore a previous conversation WITHOUT spawning its claude process —
+    /// the launch-restore path. Preloads the transcript off-main exactly
+    /// like resume(), but lands in .hibernated instead of spawning: the tab
+    /// reads as a "Resting" conversation (transcript on screen, composer
+    /// live) and the first message wakes it via --resume — the same
+    /// machinery idle tabs already use. Restoring N tabs at launch is
+    /// therefore N bounded file reads and ZERO subprocesses (each live
+    /// claude process costs 0.4-0.6GB; this is what makes restore free).
+    func restoreHibernated(cwd: URL, claudeURL: URL, sessionId: String, model: String? = nil, permissionMode: String? = nil) {
+        guard !isResuming else { return }
+        guard case .idle = state else { return }
+        isResuming = true
+        // The wake recipe send() needs: wake(thenSend:) respawns with these
+        // plus resumeId — which reads self.sessionId, so set it now (on a
+        // real resume the init reply reports the same id back anyway).
+        wakeCwd = cwd
+        wakeClaudeURL = claudeURL
+        wakeModel = model
+        wakePermissionMode = permissionMode
+        self.sessionId = sessionId
+        let cwdPath = cwd.path
+        Task { [weak self] in
+            let preload = await Task.detached(priority: .userInitiated) {
+                SessionHistoryLoader.load(sessionId: sessionId, projectCwd: cwdPath)
+            }.value
+            guard let self else { return }
+            if let preload { self.preloadHistory(preload) }
+            self.isResuming = false
+            self.state = .hibernated
+        }
+    }
+
     /// Launch `claude -p` in the project's cwd. No-op if not idle. Pass a
     /// `resumeId` (an existing Claude session UUID under `~/.claude/projects`)
     /// to replay that session's history before the new turn — claude will
