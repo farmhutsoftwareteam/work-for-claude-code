@@ -61,6 +61,19 @@ final class StreamSession: ObservableObject {
     /// Message typed into a hibernated tab — buffered through the respawn and
     /// flushed the moment the new subprocess's stdin writer exists.
     private var pendingWakeText: String?
+
+    /// Stable per-instance identity for VIEW-LAYER change detection. Views
+    /// must key "did the session under me change?" on THIS, never on
+    /// ObjectIdentifier(session): ObjectIdentifier is the object's memory
+    /// address, and malloc freely reuses a deallocated session's address for
+    /// a later one — same identifier, so an .onChange/.task(id:) keyed on it
+    /// silently never fires for the new session. That was the intermittent
+    /// "switched to a tab and the chat is empty" bug: the transcript's
+    /// render-window reset was keyed on object identity, address reuse ate
+    /// the change signal, and the stale window rendered zero rows forever.
+    /// (`sessionId` can't serve this role — it's nil until init reports it.)
+    nonisolated let instanceId = UUID()
+
     @Published private(set) var sessionId: String?
     @Published private(set) var model: String = "claude-sonnet"
     @Published private(set) var permissionMode: String = "default"
@@ -99,6 +112,13 @@ final class StreamSession: ObservableObject {
     /// tool_use_id → isError, recorded when a tool result arrives. Lets a
     /// tool-call row show its ✓ / ✗ valence (and a spinner while absent).
     @Published private(set) var toolOutcomes: [String: Bool] = [:]
+    /// tool_use_id → when the call was appended (≈ execution start: the
+    /// assistant snapshot carrying a tool_use arrives before the tool runs).
+    /// Lets an in-flight row show elapsed time — a 5-minute test run and a
+    /// hung command otherwise render identically to a 5-second one (just a
+    /// spinner). Not @Published: every write coincides with a transcript
+    /// append, which already republishes.
+    private(set) var toolStartTimes: [String: Date] = [:]
     /// Background shell tasks (run_in_background: true) — see
     /// V2BackgroundTask.swift for the wire format this parses.
     @Published private(set) var backgroundTasks: [V2BackgroundTask] = []
@@ -256,7 +276,13 @@ final class StreamSession: ObservableObject {
                         if !trimmed.isEmpty {
                             transcript.append(.userText(trimmed))
                         }
-                    case .toolResult:
+                    case .toolResult(let toolUseId, _, let isError):
+                        // Record the outcome exactly like the live path does
+                        // — without this, every tool row in a RESTORED
+                        // transcript kept its "still running" spinner
+                        // forever (outcome nil = spinner), making an old
+                        // conversation read as full of hung tools.
+                        toolOutcomes[toolUseId] = (isError ?? false)
                         transcript.append(.assistantBlock(block))
                     default:
                         break
@@ -842,6 +868,7 @@ final class StreamSession: ObservableObject {
         streamBuffer = ""
         thinkingBuffer = ""
         toolOutcomes.removeAll()
+        toolStartTimes.removeAll()
         backgroundTasks.removeAll()
         subagentRuns.removeAll()
         pendingBashCommands.removeAll()
@@ -1022,6 +1049,7 @@ final class StreamSession: ObservableObject {
                     // Already in transcript via appendStreamingText.
                     break
                 case .toolUse(let id, let name, let input):
+                    toolStartTimes[id] = Date()
                     // Guard against a second .assistant snapshot for the same
                     // turn re-delivering an already-seen tool_use id (seen
                     // after resume/retry) — an unguarded append would leave

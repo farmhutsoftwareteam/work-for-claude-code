@@ -63,7 +63,10 @@ struct V2BackgroundTasksStrip: View {
         // `.task(id:)` cancels and restarts whenever the session identity
         // changes (tab switch) — unlike @StateObject, this is guaranteed to
         // pick up the new session rather than freezing on the first one.
-        .task(id: ObjectIdentifier(session)) {
+        // Keyed on instanceId, NOT ObjectIdentifier(session) — the latter is
+        // a memory address malloc can reuse across dealloc/alloc, silently
+        // eating the change signal (see instanceId's doc on StreamSession).
+        .task(id: session.instanceId) {
             backgroundTasks = session.backgroundTasks
             for await tasks in session.$backgroundTasks.values {
                 backgroundTasks = tasks

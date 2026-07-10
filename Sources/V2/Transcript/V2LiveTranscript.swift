@@ -168,7 +168,13 @@ struct V2LiveTranscript: View {
             // the whole tree per switch was the tab-lag), so the SESSION
             // changes under this view. Reset the render window and land at
             // the new conversation's bottom — scroll state never bleeds.
-            .onChange(of: ObjectIdentifier(session)) { _, _ in
+            // Keyed on instanceId, NOT ObjectIdentifier(session): malloc can
+            // give a new session a deallocated one's address, making the
+            // identifiers compare equal — this onChange then never fired for
+            // the new session, the stale window rendered zero rows, and the
+            // tab showed an empty chat until app restart (see instanceId's
+            // doc comment on StreamSession).
+            .onChange(of: session.instanceId) { _, _ in
                 firstVisibleIndex = max(0, session.transcript.count - Self.renderWindow)
                 proxy.scrollTo(bottomAnchorID, anchor: .bottom)
                 DispatchQueue.main.async {
@@ -263,7 +269,8 @@ struct V2LiveTranscript: View {
         case .assistantBlock(let block):
             V2AssistantBlock(block: block, toolOutcomes: session.toolOutcomes,
                              baseDir: session.cwd ?? projectCwd,
-                             subagentRuns: runs, sessionDir: sessionDir)
+                             subagentRuns: runs, sessionDir: sessionDir,
+                             toolStartTimes: session.toolStartTimes)
         case .compactBoundary:
             V2CompactBoundary()
         case .systemNote(let kind, let text):
@@ -380,6 +387,8 @@ struct V2AssistantBlock: View {
     /// cards (#38). Built once per transcript body eval, not per row.
     var subagentRuns: [String: V2SubagentRun] = [:]
     var sessionDir: URL? = nil
+    /// toolUseId → call start, for the in-flight elapsed readout.
+    var toolStartTimes: [String: Date] = [:]
     @State private var buttonHover = false
     @State private var copied = false
 
@@ -399,6 +408,18 @@ struct V2AssistantBlock: View {
             VStack(alignment: .leading, spacing: 6) {
                 content
                     .frame(maxWidth: .infinity, alignment: .leading)
+                    // Right-click → copy the WHOLE message. Drag-selection is
+                    // bounded to one NSTextView (each paragraph/bullet is its
+                    // own — that's what native link cursors cost us), so a
+                    // cross-paragraph select silently dies at the paragraph
+                    // edge. Until prose runs merge into a single text view
+                    // (its own renderer pass), this is the escape hatch that's
+                    // findable from the exact spot where selection frustrates.
+                    .contextMenu {
+                        if let t = textForCopy {
+                            Button("Copy message") { V2Clipboard.copy(t) }
+                        }
+                    }
                 if textForCopy != nil {
                     copyButton
                 }
@@ -455,7 +476,8 @@ struct V2AssistantBlock: View {
             } else if name == "TodoWrite", let todos = input.dig("todos")?.asArray {
                 V2LiveTodoBlock(todos: todos)
             } else {
-                V2LiveToolWidget(name: name, input: input, outcome: toolOutcomes[id])
+                V2LiveToolWidget(name: name, input: input, outcome: toolOutcomes[id],
+                                 startedAt: toolStartTimes[id])
             }
         case .toolResult(_, let content, let isError):
             V2LiveToolResult(content: content, isError: isError ?? false)
@@ -525,6 +547,11 @@ struct V2LiveToolWidget: View {
     let input: JSONValue
     /// nil = still running, false = done, true = error. Drives the row's valence.
     var outcome: Bool? = nil
+    /// When the call started (nil for history-preloaded rows). Lets a
+    /// long-running call show elapsed time — without it, minute five of a
+    /// test run rendered identically to second five, and identically to a
+    /// hung command ("I can't see this or its progress").
+    var startedAt: Date? = nil
 
     var body: some View {
         // Agent vocabulary: uppercase tag · target as a token (path/ref) or an
@@ -544,7 +571,29 @@ struct V2LiveToolWidget: View {
     @ViewBuilder
     private var status: some View {
         switch outcome {
-        case .none:        V2Spinner(size: 11)
+        case .none:
+            if let startedAt {
+                // 1Hz tick scoped to THIS row, and only while in flight —
+                // at most a handful of tool calls are ever unresolved at
+                // once, so this stays within the strip/header's existing
+                // TimelineView budget (no per-token cost).
+                TimelineView(.periodic(from: startedAt, by: 1)) { ctx in
+                    let secs = Int(ctx.date.timeIntervalSince(startedAt))
+                    HStack(spacing: 6) {
+                        V2Spinner(size: 11)
+                        // Quiet for quick calls — the timer only fades in
+                        // once a call has run long enough (≥3s) that "is it
+                        // stuck or working?" becomes a real question.
+                        if secs >= 3 {
+                            Text("\(secs / 60):" + String(format: "%02d", secs % 60))
+                                .foregroundColor(v2.faint)
+                                .monospacedDigit()
+                        }
+                    }
+                }
+            } else {
+                V2Spinner(size: 11)
+            }
         case .some(false): Text("✓").foregroundColor(v2.add)
         case .some(true):  Text("✗").foregroundColor(v2.del)
         }

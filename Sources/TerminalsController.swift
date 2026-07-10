@@ -228,7 +228,15 @@ final class TerminalsController: ObservableObject {
 
         case .modeB:
             // Going B → A. Stop the StreamSession and spawn a fresh PTY in
-            // the same cwd.
+            // the same cwd. Close its co-driven terminals FIRST — they're
+            // registered under the session's ObjectIdentifier, and once the
+            // session deallocates that address can be reused by a future
+            // session, which would then inherit these orphaned terminals
+            // (same address-reuse bug class as the empty-transcript-on-
+            // switch fix; tab close already does this via V2AppState.close).
+            if let session = tab.streamSession {
+                CoTerminalManager.shared.closeAll(scope: ObjectIdentifier(session))
+            }
             tab.streamSession?.stop()
             tabs[idx].streamSession = nil
             tabs[idx].surface = .modeA
