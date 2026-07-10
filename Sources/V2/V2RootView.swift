@@ -225,7 +225,14 @@ struct V2RootView: View {
                 modeAFooter(tab: tab)
             case .modeB:
                 if let session = tab.streamSession {
-                    if session.isResuming {
+                    if session.isObserving {
+                        // Observer tabs REPLACE the composer, never merely
+                        // disable it — read-only must read as a deliberate
+                        // mode, and no input field means no takeover
+                        // temptation (#76). send() is gated too; this is
+                        // the visible half of that rule.
+                        observingStrip(session: session)
+                    } else if session.isResuming {
                         // History is loading off disk — the transcript shows a
                         // "Loading conversation…" overlay; don't flash the
                         // Start CTA underneath it.
@@ -258,6 +265,46 @@ struct V2RootView: View {
             .foregroundColor(palette.del)
             .padding()
             .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
+    /// The observer tab's composer replacement (#76 interim chrome, ahead of
+    /// design #77): one quiet line saying what this is — no input field.
+    /// 1Hz TimelineView only while the tab is visible; drives the
+    /// observing / went-quiet language off the observed file's freshness.
+    private func observingStrip(session: StreamSession) -> some View {
+        TimelineView(.periodic(from: .now, by: 1)) { ctx in
+            HStack(spacing: 9) {
+                let fresh = session.observedFileLastGrewAt.map { ctx.date.timeIntervalSince($0) < 90 } ?? false
+                if fresh {
+                    V2PulseDot(size: 6, color: palette.ink)
+                    Text("observing — this session is running in another app")
+                        .font(.system(size: 11, design: .monospaced))
+                        .foregroundColor(palette.mute)
+                } else {
+                    Circle().fill(palette.line2).frame(width: 6, height: 6)
+                    Text("observing — went quiet \(quietAge(session, now: ctx.date)) ago")
+                        .font(.system(size: 11, design: .monospaced))
+                        .foregroundColor(palette.faint)
+                }
+                Spacer()
+                Text("read-only")
+                    .font(.system(size: 9.5, design: .monospaced))
+                    .kerning(0.5)
+                    .foregroundColor(palette.faint)
+                    .padding(.horizontal, 6).padding(.vertical, 2)
+                    .overlay(Rectangle().stroke(palette.line2, lineWidth: 1))
+            }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 12)
+            .background(palette.card)
+            .overlay(alignment: .top) { Rectangle().fill(palette.line).frame(height: 1) }
+        }
+    }
+
+    private func quietAge(_ session: StreamSession, now: Date) -> String {
+        guard let grew = session.observedFileLastGrewAt else { return "a while" }
+        let s = max(0, Int(now.timeIntervalSince(grew)))
+        return s < 60 ? "\(s)s" : "\(s / 60)m"
     }
 
     private func modeAFooter(tab: TerminalTab) -> some View {

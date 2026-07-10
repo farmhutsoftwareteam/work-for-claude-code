@@ -28,19 +28,38 @@ struct V2HistoryRail: View {
         ScrollView {
             LazyVStack(alignment: .leading, spacing: 0) {
                 let groups = filteredGroups
+                // Sessions already open in an Atelier tab are never "live to
+                // observe" — they're live IN-APP. Built once per body eval
+                // (tabs are a handful), not per row.
+                let openIds = Set(appState.tabs.compactMap { $0.streamSession?.sessionId })
                 if groups.isEmpty {
                     emptyState
                 } else {
                     ForEach(groups, id: \.label) { group in
                         groupHeader(group.label)
                         ForEach(group.entries) { entry in
-                            V2HistoryRow(entry: entry) {
-                                appState.openHistorySession(
-                                    sessionId: entry.sessionId,
-                                    projectCwd: entry.projectCwd,
-                                    projectName: entry.projectName,
-                                    title: entry.title
-                                )
+                            // A session file that grew in the last ~2 minutes
+                            // IS a live session some other process owns (#75)
+                            // — offer observing instead of resume (resuming a
+                            // session another harness owns is the takeover
+                            // path observer mode exists to avoid).
+                            let isLive = !openIds.contains(entry.sessionId)
+                                && Date().timeIntervalSince(entry.lastActivity) < 120
+                            V2HistoryRow(entry: entry, isLive: isLive) {
+                                if isLive {
+                                    appState.openObserver(
+                                        projectCwd: entry.projectCwd,
+                                        sessionId: entry.sessionId,
+                                        title: entry.title
+                                    )
+                                } else {
+                                    appState.openHistorySession(
+                                        sessionId: entry.sessionId,
+                                        projectCwd: entry.projectCwd,
+                                        projectName: entry.projectName,
+                                        title: entry.title
+                                    )
+                                }
                             }
                         }
                     }
@@ -127,26 +146,40 @@ struct V2HistoryRail: View {
 private struct V2HistoryRow: View {
     @Environment(\.v2) private var v2
     let entry: V2HistoryEntry
+    var isLive: Bool = false
     let onTap: () -> Void
 
     var body: some View {
         Button(action: onTap) {
             VStack(alignment: .leading, spacing: 3) {
                 HStack(spacing: 8) {
-                    Circle()
-                        .fill(entry.isActive ? v2.ink : Color.clear)
-                        .overlay(Circle().stroke(entry.isActive ? Color.clear : v2.line2, lineWidth: 1))
-                        .frame(width: 7, height: 7)
+                    if isLive {
+                        V2PulseDot(size: 7, color: v2.ink)
+                    } else {
+                        Circle()
+                            .fill(entry.isActive ? v2.ink : Color.clear)
+                            .overlay(Circle().stroke(entry.isActive ? Color.clear : v2.line2, lineWidth: 1))
+                            .frame(width: 7, height: 7)
+                    }
                     Text(entry.title)
-                        .font(.system(size: 13, weight: entry.isActive ? .medium : .regular))
+                        .font(.system(size: 13, weight: (entry.isActive || isLive) ? .medium : .regular))
                         .kerning(-0.13)
                         .foregroundColor(v2.ink)
                         .lineLimit(1)
                         .truncationMode(.tail)
                         .frame(maxWidth: .infinity, alignment: .leading)
-                    Text(entry.relativeTime)
-                        .font(.system(size: 10, design: .monospaced))
-                        .foregroundColor(v2.faint)
+                    if isLive {
+                        Text("live")
+                            .font(.system(size: 9, design: .monospaced))
+                            .kerning(0.5)
+                            .foregroundColor(v2.ink)
+                            .padding(.horizontal, 5).padding(.vertical, 1)
+                            .overlay(Rectangle().stroke(v2.line2, lineWidth: 1))
+                    } else {
+                        Text(entry.relativeTime)
+                            .font(.system(size: 10, design: .monospaced))
+                            .foregroundColor(v2.faint)
+                    }
                 }
                 HStack(spacing: 7) {
                     Text(entry.projectName)

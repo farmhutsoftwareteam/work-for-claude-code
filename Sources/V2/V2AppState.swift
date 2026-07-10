@@ -385,6 +385,15 @@ final class V2AppState: ObservableObject {
             return tab.isLive ? .working : .idle
         case .modeB:
             guard let s = tab.streamSession else { return .idle }
+            // Observer tabs: never .working (that implies OUR process is
+            // busy) — "present, not urgent" while the observed file is
+            // fresh, idle once it's gone quiet.
+            if s.isObserving {
+                if let grew = s.observedFileLastGrewAt, Date().timeIntervalSince(grew) < 90 {
+                    return .workingBackground
+                }
+                return .idle
+            }
             switch s.state {
             case .working, .spawning, .initializing: return .working
             case .awaitingPermission:                return .needsYou
@@ -456,6 +465,10 @@ final class V2AppState: ObservableObject {
     func persistWorkspace() {
         let entries: [WorkspaceSnapshot.TabEntry] = tabs.compactMap { tab in
             guard tab.surface == .modeB else { return nil }
+            // Observer tabs never persist — restoring one later as a normal
+            // hibernated tab would give it a wake-via-resume path into a
+            // session another process owns (#76's takeover rule).
+            guard tab.streamSession?.isObserving != true else { return nil }
             guard let sid = tab.streamSession?.sessionId ?? resumeIds[tab.id] else { return nil }
             return .init(projectCwd: tab.projectCwd, title: tab.title, sessionId: sid)
         }
@@ -527,6 +540,27 @@ final class V2AppState: ObservableObject {
 
     // MARK: - Tab management
 
+    /// Open a READ-ONLY live view of a session another process owns (#74) —
+    /// the observed transcript streams in off its growing .jsonl; no claude
+    /// process is spawned and nothing can be sent (see StreamSession's
+    /// isObserving gates). If the session is already open in ANY tab
+    /// (normal or observer), focus that instead of double-opening.
+    func openObserver(projectCwd: String, sessionId: String, title: String) {
+        guard let terminals else { return }
+        if let existing = tabs.first(where: {
+            $0.surface == .modeB &&
+            ($0.streamSession?.sessionId == sessionId || resumeIds[$0.id] == sessionId)
+        }) {
+            activate(tabId: existing.id)
+            return
+        }
+        let id = terminals.openModeB(projectCwd: projectCwd, title: title)
+        guard let session = terminals.tabs.first(where: { $0.id == id })?.streamSession else { return }
+        observeSessionState(session, tabId: id)
+        session.startObserving(cwd: URL(fileURLWithPath: projectCwd), sessionId: sessionId)
+        activate(tabId: id)
+    }
+
     /// Create a new Mode-B tab in the selected project. Auto-activates it in
     /// the v2 window (without touching v1's activeTabId).
     func newTab() {
@@ -589,6 +623,10 @@ final class V2AppState: ObservableObject {
             guard let session = tab.streamSession,
                   URL(fileURLWithPath: tab.projectCwd).standardizedFileURL.path == target
             else { continue }
+            // An observer has no process of ours to reconnect — and
+            // restart-with-resume here IS the takeover path it must never
+            // take (its replayed init events can make state read .ready).
+            guard !session.isObserving else { continue }
             // Only a live session needs reconnecting.
             switch session.state {
             case .idle, .terminated: continue

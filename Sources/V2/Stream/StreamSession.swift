@@ -273,17 +273,44 @@ final class StreamSession: ObservableObject {
                     switch block {
                     case .text(let s):
                         let trimmed = s.trimmingCharacters(in: .whitespacesAndNewlines)
-                        if !trimmed.isEmpty {
+                        // Injected context (task-notifications) is registry
+                        // signal, not a user bubble — parse, don't render.
+                        if trimmed.contains("<task-notification>") {
+                            applyNotificationText(s)
+                        } else if !trimmed.isEmpty {
                             transcript.append(.userText(trimmed))
                         }
-                    case .toolResult(let toolUseId, _, let isError):
+                    case .toolResult(let toolUseId, let content, let isError):
                         // Record the outcome exactly like the live path does
                         // — without this, every tool row in a RESTORED
                         // transcript kept its "still running" spinner
                         // forever (outcome nil = spinner), making an old
                         // conversation read as full of hung tools.
                         toolOutcomes[toolUseId] = (isError ?? false)
+                        // Registry rebuild (#74): spawn acks and agent
+                        // results in history repopulate the bg-task and
+                        // subagent registries so a restored or OBSERVED
+                        // session opens with its strip/cards correct, not
+                        // empty. Mirrors the live .toolResult handling.
+                        if let runIdx = subagentRuns.firstIndex(where: { $0.toolUseId == toolUseId }) {
+                            let text = content.asString ?? ""
+                            if subagentRuns[runIdx].isBackground,
+                               let agentId = V2SubagentParser.agentId(fromSpawnAck: text) {
+                                subagentRuns[runIdx].agentId = agentId
+                            } else {
+                                subagentRuns[runIdx].state = (isError ?? false) ? .failed : .completed
+                                subagentRuns[runIdx].finishedAt = Date()
+                                subagentRuns[runIdx].resultText = text.isEmpty ? nil : text
+                            }
+                            continue   // card renders it; raw ack row is noise
+                        }
                         transcript.append(.assistantBlock(block))
+                        if let spawn = V2BackgroundTaskParser.parseSpawn(from: content.asString) {
+                            let command = pendingBashCommands.removeValue(forKey: toolUseId) ?? ""
+                            backgroundTasks.append(V2BackgroundTask(
+                                id: spawn.id, command: command, outputPath: spawn.outputPath, startedAt: Date()
+                            ))
+                        }
                     default:
                         break
                     }
@@ -299,13 +326,51 @@ final class StreamSession: ObservableObject {
                         if !trimmed.isEmpty {
                             transcript.append(.assistantBlock(.text(trimmed)))
                         }
-                    case .toolUse, .toolResult, .thinking, .unknown:
+                    case .toolUse(let id, let name, let input):
+                        if name == "Bash" {
+                            pendingBashCommands[id] = input.dig("command")?.asString ?? ""
+                        }
+                        if V2SubagentParser.isAgentSpawn(toolName: name),
+                           !subagentRuns.contains(where: { $0.toolUseId == id }) {
+                            subagentRuns.append(V2SubagentRun(
+                                toolUseId: id,
+                                description: input.dig("description")?.asString ?? "agent",
+                                agentType: input.dig("subagent_type")?.asString ?? "general-purpose",
+                                isBackground: input.dig("run_in_background")?.asBool ?? false,
+                                startedAt: Date()
+                            ))
+                        }
+                        transcript.append(.assistantBlock(block))
+                    case .toolResult, .thinking, .unknown:
                         transcript.append(.assistantBlock(block))
                     }
                 }
             default:
                 break
             }
+        }
+        // History gave us no completion for these. For a RESTORE the channel
+        // is gone — mark orphaned so "running" never lies. For an OBSERVER
+        // the owner is alive elsewhere and may still finish them — keep
+        // .running; the strip's hung-detection stays honest via output mtime.
+        if !isObserving {
+            orphanRunningBackgroundTasks()
+        }
+    }
+
+    /// Task-notification text (bg-task + subagent completions) → registry
+    /// updates. Shared by the live .user text branch and history preload.
+    private func applyNotificationText(_ text: String) {
+        if let done = V2BackgroundTaskParser.parseCompletion(from: text),
+           let idx = backgroundTasks.firstIndex(where: { $0.id == done.id }) {
+            backgroundTasks[idx].state = done.isError ? .failed(exitCode: done.exitCode) : .completed(exitCode: done.exitCode)
+            backgroundTasks[idx].finishedAt = Date()
+        }
+        if let done = V2SubagentParser.parseCompletion(from: text),
+           let idx = subagentRuns.firstIndex(where: { $0.toolUseId == done.toolUseId }) {
+            subagentRuns[idx].state = done.isError ? .failed : .completed
+            subagentRuns[idx].finishedAt = Date()
+            if let result = done.result { subagentRuns[idx].resultText = result }
         }
     }
 
@@ -363,6 +428,112 @@ final class StreamSession: ObservableObject {
             self.isResuming = false
             self.state = .hibernated
         }
+    }
+
+    // MARK: - Observer mode (#74)
+
+    /// True while this session is a read-only live view of a transcript some
+    /// OTHER process owns (CLI, VS Code, another window). Gates every write
+    /// path: no spawn, no send, no workspace persistence, no reconnect
+    /// sweeps — observing must never become writing (a message sent into a
+    /// session another harness owns forks its conversation state).
+    @Published private(set) var isObserving = false
+    /// When the observed file last grew — drives the "observing" vs
+    /// "went quiet Xm ago" header language.
+    @Published private(set) var observedFileLastGrewAt: Date?
+    private var observerTask: Task<Void, Never>?
+
+    /// Watch a session live off its growing on-disk transcript: bounded
+    /// preload (same loader restore uses), then a 1Hz poll that stats the
+    /// file and reads ONLY the new bytes since the last offset, frames them
+    /// with LineBuffer, and dispatches each complete line through the same
+    /// event path a live session's stdout uses. Every existing surface —
+    /// transcript, bg-task strip, delegation cards, tool timers — works
+    /// unchanged because the events are indistinguishable from live ones.
+    func startObserving(cwd: URL, sessionId: String) {
+        guard case .idle = state, !isObserving, !isResuming else { return }
+        isObserving = true
+        isResuming = true
+        self.sessionId = sessionId
+        self.cwd = cwd.path
+        let cwdPath = cwd.path
+        let url = SessionHistoryLoader.jsonlURL(sessionId: sessionId, projectCwd: cwdPath)
+
+        observerTask = Task { [weak self] in
+            // Offset snapshot BEFORE the preload read: anything written
+            // between this stat and the preload can be double-delivered (the
+            // preload may already include it, then the incremental read
+            // re-delivers) — a ~millisecond window, cosmetic at worst, and
+            // the alternative (snapshot after) can DROP lines instead. Never
+            // drop.
+            let initialOffset = (try? FileManager.default
+                .attributesOfItem(atPath: url.path)[.size] as? UInt64) ?? 0
+
+            let preload = await Task.detached(priority: .userInitiated) {
+                SessionHistoryLoader.load(sessionId: sessionId, projectCwd: cwdPath)
+            }.value
+            guard let self else { return }
+            if let preload { self.preloadHistory(preload) }
+            self.isResuming = false
+            self.observedFileLastGrewAt = Date()
+
+            var offset = initialOffset
+            let buffer = LineBuffer()
+            let decoder = JSONDecoder()
+
+            while !Task.isCancelled {
+                try? await Task.sleep(nanoseconds: 1_000_000_000)
+                if Task.isCancelled { break }
+                // Stat first — no read, no allocation when nothing changed
+                // (the common tick for a session that's thinking).
+                let size = (try? FileManager.default
+                    .attributesOfItem(atPath: url.path)[.size] as? UInt64) ?? 0
+                guard size > offset else { continue }
+
+                let readFrom = offset
+                let chunk = await Task.detached(priority: .utility) { () -> Data? in
+                    guard let fh = FileHandle(forReadingAtPath: url.path) else { return nil }
+                    defer { try? fh.close() }
+                    try? fh.seek(toOffset: readFrom)
+                    return try? fh.readToEnd()
+                }.value
+                guard let chunk, !chunk.isEmpty else { continue }
+                offset = readFrom + UInt64(chunk.count)
+                observedFileLastGrewAt = Date()
+
+                buffer.append(chunk)
+                for line in buffer.drainLines() {
+                    guard let event = try? decoder.decode(StreamEvent.self, from: line) else { continue }
+                    observeDispatch(event)
+                }
+            }
+        }
+    }
+
+    func stopObserving() {
+        observerTask?.cancel()
+        observerTask = nil
+        isObserving = false
+    }
+
+    /// The observer's event dispatch: identical to the live path, PLUS
+    /// appending the user's own text turns — on the live path send() appends
+    /// those locally before the wire echoes them back, so handle(event:)'s
+    /// .user case deliberately doesn't; here there is no local send.
+    private func observeDispatch(_ event: StreamEvent) {
+        if case .user(let m) = event {
+            for block in m.message.content {
+                if case .text(let s) = block {
+                    let trimmed = s.trimmingCharacters(in: .whitespacesAndNewlines)
+                    // Injected context (task notifications etc.) is parsed by
+                    // handle() below, never rendered as a user bubble.
+                    if !trimmed.isEmpty, !trimmed.contains("<task-notification>") {
+                        transcript.append(.userText(trimmed))
+                    }
+                }
+            }
+        }
+        handle(event: event)
     }
 
     /// Launch `claude -p` in the project's cwd. No-op if not idle. Pass a
@@ -700,6 +871,11 @@ final class StreamSession: ObservableObject {
 
     /// Send a user turn. Triggers a new assistant cycle from the binary.
     func send(text: String) {
+        // The hard observer rule: watching must never become writing. A
+        // message sent into a session another process owns (via --resume)
+        // forks its conversation state under that harness. The composer is
+        // gated in the UI too — this is the defense-in-depth backstop.
+        guard !isObserving else { return }
         // Typing into a hibernated tab IS the wake gesture — respawn with
         // --resume and deliver this message once the new writer exists.
         if state == .hibernated {
@@ -918,6 +1094,11 @@ final class StreamSession: ObservableObject {
     /// Quiet teardown by design: no .closing/.terminated transition, so no
     /// sounds, no tab-status churn, no "session ended" chrome.
     func hibernate() {
+        // An observer has no process to reclaim, and hibernating one would
+        // hand it a wake-via-resume path — the exact takeover the observer
+        // gates exist to prevent. (Replayed init events can move an
+        // observer's state to .ready, so the state guard alone isn't enough.)
+        guard !isObserving else { return }
         guard state == .ready, sessionId != nil else { return }
         log.info("StreamSession hibernating session=\(self.sessionId ?? "-", privacy: .public)")
         stdoutHandle?.readabilityHandler = nil
@@ -954,6 +1135,15 @@ final class StreamSession: ObservableObject {
     }
 
     func stop() {
+        // Observer teardown: cancel the file poll. The observed session's
+        // own process (owned elsewhere) is untouched — its tasks are NOT
+        // orphaned here, their owner is still alive.
+        observerTask?.cancel()
+        observerTask = nil
+        if isObserving {
+            state = .terminated(reason: "observer_closed")
+            return
+        }
         finalizeStreamingText()   // commit any partial reply before teardown
         state = .closing
         stdoutHandle?.readabilityHandler = nil
@@ -1143,20 +1333,8 @@ final class StreamSession: ObservableObject {
                     // resolves in the UI until the session ends (→
                     // .orphaned) — never a crash or a rendered artifact,
                     // since this branch was previously unhandled entirely.
-                    if let done = V2BackgroundTaskParser.parseCompletion(from: text),
-                       let idx = backgroundTasks.firstIndex(where: { $0.id == done.id }) {
-                        backgroundTasks[idx].state = done.isError ? .failed(exitCode: done.exitCode) : .completed(exitCode: done.exitCode)
-                        backgroundTasks[idx].finishedAt = Date()
-                    }
-                    // Same notification channel, subagent flavor (#38) —
-                    // the summary-prefix check keeps the two parsers from
-                    // ever both claiming one notification.
-                    if let done = V2SubagentParser.parseCompletion(from: text),
-                       let idx = subagentRuns.firstIndex(where: { $0.toolUseId == done.toolUseId }) {
-                        subagentRuns[idx].state = done.isError ? .failed : .completed
-                        subagentRuns[idx].finishedAt = Date()
-                        if let result = done.result { subagentRuns[idx].resultText = result }
-                    }
+                    // (Shared with history preload — see applyNotificationText.)
+                    applyNotificationText(text)
                 }
             }
         case .streamEvent(let s):
