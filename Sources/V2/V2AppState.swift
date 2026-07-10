@@ -160,6 +160,18 @@ final class V2AppState: ObservableObject {
     private var loopSubs: [UUID: AnyCancellable] = [:]
     private var harnessSubs: [UUID: AnyCancellable] = [:]
 
+    /// Tabs still finishing their launch-restore preload (each lands in
+    /// .hibernated at a staggered async moment). While this is non-empty a
+    /// restore burst is in flight: a BACKGROUND tab landing shouldn't
+    /// republish the whole window, because each republish re-renders the
+    /// ACTIVE tab's transcript mid-settle — and with N restored tabs that's
+    /// N−1 extra re-renders, each nudging the bottom-anchored LazyVStack's
+    /// still-unstable height estimate. That is the multi-tab launch scroll
+    /// bounce. We collapse the burst into ONE republish (emitted when the
+    /// last restore lands, or by the safety timeout) instead of one per tab.
+    /// Empty in all normal (non-launch) operation, so live use is unaffected.
+    private var restorePendingTabs: Set<UUID> = []
+
     /// Republish chrome when a tab's session changes state/model/permission/MCP/
     /// retry — NOT on its blanket objectWillChange, which fires on every streamed
     /// token and re-rendered the whole window (rail, tabs, header, dock) for
@@ -199,7 +211,23 @@ final class V2AppState: ObservableObject {
     private func handleStateTransition(tabId: UUID, to newState: StreamSession.LifecycleState) {
         let old = lastTabState[tabId]
         lastTabState[tabId] = newState
-        defer { objectWillChange.send() }   // republish so the tab strip re-renders
+
+        // A restoring tab reaching any non-idle state has finished its
+        // preload — drop it from the in-flight set (see restorePendingTabs).
+        var settledIdle = true
+        if case .idle = newState { settledIdle = false }
+        if settledIdle, restorePendingTabs.contains(tabId) {
+            restorePendingTabs.remove(tabId)
+        }
+        // Collapse the launch-restore burst: while restore is in flight,
+        // suppress a BACKGROUND tab's republish (it only cosmetically flips a
+        // tab-strip dot, but it re-renders the active transcript mid-settle).
+        // The active tab still republishes — that's a single, wanted render —
+        // and the last-restore-to-land republishes once for everyone else.
+        let restoreInFlight = !restorePendingTabs.isEmpty
+        let suppressRepublish = restoreInFlight && tabId != activeTabId
+        defer { if !suppressRepublish { objectWillChange.send() } }
+
         // Persist on every lifecycle transition — this is what captures a new
         // session's id the moment the init reply reports it (newTab spawns
         // before any id exists), plus hibernations, terminations, restarts.
@@ -463,6 +491,11 @@ final class V2AppState: ObservableObject {
             let id = terminals.openModeB(projectCwd: entry.projectCwd, title: entry.title)
             resumeIds[id] = entry.sessionId
             if let session = terminals.tabs.first(where: { $0.id == id })?.streamSession {
+                // Mark BEFORE the async restore is kicked off so its later,
+                // staggered .hibernated landing is recognised as part of the
+                // burst and collapsed into one republish (see
+                // restorePendingTabs / handleStateTransition).
+                restorePendingTabs.insert(id)
                 observeSessionState(session, tabId: id)
                 session.restoreHibernated(
                     cwd: URL(fileURLWithPath: entry.projectCwd), claudeURL: binary,
@@ -478,6 +511,17 @@ final class V2AppState: ObservableObject {
         if let tab = tabs.first(where: { $0.id == id }) {
             selectedProjectCwd = URL(fileURLWithPath: tab.projectCwd)
             selectedProjectName = (tab.projectCwd as NSString).lastPathComponent
+        }
+        // Safety net: if any restore never lands (transcript vanished mid-
+        // launch, spawn wedged), don't leave the burst permanently "in
+        // flight" — that would suppress every future background-tab republish.
+        // Clear it after a bounded window and do one catch-up republish.
+        if !restorePendingTabs.isEmpty {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 3) { [weak self] in
+                guard let self, !self.restorePendingTabs.isEmpty else { return }
+                self.restorePendingTabs.removeAll()
+                self.objectWillChange.send()
+            }
         }
     }
 
