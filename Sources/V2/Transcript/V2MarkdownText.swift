@@ -18,8 +18,21 @@ struct V2MarkdownText: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 11) {
-            ForEach(Array(blocks.enumerated()), id: \.offset) { _, block in
-                blockView(block)
+            // Identity is the block's SOURCE START LINE, not its array index
+            // (bug-hunt M24) — a GFM table's header row starts out absorbed
+            // into a preceding `.paragraph` (the delimiter row hasn't
+            // streamed in yet to confirm it's a table); once it lands, the
+            // paragraph shrinks and a NEW `.table` block is inserted ahead of
+            // it, shifting every later block's ARRAY offset by one even
+            // though none of them actually moved in the source text. With
+            // `id: \.offset` that shift read as "every block after this
+            // point is a different element," tearing down their SwiftUI
+            // state (e.g. an open/closed code-block copy button). Start-line
+            // ids don't shift: the paragraph keeps its original id (its
+            // start line didn't move, just its end), and the table's id is
+            // simply new — exactly matching what actually changed.
+            ForEach(blocks) { item in
+                blockView(item.block)
             }
         }
         .textSelection(.enabled)
@@ -158,7 +171,7 @@ struct V2MarkdownText: View {
 
     // MARK: - Block chunker
 
-    private var blocks: [MDBlock] {
+    private var blocks: [IDBlock] {
         Self.cachedChunk(text)
     }
 
@@ -166,9 +179,24 @@ struct V2MarkdownText: View {
     // VStack), so without this every stable message re-chunks on every token of
     // the reply currently streaming. Keyed by the message text → cache hit for
     // anything not actively growing.
-    nonisolated(unsafe) private static var chunkCache: [String: [MDBlock]] = [:]
+    //
+    // Known residual gap (bug-hunt M25, prior-audit M11): the message that is
+    // ACTIVELY streaming right now always misses here, because its cache key
+    // (the full text) changes on every ~30fps flush — so it re-chunks from
+    // line 0 every time, bounded to that one message's length (not the whole
+    // transcript, since M11's original fix moved this from a per-transcript
+    // to a per-message cache). A real fix would reuse every block except the
+    // last one across flushes (only the last block can still be "open" given
+    // this app's append-only streaming invariant) and re-chunk just the tail
+    // — but doing that correctly means threading a `startLine` offset through
+    // every branch of `chunk()` and re-validating the table-lookahead and
+    // paragraph-continuation logic against a moved window, which is enough
+    // surface area to get subtly wrong in a fix pass with no build to verify
+    // against. Left as-is rather than risk landing a worse bug in exchange
+    // for a MEDIUM-severity, already-bounded cost.
+    nonisolated(unsafe) private static var chunkCache: [String: [IDBlock]] = [:]
 
-    private static func cachedChunk(_ text: String) -> [MDBlock] {
+    private static func cachedChunk(_ text: String) -> [IDBlock] {
         if let hit = chunkCache[text] { return hit }
         let result = chunk(text)
         if chunkCache.count >= parseCacheLimit { chunkCache.removeAll(keepingCapacity: true) }
@@ -185,11 +213,20 @@ struct V2MarkdownText: View {
         case table(header: [String], rows: [[String]])
     }
 
-    static func chunk(_ text: String) -> [MDBlock] {
-        var out: [MDBlock] = []
+    /// A block plus the SOURCE LINE it starts at, used as ForEach identity
+    /// (bug-hunt M24) — see the comment on `body` above for why the array
+    /// index alone isn't stable across a mid-stream reclassification.
+    struct IDBlock: Identifiable {
+        let id: Int
+        let block: MDBlock
+    }
+
+    static func chunk(_ text: String) -> [IDBlock] {
+        var out: [IDBlock] = []
         let lines = text.components(separatedBy: "\n")
         var i = 0
         while i < lines.count {
+            let blockStart = i
             let raw = lines[i]
             let trimmed = raw.trimmingCharacters(in: .whitespaces)
 
@@ -205,23 +242,23 @@ struct V2MarkdownText: View {
                     i += 1
                 }
                 i += 1  // consume closing fence
-                out.append(.codeFence(lang: lang, body: body.joined(separator: "\n")))
+                out.append(IDBlock(id: blockStart, block: .codeFence(lang: lang, body: body.joined(separator: "\n"))))
                 continue
             }
 
             // Heading
             if trimmed.hasPrefix("# ") {
-                out.append(.heading(level: 1, text: String(trimmed.dropFirst(2))))
+                out.append(IDBlock(id: blockStart, block: .heading(level: 1, text: String(trimmed.dropFirst(2)))))
                 i += 1
                 continue
             }
             if trimmed.hasPrefix("## ") {
-                out.append(.heading(level: 2, text: String(trimmed.dropFirst(3))))
+                out.append(IDBlock(id: blockStart, block: .heading(level: 2, text: String(trimmed.dropFirst(3)))))
                 i += 1
                 continue
             }
             if trimmed.hasPrefix("### ") {
-                out.append(.heading(level: 3, text: String(trimmed.dropFirst(4))))
+                out.append(IDBlock(id: blockStart, block: .heading(level: 3, text: String(trimmed.dropFirst(4)))))
                 i += 1
                 continue
             }
@@ -237,7 +274,7 @@ struct V2MarkdownText: View {
                     rows.append(parseTableRow(lines[i]))
                     i += 1
                 }
-                out.append(.table(header: header, rows: rows))
+                out.append(IDBlock(id: blockStart, block: .table(header: header, rows: rows)))
                 continue
             }
 
@@ -248,7 +285,7 @@ struct V2MarkdownText: View {
                     items.append(stripBullet(lines[i].trimmingCharacters(in: .whitespaces)))
                     i += 1
                 }
-                out.append(.bullet(items))
+                out.append(IDBlock(id: blockStart, block: .bullet(items)))
                 continue
             }
 
@@ -259,7 +296,7 @@ struct V2MarkdownText: View {
                     items.append(stripOrdered(lines[i].trimmingCharacters(in: .whitespaces)))
                     i += 1
                 }
-                out.append(.ordered(items))
+                out.append(IDBlock(id: blockStart, block: .ordered(items)))
                 continue
             }
 
@@ -283,7 +320,7 @@ struct V2MarkdownText: View {
                 para.append(l)
                 i += 1
             }
-            out.append(.paragraph(para.joined(separator: "\n")))
+            out.append(IDBlock(id: blockStart, block: .paragraph(para.joined(separator: "\n"))))
         }
         return out
     }

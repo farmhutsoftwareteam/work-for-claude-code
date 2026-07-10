@@ -126,7 +126,13 @@ enum V2AgentLoader {
     /// `(nil, raw)` — the caller treats that as "no frontmatter, skip".
     static func splitFrontmatter(_ raw: String) -> (frontmatter: String?, body: String) {
         // Tolerate a leading BOM or whitespace lines but the first
-        // non-empty line must be exactly `---`.
+        // non-empty line must be exactly `---`. The comment above always
+        // claimed BOM tolerance, but nothing actually stripped it — a
+        // leading U+FEFF stays glued to the first line, `== "---"` never
+        // matches, and the file silently fails the frontmatter check (the
+        // agent just vanishes from the list, no log) (bug-hunt M7/M28).
+        var raw = raw
+        if raw.hasPrefix("\u{FEFF}") { raw.removeFirst() }
         let normalized = raw.replacingOccurrences(of: "\r\n", with: "\n")
         let lines = normalized.split(separator: "\n", omittingEmptySubsequences: false)
 

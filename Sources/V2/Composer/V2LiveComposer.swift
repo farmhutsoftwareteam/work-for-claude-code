@@ -27,6 +27,17 @@ struct V2LiveComposer: View {
     @State private var slashActive: Int = 0   // highlighted row in the popover
     /// User-authored commands loaded from .claude/commands + ~/.claude/commands.
     @State private var customCommands: [V2SlashCommand] = []
+    /// `allCommands`, cached — rebuilt only when `customCommands` changes (see
+    /// `rebuildAllCommands`), not on every access. This view @ObservedObjects
+    /// `session` and re-renders per streamed token, so a live computed
+    /// property here rebuilt a `[String: V2SlashCommand]` dictionary on every
+    /// delta while the slash popover was open (PERFORMANCE.md rule 4).
+    @State private var allCommandsCache: [V2SlashCommand] = V2SlashCatalog.builtins
+    /// Slash-filter results, cached alongside `allCommandsCache` — recomputed
+    /// only on a real draft edit or command-set reload (`recomputeSlashResults`),
+    /// not as a live computed property re-filtered/re-sorted on every render.
+    @State private var cachedSlashResults: [V2SlashCommand] = []
+    @State private var cachedGroupedResults: [(V2SlashCategory, [V2SlashCommand])] = []
     /// The command picked for an arguments-taking command. While set, the
     /// composer is in "command mode": a locked chip shows the command and the
     /// text field holds only its arguments.
@@ -117,8 +128,11 @@ struct V2LiveComposer: View {
                 onBackspaceAtStart: backspaceAtStart
             )
             .onChange(of: draft) { _, _ in
+                // Recompute the slash-filter cache once per EDIT (not live per
+                // render) — same reasoning as cachedHeight below.
+                recomputeSlashResults()
                 // Keep the highlighted row in range as the filter narrows.
-                if slashActive >= slashResults.count { slashActive = 0 }
+                if slashActive >= cachedSlashResults.count { slashActive = 0 }
                 // Persist the draft on the session so it survives a tab switch.
                 session.composerDraft = draft
                 // Height is O(draft) to compute (newline + wrap scan) — do it
@@ -127,7 +141,10 @@ struct V2LiveComposer: View {
                 // was part of the long-paste glitch.
                 cachedHeight = Self.height(for: draft)
             }
-            .onAppear { cachedHeight = Self.height(for: draft) }
+            .onAppear {
+                cachedHeight = Self.height(for: draft)
+                recomputeSlashResults()
+            }
             // Size to actual text content. 19pt per line approximates the
             // monospaced 13pt with default leading + the scrollview's 4pt
             // top inset. Cap at 8 lines — beyond that, the inner NSScrollView
@@ -174,13 +191,9 @@ struct V2LiveComposer: View {
 
     /// Every command available right now: the built-in catalog plus the
     /// user's own commands loaded off disk (project overrides personal by
-    /// name; both override a built-in of the same name).
-    private var allCommands: [V2SlashCommand] {
-        var byName: [String: V2SlashCommand] = [:]
-        for c in V2SlashCatalog.builtins { byName[c.name] = c }
-        for c in customCommands { byName[c.name] = c }
-        return Array(byName.values)
-    }
+    /// name; both override a built-in of the same name). Backed by
+    /// `allCommandsCache` — see `rebuildAllCommands`.
+    private var allCommands: [V2SlashCommand] { allCommandsCache }
 
     /// Open when the draft is a bare "/query" (no space yet — once a command
     /// is completed to "/name " we close so it doesn't show "no matches").
@@ -190,13 +203,31 @@ struct V2LiveComposer: View {
 
     /// Filtered, category-then-name ordered results. The flat order here
     /// matches the grouped render order, so `slashActive` indexes both.
-    private var slashResults: [V2SlashCommand] {
-        V2SlashCatalog.filtered(String(draft.dropFirst()), in: allCommands)
+    /// Backed by `cachedSlashResults` — see `recomputeSlashResults`.
+    private var slashResults: [V2SlashCommand] { cachedSlashResults }
+
+    private var groupedResults: [(V2SlashCategory, [V2SlashCommand])] { cachedGroupedResults }
+
+    /// Rebuild the name→command dictionary — only called when
+    /// `customCommands` actually changes (after a load), not on every access.
+    private func rebuildAllCommands() {
+        var byName: [String: V2SlashCommand] = [:]
+        for c in V2SlashCatalog.builtins { byName[c.name] = c }
+        for c in customCommands { byName[c.name] = c }
+        allCommandsCache = Array(byName.values)
+        // The command set changed, so the current filter/sort is stale too.
+        recomputeSlashResults()
     }
 
-    private var groupedResults: [(V2SlashCategory, [V2SlashCommand])] {
-        let results = slashResults
-        return V2SlashCategory.allCases
+    /// Re-filter + re-sort into `cachedSlashResults`/`cachedGroupedResults`.
+    /// Called on a real draft edit (`onChange(of: draft)`) or command-set
+    /// reload (`rebuildAllCommands`) — never as a live computed property, so
+    /// streamed-token re-renders while the popover is open don't re-run the
+    /// filter + double-sort on every delta.
+    private func recomputeSlashResults() {
+        let results = V2SlashCatalog.filtered(String(draft.dropFirst()), in: allCommandsCache)
+        cachedSlashResults = results
+        cachedGroupedResults = V2SlashCategory.allCases
             .sorted { $0.rank < $1.rank }
             .compactMap { cat in
                 let items = results.filter { $0.category == cat }
@@ -497,7 +528,10 @@ struct V2LiveComposer: View {
         let loaded = await Task.detached(priority: .utility) {
             V2CommandRegistry.load(projectRoot: root)
         }.value
-        await MainActor.run { self.customCommands = loaded }
+        await MainActor.run {
+            self.customCommands = loaded
+            self.rebuildAllCommands()
+        }
     }
 
     private var attachButton: some View {

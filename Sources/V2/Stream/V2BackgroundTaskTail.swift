@@ -9,8 +9,8 @@ enum V2BackgroundTaskTail {
     /// One line for the strip row: the last non-empty line in the file's
     /// final `bytes` bytes.
     static func lastLine(path: String, bytes: Int = 8 * 1024) -> String? {
-        guard let data = readTail(path: path, bytes: bytes) else { return nil }
-        let clean = strip(data)
+        guard let tail = readTail(path: path, bytes: bytes) else { return nil }
+        let clean = strip(tail.data)
         return clean
             .split(whereSeparator: { $0 == "\n" || $0 == "\r" })
             .reversed()
@@ -18,21 +18,34 @@ enum V2BackgroundTaskTail {
             .map(String.init)
     }
 
-    /// The fuller tail for the peek modal — same bound, just more of it.
+    /// The fuller tail for the peek modal — same bound, just more of it. A
+    /// mid-file start means the first line is a fragment of whatever line
+    /// straddled the read boundary — drop it (same guard V2SubagentTail
+    /// .activity uses), unless we actually read from byte 0 of the real file.
     static func fullTail(path: String, bytes: Int = 64 * 1024) -> [String] {
-        guard let data = readTail(path: path, bytes: bytes) else { return [] }
-        return strip(data)
+        guard let tail = readTail(path: path, bytes: bytes) else { return [] }
+        var lines = strip(tail.data)
             .split(separator: "\n", omittingEmptySubsequences: false)
             .map(String.init)
+        if tail.startedMidFile, !lines.isEmpty { lines.removeFirst() }
+        return lines
     }
 
-    private static func readTail(path: String, bytes: Int) -> Data? {
+    /// Reads the file's final `bytes` bytes. `startedMidFile` is derived from
+    /// the file's actual size (checked BEFORE the read), not from
+    /// `data.count == bytes` after the fact — the latter misfires when a
+    /// file's size happens to exactly equal the read bound while still being
+    /// read from offset 0, which would wrongly drop a real first line as if
+    /// it were a fragment.
+    private static func readTail(path: String, bytes: Int) -> (data: Data, startedMidFile: Bool)? {
         guard let fh = FileHandle(forReadingAtPath: path) else { return nil }
         defer { try? fh.close() }
         let size = (try? fh.seekToEnd()) ?? 0
-        let start = size > UInt64(bytes) ? size - UInt64(bytes) : 0
+        let startedMidFile = size > UInt64(bytes)
+        let start = startedMidFile ? size - UInt64(bytes) : 0
         try? fh.seek(toOffset: start)
-        return try? fh.readToEnd()
+        guard let data = try? fh.readToEnd() else { return nil }
+        return (data, startedMidFile)
     }
 
     private static func strip(_ data: Data) -> String {

@@ -69,7 +69,7 @@ struct V2LoopPanel: View {
                 switch loop.state {
                 case .running, .verifying:
                     V2PulseDot(size: 7, color: v2.ink)
-                    Text(loop.state == .verifying(turn: 0) ? "verifying" : "running")
+                    Text(isVerifying(loop.state) ? "verifying" : "running")
                         .font(.system(size: 10.5, design: .monospaced))
                         .foregroundColor(v2.mute)
                 case .passed:
@@ -87,6 +87,16 @@ struct V2LoopPanel: View {
                 }
             }
         }
+    }
+
+    /// LifecycleState has no custom Equatable, so `loop.state ==
+    /// .verifying(turn: 0)` (the prior check) was only ever true when
+    /// turn == 0 — i.e. essentially never, since any loop reaching
+    /// verifying is already past turn 1. Pattern-match the case instead of
+    /// comparing against one specific associated value (bug-hunt #8).
+    private func isVerifying(_ state: LoopOrchestrator.LifecycleState) -> Bool {
+        if case .verifying = state { return true }
+        return false
     }
 
     @ViewBuilder

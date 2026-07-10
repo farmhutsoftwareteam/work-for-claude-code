@@ -30,6 +30,7 @@ struct V2PeekFile {
         case markdown(String)
         case code(lines: [String], truncationNote: String?)
         case image(NSImage)
+        case imageTooLarge
         case binary
     }
 
@@ -40,9 +41,9 @@ struct V2PeekFile {
     /// Whole-content copy for the header's "copy text" action (text variants).
     var copyText: String? {
         switch variant {
-        case .markdown(let t):        return t
-        case .code(let lines, _):     return lines.joined(separator: "\n")
-        case .image, .binary:         return nil
+        case .markdown(let t):                     return t
+        case .code(let lines, _):                  return lines.joined(separator: "\n")
+        case .image, .imageTooLarge, .binary:      return nil
         }
     }
 
@@ -58,6 +59,15 @@ struct V2PeekFile {
     private static let bigThreshold = 1_500_000       // bytes — beyond this, peek shows the head
     private static let headBytes = 262_144
     private static let maxRenderLines = 5_000          // hard cap even for full reads
+    /// Bug-hunt M26: the text path already bounds its synchronous main-thread
+    /// read at `bigThreshold` (1.5MB), but the image path had no cap at all —
+    /// `NSImage(contentsOf:)` decoded the WHOLE file synchronously regardless
+    /// of size. Images can't reuse `bigThreshold` directly (an ordinary photo
+    /// routinely exceeds 1.5MB, so that bound would make the empty state fire
+    /// constantly for normal images) — this is sized instead to where a
+    /// synchronous decode starts to risk a visibly perceptible main-thread
+    /// stall (a multi-megapixel TIFF/PNG/HEIC), not where "large" begins.
+    private static let imageMaxBytes = 20_000_000
 
     // Only touched from the main actor (present() is @MainActor).
     nonisolated(unsafe) private static let bytes: ByteCountFormatter = {
@@ -81,9 +91,14 @@ struct V2PeekFile {
         }
 
         // Image
-        if imageExts.contains(ext), let img = NSImage(contentsOf: url) {
-            let dims = "\(Int(img.size.width)) × \(Int(img.size.height))"
-            return V2PeekFile(url: url, variant: .image(img), meta: meta(ext, dims))
+        if imageExts.contains(ext) {
+            if size > imageMaxBytes {
+                return V2PeekFile(url: url, variant: .imageTooLarge, meta: meta(ext, "too large to preview"))
+            }
+            if let img = NSImage(contentsOf: url) {
+                let dims = "\(Int(img.size.width)) × \(Int(img.size.height))"
+                return V2PeekFile(url: url, variant: .image(img), meta: meta(ext, dims))
+            }
         }
 
         // Read (capped for huge files)
@@ -241,6 +256,8 @@ struct V2FilePeekModal: View {
                 }
             case .image(let img):
                 imageBody(img)
+            case .imageTooLarge:
+                imageTooLargeBody
             case .binary:
                 binaryBody
             }
@@ -291,6 +308,25 @@ struct V2FilePeekModal: View {
                 Text(file.meta)
                     .font(.system(size: 10.5, design: .monospaced)).foregroundColor(v2.faint)
             }
+            actionChip("reveal in Finder") { NSWorkspace.shared.activateFileViewerSelecting([file.url]) }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
+    /// Bug-hunt M26: shown instead of a synchronous full-file NSImage decode
+    /// once a file crosses `V2PeekFile.imageMaxBytes` — mirrors `binaryBody`'s
+    /// layout so the "can't preview this one" state reads consistently
+    /// regardless of WHY it can't be previewed.
+    private var imageTooLargeBody: some View {
+        VStack(spacing: 15) {
+            V2DovetailMark(size: 44).foregroundColor(v2.faint)
+            VStack(spacing: 5) {
+                Text("Image too large to preview")
+                    .font(.system(size: 13, design: .monospaced)).foregroundColor(v2.mute)
+                Text(file.meta)
+                    .font(.system(size: 10.5, design: .monospaced)).foregroundColor(v2.faint)
+            }
+            actionChip("open in editor", primary: true) { NSWorkspace.shared.open(file.url) }
             actionChip("reveal in Finder") { NSWorkspace.shared.activateFileViewerSelecting([file.url]) }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)

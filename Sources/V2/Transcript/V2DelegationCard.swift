@@ -21,6 +21,9 @@ struct V2DelegationCard: View {
     let sessionDir: URL?
 
     @State private var peeking = false
+    /// Refreshed off the main thread once a second while running — see
+    /// `refreshLiveAction()` (bug-hunt M22).
+    @State private var liveActionText: String?
 
     private var description: String { run?.description ?? fallbackDescription }
     private var agentType: String { run?.agentType ?? fallbackAgentType }
@@ -32,6 +35,7 @@ struct V2DelegationCard: View {
                 if isRunning {
                     TimelineView(.periodic(from: .now, by: 1)) { ctx in
                         cardRow(now: ctx.date)
+                            .task(id: ctx.date) { await refreshLiveAction() }
                     }
                 } else {
                     cardRow(now: Date())
@@ -84,7 +88,7 @@ struct V2DelegationCard: View {
                         .foregroundColor(trailingColor)
                 }
                 if isRunning {
-                    Text(liveAction() ?? "working…")
+                    Text(liveActionText ?? "working…")
                         .font(.system(size: 10.5, design: .monospaced))
                         .foregroundColor(v2.faint)
                         .lineLimit(1)
@@ -95,14 +99,27 @@ struct V2DelegationCard: View {
     }
 
     /// The agent's most recent action off its transcript tail — bounded
-    /// read at the card's 1Hz tick, only while running. Nil until the
-    /// transcript file appears on disk (a beat after spawn).
-    private func liveAction() -> String? {
-        guard let sessionDir,
-              let path = V2SubagentTail.transcript(
-                  sessionDir: sessionDir, toolUseId: toolUseId, agentId: run?.agentId)
-        else { return nil }
-        return V2SubagentTail.lastAction(path: path)
+    /// read at the card's 1Hz tick, only while running. Publishes nil until
+    /// the transcript file appears on disk (a beat after spawn).
+    ///
+    /// Off the main thread (bug-hunt M22): this used to stat+read+parse
+    /// synchronously on the main actor every tick, once per VISIBLE card —
+    /// N concurrent delegation cards multiplied that main-thread cost every
+    /// second. A plain `.task {}` here would NOT leave the main actor (this
+    /// View, like every SwiftUI View, is implicitly MainActor-isolated by
+    /// inference from `body`) — `Task.detached` is what actually hops off,
+    /// and we hop back only to publish the result into `@State`.
+    private func refreshLiveAction() async {
+        guard let sessionDir else { return }
+        let toolUseId = toolUseId
+        let agentId = run?.agentId
+        let text = await Task.detached(priority: .utility) { () -> String? in
+            guard let path = V2SubagentTail.transcript(
+                sessionDir: sessionDir, toolUseId: toolUseId, agentId: agentId)
+            else { return nil }
+            return V2SubagentTail.lastAction(path: path)
+        }.value
+        if !Task.isCancelled { liveActionText = text }
     }
 
     private var dotColor: Color {
@@ -170,7 +187,7 @@ struct V2SubagentPeekSheet: View {
             if isRunning {
                 TimelineView(.periodic(from: .now, by: 1)) { ctx in
                     sheetBody(now: ctx.date)
-                        .task(id: ctx.date) { refresh() }
+                        .task(id: ctx.date) { await refresh() }
                 }
             } else {
                 sheetBody(now: Date())
@@ -178,7 +195,7 @@ struct V2SubagentPeekSheet: View {
         }
         .frame(width: 780, height: 520)
         .background(v2.paper2)
-        .task { refresh() }
+        .task { await refresh() }
         .onExitCommand { dismiss() }
         .enableInjection()
     }
@@ -297,15 +314,23 @@ struct V2SubagentPeekSheet: View {
 
     // MARK: Refresh
 
-    private func refresh() {
+    /// Off the main thread (bug-hunt M22) — same rationale as
+    /// V2DelegationCard.refreshLiveAction(): resolution + a bounded tail
+    /// read + JSONL parse, hopped via Task.detached, published on return.
+    private func refresh() async {
         guard let sessionDir else { return }
-        if transcriptPath == nil {
-            transcriptPath = V2SubagentTail.transcript(
-                sessionDir: sessionDir, toolUseId: toolUseId, agentId: run?.agentId)
-        }
-        guard let transcriptPath else { return }
-        let fresh = V2SubagentTail.activity(path: transcriptPath)
-        if fresh != feed { feed = fresh }
+        let toolUseId = toolUseId
+        let agentId = run?.agentId
+        let knownPath = transcriptPath
+        let (path, fresh) = await Task.detached(priority: .utility) { () -> (URL?, [String]) in
+            let path = knownPath ?? V2SubagentTail.transcript(
+                sessionDir: sessionDir, toolUseId: toolUseId, agentId: agentId)
+            guard let path else { return (nil, []) }
+            return (path, V2SubagentTail.activity(path: path))
+        }.value
+        guard !Task.isCancelled else { return }
+        if transcriptPath == nil { transcriptPath = path }
+        if path != nil, fresh != feed { feed = fresh }
     }
 
     private static func mmss(_ interval: TimeInterval) -> String {

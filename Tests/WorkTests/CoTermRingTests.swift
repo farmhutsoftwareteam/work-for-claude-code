@@ -94,6 +94,30 @@ final class CoTermRingTests: XCTestCase {
         XCTAssertTrue(afterClear.text.contains("CCCC"))
     }
 
+    // MARK: - clearSecure redacts buffered secure-window bytes (bug-hunt M21)
+
+    /// The secure boundary is a temporary READ CLAMP, not permanent
+    /// redaction on its own — `clearSecure()` used to just drop the
+    /// boundary, so anything the child process printed while echo was off
+    /// (e.g. a manual `*` mask) became readable again the instant echo
+    /// returned. `clearSecure()` now overwrites those bytes in place before
+    /// dropping the boundary, so they never resurface even via a read that
+    /// spans straight through the old secure window.
+    func test_clearSecure_redactsBufferedSecureWindowBytes() {
+        let ring = CoTermRing()
+        ring.append(Data("AAAA".utf8))
+        ring.markSecure()
+        ring.append(Data("SECRET".utf8))   // buffered while echo was off
+        ring.clearSecure()
+        ring.append(Data("CCCC".utf8))
+
+        let result = ring.read(since: 0)
+        XCTAssertFalse(result.text.contains("SECRET"), "bytes buffered during the secure window must stay redacted after clearSecure()")
+        XCTAssertTrue(result.text.hasPrefix("AAAA"), "bytes before the secure window are untouched")
+        XCTAssertTrue(result.text.hasSuffix("CCCC"), "bytes appended after clearSecure() are untouched")
+        XCTAssertEqual(result.text.count, 14, "redaction overwrites in place — the byte length/cursor arithmetic must not shift")
+    }
+
     // MARK: - markSecure is idempotent
 
     func test_markSecure_secondCallDoesNotMoveBoundary() {
@@ -116,5 +140,32 @@ final class CoTermRingTests: XCTestCase {
         let result = ring.read(since: 1_000)
         XCTAssertEqual(result.text, "")
         XCTAssertLessThanOrEqual(result.cursor, ring.total)
+    }
+
+    // MARK: - cap eviction past a stale secure boundary (bug-hunt H3)
+
+    /// A long-running raw-mode program (vim/htop/tmux — anything with echo
+    /// off, not just password prompts) can push enough output through the
+    /// ring that cap eviction advances `base` past `secureBoundary`. Before
+    /// the fix, `end` stayed pinned below `base` and the slice subscript
+    /// went negative — a crash reachable every second by the collapsed-pane
+    /// tail read, with zero agent activity required.
+    func test_capEvictionPastStaleSecureBoundary_doesNotCrash() {
+        let ring = CoTermRing()
+        ring.append(Data("secret-prompt".utf8))
+        ring.markSecure() // boundary set early, before the flood below
+
+        let chunk = Data(repeating: 0x61, count: 500_000)
+        for _ in 0..<6 { ring.append(chunk) } // 3,000,000 bytes, cap is 2,000,000
+
+        XCTAssertGreaterThan(ring.total - 2_000_000, 13, "base must have advanced past the 13-byte secure boundary for this test to be meaningful")
+
+        // Must not crash, and must fail closed (empty) rather than leak
+        // whatever now sits in the buffer past the stale boundary.
+        let result = ring.read(since: nil)
+        XCTAssertEqual(result.text, "")
+
+        let resultSinceZero = ring.read(since: 0)
+        XCTAssertEqual(resultSinceZero.text, "")
     }
 }

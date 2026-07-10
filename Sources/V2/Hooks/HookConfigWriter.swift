@@ -191,19 +191,40 @@ enum HookConfigWriter {
             try fm.createDirectory(at: parent, withIntermediateDirectories: true)
         }
 
-        var settings: [String: Any] = [:]
-        if let data = try? Data(contentsOf: url),
-           let json = try JSONSerialization.jsonObject(with: data) as? [String: Any] {
-            settings = json
+        // Coordinate the read-modify-write as one unit via NSFileCoordinator
+        // so a second coordinated writer (another Atelier window) can't
+        // interleave between our read and our write and silently lose one
+        // side's edit. `.atomic` below only guards against partial-file
+        // corruption on our own write — it doesn't serialize writers, hence
+        // the wrapping coordinator. This doesn't protect against the claude
+        // CLI itself, which doesn't participate in file coordination, but
+        // it closes the gap for the concurrent-window case.
+        let coordinator = NSFileCoordinator()
+        var coordinationError: NSError?
+        var innerError: Error?
+
+        coordinator.coordinate(writingItemAt: url, options: [], error: &coordinationError) { coordinatedURL in
+            do {
+                var settings: [String: Any] = [:]
+                if let data = try? Data(contentsOf: coordinatedURL),
+                   let json = try JSONSerialization.jsonObject(with: data) as? [String: Any] {
+                    settings = json
+                }
+
+                let updated = applyEdit(to: settings, transform: transform)
+
+                let outData = try JSONSerialization.data(
+                    withJSONObject: updated,
+                    options: [.prettyPrinted, .sortedKeys]
+                )
+                try outData.write(to: coordinatedURL, options: .atomic)
+            } catch {
+                innerError = error
+            }
         }
 
-        let updated = applyEdit(to: settings, transform: transform)
-
-        let outData = try JSONSerialization.data(
-            withJSONObject: updated,
-            options: [.prettyPrinted, .sortedKeys]
-        )
-        try outData.write(to: url, options: .atomic)
+        if let coordinationError { throw coordinationError }
+        if let innerError { throw innerError }
     }
 }
 

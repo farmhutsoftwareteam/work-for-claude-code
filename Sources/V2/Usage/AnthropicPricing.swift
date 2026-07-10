@@ -29,14 +29,18 @@ struct AnthropicPricing {
     }
 
     /// Keyed by family substring; we match a model id against these in
-    /// order, longest key first, so `claude-opus-4-8` falls through to the
-    /// `opus` rate without needing per-version entries.
+    /// order, longest key first, so a more-specific future entry (e.g. a
+    /// `"opus-mini"` tier) can't be shadowed by a shorter generic one that
+    /// happens to sort earlier in the literal below. Sorted once here rather
+    /// than hand-ordered, so the invariant holds even if someone appends a
+    /// new entry out of length order later — no current key is a substring
+    /// of another, but this is cheap insurance against a future one that is.
     static let rates: [(matches: String, rate: Rate)] = [
         ("opus",   Rate(input: 15.00, output: 75.00, cacheRead: 1.50, cacheWrite: 18.75)),
         ("sonnet", Rate(input: 3.00,  output: 15.00, cacheRead: 0.30, cacheWrite: 3.75)),
         ("haiku",  Rate(input: 0.80,  output: 4.00,  cacheRead: 0.08, cacheWrite: 1.00)),
         ("fable",  Rate(input: 3.00,  output: 15.00, cacheRead: 0.30, cacheWrite: 3.75)),
-    ]
+    ].sorted { $0.matches.count > $1.matches.count }
 
     /// Return USD cost for a TokenUsage at the given model's rate.
     /// Returns nil when the model family isn't in the table (so callers

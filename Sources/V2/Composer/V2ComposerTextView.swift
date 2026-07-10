@@ -285,7 +285,16 @@ final class ComposerNSTextView: NSTextView {
     // MARK: Drag & drop
 
     override func draggingEntered(_ sender: NSDraggingInfo) -> NSDragOperation {
-        sender.draggingPasteboard.canReadObject(forClasses: [NSImage.self, NSURL.self], options: nil) ? .copy : []
+        // Narrowed to what performDragOperation actually handles: in-memory
+        // image data, or FILE URLs. Checking bare NSURL readability (the old
+        // check) also matched a plain web-link drag (e.g. from Safari's
+        // address bar) — the cursor promised a drop that performDragOperation
+        // then silently swallowed, since it only reads $0.isFileURL. The
+        // .urlReadingFileURLsOnly option makes canReadObject agree with that.
+        let pb = sender.draggingPasteboard
+        let acceptsImage = pb.canReadObject(forClasses: [NSImage.self], options: nil)
+        let acceptsFileURL = pb.canReadObject(forClasses: [NSURL.self], options: [.urlReadingFileURLsOnly: true])
+        return (acceptsImage || acceptsFileURL) ? .copy : []
     }
 
     override func performDragOperation(_ sender: NSDraggingInfo) -> Bool {

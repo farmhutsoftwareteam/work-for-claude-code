@@ -94,11 +94,22 @@ struct CoTerminalPaneView: View {
         }
     }
 
+    // Hoisted (bug-hunt LOW): `replacingOccurrences(…, options: .regularExpression)`
+    // compiles a fresh NSRegularExpression internally on every call. This runs
+    // off a 1Hz TimelineView tick per COLLAPSED terminal (PERFORMANCE.md §4:
+    // no regex construction in a per-row/per-tick path) — compile once here
+    // instead.
+    nonisolated(unsafe) private static let oscEscapeRegex = try? NSRegularExpression(pattern: "\u{1B}\\][^\u{07}]*\u{07}")
+    nonisolated(unsafe) private static let csiEscapeRegex = try? NSRegularExpression(pattern: "\u{1B}\\[[0-9;?]*[A-Za-z]")
+
     private static func lastLine(of terminal: CoTerminal) -> String {
         let raw = terminal.ring.read(since: nil).text
-        let clean = raw
-            .replacingOccurrences(of: "\u{1B}\\][^\u{07}]*\u{07}", with: "", options: .regularExpression)
-            .replacingOccurrences(of: "\u{1B}\\[[0-9;?]*[A-Za-z]", with: "", options: .regularExpression)
+        var clean = raw
+        for regex in [oscEscapeRegex, csiEscapeRegex] {
+            guard let regex else { continue }
+            clean = regex.stringByReplacingMatches(
+                in: clean, range: NSRange(clean.startIndex..., in: clean), withTemplate: "")
+        }
         return clean
             .split(whereSeparator: { $0 == "\n" || $0 == "\r" })
             .reversed()

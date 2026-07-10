@@ -48,6 +48,22 @@ final class CoTermRing: @unchecked Sendable {
 
     func clearSecure() {
         lock.lock(); defer { lock.unlock() }
+        // Redact rather than just un-clamp: anything buffered while echo was
+        // off must never become readable again once echo returns, even if a
+        // future bug in read()'s clamping logic ever bypassed the boundary
+        // (bug-hunt M21) — actual keystrokes never reach this ring at all
+        // (CoTerminal.send(source:data:) writes straight to the PTY), so
+        // this only ever covers bytes the CHILD PROCESS itself printed
+        // during the secure window (e.g. a manual `*` mask), but it's cheap
+        // insurance for that belt-and-braces layer. Overwrite IN PLACE
+        // (never resize `buf`) so every existing absolute offset stays
+        // valid — no risk to base/cursor arithmetic elsewhere in this class.
+        if let boundary = secureBoundary {
+            let start = max(0, min(boundary - base, buf.count))
+            if start < buf.count {
+                buf.replaceSubrange(start..<buf.count, with: repeatElement(0x2a, count: buf.count - start))
+            }
+        }
         secureBoundary = nil
     }
 
@@ -57,7 +73,15 @@ final class CoTermRing: @unchecked Sendable {
     func read(since: Int?) -> (text: String, cursor: Int, gapped: Bool) {
         lock.lock(); defer { lock.unlock() }
         let totalNow = base + buf.count
-        let end = min(secureBoundary ?? totalNow, totalNow)
+        // Clamp to `base`: cap eviction can advance `base` past a stale
+        // secureBoundary (a long-running raw-mode program like vim/htop/tmux
+        // pushes >2MB through the ring while echo stays off). Without this,
+        // `end` stays below `base` and the slice below subscripts `buf` with
+        // a negative range — a crash, hit automatically every second by the
+        // collapsed-pane tail read. Once the boundary itself is evicted it
+        // can no longer be trusted, so fail closed (empty read) rather than
+        // guess — never crash, never leak.
+        let end = max(base, min(secureBoundary ?? totalNow, totalNow))
         var start = since ?? max(base, end - 8_192)
         let gapped = (since ?? base) < base
         start = min(max(start, base), end)
@@ -122,6 +146,18 @@ final class CoTerminal: NSObject, ObservableObject, Identifiable {
 
     /// ECHO bit of the PTY's termios — off during password prompts. tcgetattr
     /// on the master fd reflects the pty's shared line discipline.
+    ///
+    /// Deliberately over-broad (bug-hunt M20): ANY raw-mode program (vim,
+    /// htop, tmux, less — anything that disables ECHO, not just a password
+    /// prompt) locks the agent out of read/write for its whole runtime, not
+    /// just the secure moment. That's the correct fail-closed default —
+    /// distinguishing "echo off for a password" from "echo off because
+    /// curses took over the terminal" isn't reliably possible from termios
+    /// flags alone (ICANON is also off for both), and a false negative here
+    /// (treating a real password prompt as safe) is the failure mode that
+    /// actually matters. The cost is common TUI tools being unusable
+    /// co-driven; that's a usability gap to solve with UI (e.g. a manual
+    /// "this isn't secure" override), not by loosening this check.
     nonisolated private func echoIsOff() -> Bool {
         let fd = childFD()
         guard fd >= 0 else { return false }

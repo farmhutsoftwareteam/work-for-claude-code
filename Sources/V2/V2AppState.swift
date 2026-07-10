@@ -144,6 +144,22 @@ final class V2AppState: ObservableObject {
     /// duplicated.
     private var sessionStateSubs: [UUID: AnyCancellable] = [:]
 
+    /// In-flight stop-then-restart Tasks (reconnect / permission-mode change
+    /// / clear conversation), keyed by tab id so close(tabId:) can cancel one
+    /// instead of letting a captured `session` restart into a process
+    /// nothing references anymore (bug-hunt H2).
+    private var pendingRestarts: [UUID: Task<Void, Never>] = [:]
+
+    /// Per-tab subscriptions to a loop/harness orchestrator's objectWillChange
+    /// (same discipline as `sessionStateSubs`). Keyed by tab id so attaching a
+    /// new loop/harness — or clearing one via `attachLoop(nil, …)` /
+    /// `attachHarness(nil, …)` — replaces rather than stacks a duplicate sub
+    /// into the unbounded `cancellables` Set, and close(tabId:) can cancel it.
+    /// Assigning `nil` cancels the previous subscription (AnyCancellable
+    /// cancels on dealloc).
+    private var loopSubs: [UUID: AnyCancellable] = [:]
+    private var harnessSubs: [UUID: AnyCancellable] = [:]
+
     /// Republish chrome when a tab's session changes state/model/permission/MCP/
     /// retry — NOT on its blanket objectWillChange, which fires on every streamed
     /// token and re-rendered the whole window (rail, tabs, header, dock) for
@@ -161,6 +177,12 @@ final class V2AppState: ObservableObject {
             session.$permissionMode.map { _ in () }.eraseToAnyPublisher(),
             session.$mcpServers.map { _ in () }.eraseToAnyPublisher(),
             session.$isRetrying.map { _ in () }.eraseToAnyPublisher(),
+            // Without these two, a background task/subagent finishing while
+            // $state stays .ready never republishes chrome — the tab strip's
+            // workingBackground pill and title-bar tally go stale until an
+            // unrelated re-render coincidentally fires (M17).
+            session.$backgroundTasks.map { _ in () }.eraseToAnyPublisher(),
+            session.$subagentRuns.map { _ in () }.eraseToAnyPublisher(),
         ]
         let otherSub = Publishers.MergeMany(otherSignals)
             .receive(on: RunLoop.main)
@@ -196,7 +218,20 @@ final class V2AppState: ObservableObject {
         // looking at.
         if case .ready = newState, case .working = old, isBackground {
             unseenDone.insert(tabId)
-            V2Sound.play(.done)
+            // Suppress the "done" chime while a background task/subagent this
+            // turn kicked off is still running — the tab isn't actually done
+            // yet (tabStatus shows .workingBackground for exactly this case),
+            // so playing the completion sound here would be a false cue. The
+            // unseenDone mark stays so .doneUnseen still surfaces once that
+            // background work finishes (see tabStatus's M16 comment).
+            let session = tabs.first(where: { $0.id == tabId })?.streamSession
+            let hasActiveBackgroundWork = session.map {
+                $0.backgroundTasks.contains(where: { $0.state == .running })
+                    || $0.subagentRuns.contains(where: { $0.state == .running && $0.isBackground })
+            } ?? false
+            if !hasActiveBackgroundWork {
+                V2Sound.play(.done)
+            }
         }
     }
 
@@ -326,12 +361,17 @@ final class V2AppState: ObservableObject {
             case .working, .spawning, .initializing: return .working
             case .awaitingPermission:                return .needsYou
             default:
-                if unseenDone.contains(tab.id) { return .doneUnseen }
-                // Turn's finished, but a background task or delegated agent
-                // it started hasn't — "present, not urgent" (#69/#71 tab
-                // signaling; #38 extends it to subagents).
+                // Background task/subagent takes precedence over unseenDone:
+                // handleStateTransition marks a finished-while-backgrounded
+                // turn as unseenDone unconditionally, so checking that first
+                // would show "done" even while a task it started is still
+                // running — masking the intended "present, not urgent"
+                // workingBackground state until the tab is manually viewed
+                // once (M16). Once the task finishes, this falls through to
+                // the unseenDone check below and .doneUnseen still surfaces.
                 if s.backgroundTasks.contains(where: { $0.state == .running }) { return .workingBackground }
                 if s.subagentRuns.contains(where: { $0.state == .running && $0.isBackground }) { return .workingBackground }
+                if unseenDone.contains(tab.id) { return .doneUnseen }
                 return .idle
             }
         }
@@ -512,20 +552,47 @@ final class V2AppState: ObservableObject {
             }
             let cwd = URL(fileURLWithPath: tab.projectCwd)
             let resume = session.sessionId ?? resumeIds[tab.id]
-            session.stop()
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.45) {
-                session.start(
-                    cwd: cwd,
-                    claudeURL: binary,
-                    resumeId: resume,
-                    model: self.defaultSpawnModel,
-                    permissionMode: self.defaultPermissionMode
-                )
+            let model = defaultSpawnModel
+            let mode = defaultPermissionMode
+            restartAfterStop(tabId: tab.id, session: session) {
+                session.start(cwd: cwd, claudeURL: binary, resumeId: resume, model: model, permissionMode: mode)
                 session.appendSystemNote("\(serverName) signed in — reconnected.")
             }
             count += 1
         }
         return count
+    }
+
+    /// Stops `session`, waits for teardown to actually finish (polls
+    /// `state` instead of guessing a fixed delay), then runs `restart`.
+    /// The old fixed 0.45s wait either fired the restart too early —
+    /// silently no-op'ing against StreamSession.start()'s state guard when
+    /// teardown ran long — or too late, after a tab close, spawning a fresh
+    /// process for a `session` nothing references anymore (bug-hunt H2).
+    /// Storing the Task in `pendingRestarts` lets close(tabId:) cancel it.
+    /// Internal (not private) — V2SessionHeader.restartActiveSession had its
+    /// own separate, still-broken copy of this exact pattern; it now calls
+    /// this one instead of carrying a 4th duplicate.
+    func restartAfterStop(tabId: UUID, session: StreamSession, restart: @escaping () -> Void) {
+        pendingRestarts[tabId]?.cancel()
+        session.stop()
+        pendingRestarts[tabId] = Task { @MainActor [weak self] in
+            let deadline = Date().addingTimeInterval(3)
+            while !Task.isCancelled, Date() < deadline {
+                switch session.state {
+                case .terminated, .idle:
+                    restart()
+                    self?.pendingRestarts[tabId] = nil
+                    return
+                default:
+                    break
+                }
+                try? await Task.sleep(nanoseconds: 30_000_000)
+            }
+            // Timed out or cancelled — don't restart into a half-torn-down
+            // session; leave it for the user to retry rather than guess.
+            self?.pendingRestarts[tabId] = nil
+        }
     }
 
     func close(tabId: UUID) {
@@ -538,6 +605,10 @@ final class V2AppState: ObservableObject {
         _ = terminals?.close(tabId, force: true)
         resumeIds.removeValue(forKey: tabId)
         sessionStateSubs[tabId] = nil   // cancel the state subscription (was leaked)
+        loopSubs[tabId] = nil           // cancel any loop objectWillChange sub (was leaked)
+        harnessSubs[tabId] = nil        // cancel any harness objectWillChange sub (was leaked)
+        pendingRestarts[tabId]?.cancel()
+        pendingRestarts[tabId] = nil
         lastTabState[tabId] = nil
         unseenDone.remove(tabId)
         if wasActive {
@@ -573,15 +644,9 @@ final class V2AppState: ObservableObject {
         }
         let cwd = URL(fileURLWithPath: tab.projectCwd)
         let resume = session.sessionId ?? resumeIds[tab.id]
-        session.stop()
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.45) {
-            session.start(
-                cwd: cwd,
-                claudeURL: binary,
-                resumeId: resume,
-                model: self.defaultSpawnModel,
-                permissionMode: mode
-            )
+        let model = defaultSpawnModel
+        restartAfterStop(tabId: tab.id, session: session) {
+            session.start(cwd: cwd, claudeURL: binary, resumeId: resume, model: model, permissionMode: mode)
         }
     }
 
@@ -597,16 +662,11 @@ final class V2AppState: ObservableObject {
         let cwd = URL(fileURLWithPath: tab.projectCwd)
         // Drop any stashed resume id so the restart can't resurrect context.
         resumeIds.removeValue(forKey: tab.id)
-        session.stop()
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.45) {
+        let model = defaultSpawnModel
+        let mode = defaultPermissionMode
+        restartAfterStop(tabId: tab.id, session: session) {
             session.resetTranscript()
-            session.start(
-                cwd: cwd,
-                claudeURL: binary,
-                resumeId: nil,
-                model: self.defaultSpawnModel,
-                permissionMode: self.defaultPermissionMode
-            )
+            session.start(cwd: cwd, claudeURL: binary, resumeId: nil, model: model, permissionMode: mode)
             session.appendSystemNote("Conversation cleared — fresh context.")
         }
     }
@@ -734,11 +794,14 @@ final class V2AppState: ObservableObject {
         existing.loop?.stop()
         terminals.setLoop(loop, on: tabId)
 
-        if let loop {
+        // Keyed replacement: assigning into the dict cancels whatever sub was
+        // there before (including on `attachLoop(nil, …)`, which just clears
+        // the entry) instead of piling another sink into `cancellables` that
+        // never gets removed.
+        loopSubs[tabId] = loop.map { loop in
             loop.objectWillChange
                 .receive(on: RunLoop.main)
                 .sink { [weak self] _ in self?.objectWillChange.send() }
-                .store(in: &cancellables)
         }
         objectWillChange.send()
     }
@@ -749,22 +812,32 @@ final class V2AppState: ObservableObject {
         existing.harness?.stop()
         terminals.setHarness(harness, on: tabId)
 
-        if let harness {
+        harnessSubs[tabId] = harness.map { harness in
             harness.objectWillChange
                 .receive(on: RunLoop.main)
                 .sink { [weak self] _ in self?.objectWillChange.send() }
-                .store(in: &cancellables)
         }
         objectWillChange.send()
     }
 
     // MARK: - Binary resolution
 
-    func resolveBinary() {
+    /// `async` so callers that need claudeBinary resolved before proceeding
+    /// (restoreWorkspaceIfNeeded() at launch) can `await` it. The actual
+    /// shell-out is dispatched to a detached task (M8, bug-hunt 2026-07-10):
+    /// ClaudeBinary.locate()'s PATH fallback runs the user's login shell —
+    /// even with the timeout added in BinaryVersion.swift, running it inline
+    /// on this actor would still block the MainActor (and app launch) for up
+    /// to that timeout. Hopping off lets the MainActor keep processing other
+    /// work (e.g. rendering) while this awaits.
+    func resolveBinary() async {
         guard claudeBinary == nil else { return }
-        let url = ClaudeBinary.locate()
-        claudeBinary = url
-        if let url { claudeVersion = ClaudeBinary.version(at: url) }
+        let resolved: (URL?, SemVer?) = await Task.detached(priority: .userInitiated) {
+            let url = ClaudeBinary.locate()
+            return (url, url.flatMap { ClaudeBinary.version(at: $0) })
+        }.value
+        claudeBinary = resolved.0
+        claudeVersion = resolved.1
     }
 }
 

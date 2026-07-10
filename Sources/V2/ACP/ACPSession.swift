@@ -43,6 +43,19 @@ final class ACPSession: ObservableObject {
     /// append to one bubble instead of spawning a new item per chunk.
     private var streamingAssistantIndex: Int?
 
+    /// Coalescing accumulator for onAgentText, mirroring StreamSession's
+    /// streamBuffer/commitStreamBuffer pattern (CLAUDE.md streaming rule 1).
+    /// Chunks accumulate here — a plain, uniquely-owned String var, O(1)
+    /// amortized append — and only get written into the @Published
+    /// `transcript` array at ~30fps. The prior code did `m.text += chunk`
+    /// on a copy extracted from `transcript[i]` on EVERY network chunk: an
+    /// O(message-length) COW copy per delta, i.e. quadratic over a reply —
+    /// the exact anti-pattern the project's own performance contract exists
+    /// to prevent (bug-hunt #10/M31).
+    private var agentTextBuffer = ""
+    private var agentTextFlushPending = false
+    private static let streamFlushInterval: TimeInterval = 0.033
+
     init(cwd: URL) {
         self.cwd = cwd
         wireCallbacks()
@@ -54,18 +67,37 @@ final class ACPSession: ObservableObject {
     /// success once the session is live.
     func start(onReady: ((Bool) -> Void)? = nil) {
         guard status == .idle else { onReady?(status == .ready); return }
-        guard let node = ACPBinaries.node(), let acp = ACPBinaries.acpIndexJS() else {
-            status = .failed("Couldn't find node or claude-code-acp. Run: npm i -g @zed-industries/claude-code-acp")
-            onReady?(false)
-            return
-        }
         status = .connecting
-        client.start(nodeURL: node, acpIndexJS: acp, cwd: cwd) { [weak self] ok in
-            // Already on main (ACPClient hops there).
-            guard let self else { return }
-            self.status = ok ? .ready : .failed("Failed to start ACP session")
-            self.sessionId = self.client.sessionId
-            onReady?(ok)
+        // node()/acpIndexJS() shell out synchronously (`which`, `npm root
+        // -g` via a login shell) — on a slow shell rc (nvm/rbenv init) that
+        // visibly hitches the UI if run on this @MainActor-isolated class.
+        // Resolve them off-main, then hop back to touch state (bug-hunt
+        // #13/M34).
+        //
+        // A plain `Task {}` (not `.detached`) inherits this method's
+        // @MainActor isolation, so `onReady`/`self` never get handed into a
+        // @Sendable closure — the inner `Task.detached` below only ever
+        // touches the pure static `ACPBinaries` resolution, which is what
+        // actually needs to leave the main actor. Nesting `MainActor.run`
+        // with a `[weak self]`/captured-closure inside `Task.detached` is
+        // exactly the shape Swift 6 strict concurrency flags as "sending
+        // risks causing data races."
+        Task {
+            let (node, acp) = await Task.detached {
+                (ACPBinaries.node(), ACPBinaries.acpIndexJS())
+            }.value
+            guard let node, let acp else {
+                status = .failed("Couldn't find node or claude-code-acp. Run: npm i -g @zed-industries/claude-code-acp")
+                onReady?(false)
+                return
+            }
+            client.start(nodeURL: node, acpIndexJS: acp, cwd: cwd) { [weak self] ok in
+                // Already on main (ACPClient hops there).
+                guard let self else { return }
+                self.status = ok ? .ready : .failed("Failed to start ACP session")
+                self.sessionId = self.client.sessionId
+                onReady?(ok)
+            }
         }
     }
 
@@ -74,6 +106,8 @@ final class ACPSession: ObservableObject {
         guard !trimmed.isEmpty else { return }
         transcript.append(.message(ACPMessage(role: .user, text: trimmed)))
         streamingAssistantIndex = nil  // next agent chunk starts a fresh bubble
+        agentTextBuffer = ""           // discard any stale unflushed tail from a prior turn
+        agentTextFlushPending = false
         status = .working
         client.prompt(trimmed)
     }
@@ -98,17 +132,12 @@ final class ACPSession: ObservableObject {
 
         client.onAgentText = { [weak self] chunk in
             guard let self else { return }
-            if let i = self.streamingAssistantIndex, self.transcript.indices.contains(i),
-               case .message(var m) = self.transcript[i], m.role == .assistant {
-                m.text += chunk
-                self.transcript[i] = .message(m)
-            } else {
-                self.transcript.append(.message(ACPMessage(role: .assistant, text: chunk)))
-                self.streamingAssistantIndex = self.transcript.count - 1
-            }
+            self.agentTextBuffer += chunk
+            self.scheduleAgentTextFlush()
         }
         client.onAgentThought = { [weak self] chunk in
             guard let self else { return }
+            self.flushAgentTextBuffer()   // preserve transcript order vs. any pending text
             if let last = self.transcript.indices.last,
                case .message(var m) = self.transcript[last], m.role == .thinking {
                 m.text += chunk
@@ -120,6 +149,7 @@ final class ACPSession: ObservableObject {
         }
         client.onToolCall = { [weak self] call in
             guard let self else { return }
+            self.flushAgentTextBuffer()   // preserve transcript order vs. any pending text
             if let i = self.transcript.firstIndex(where: {
                 if case .tool(let t) = $0 { return t.id == call.id }; return false
             }) {
@@ -133,14 +163,50 @@ final class ACPSession: ObservableObject {
         client.onPlan = { [weak self] in self?.plan = $0 }
         client.onPermissionRequest = { [weak self] req in self?.pendingPermission = req }
         client.onTurnEnd = { [weak self] _ in
-            self?.status = .ready
-            self?.streamingAssistantIndex = nil
+            guard let self else { return }
+            self.flushAgentTextBuffer()
+            self.status = .ready
+            self.streamingAssistantIndex = nil
         }
         client.onError = { [weak self] msg in
             guard let self else { return }
+            self.flushAgentTextBuffer()   // preserve transcript order vs. any pending text
             // Surface as a system message; keep the session usable.
             self.transcript.append(.message(ACPMessage(role: .system, text: "⚠ \(msg)")))
             if case .connecting = self.status { self.status = .failed(msg) }
+        }
+    }
+
+    // MARK: - Streaming text coalescer (see agentTextBuffer doc comment)
+
+    private func scheduleAgentTextFlush() {
+        guard !agentTextFlushPending else { return }
+        agentTextFlushPending = true
+        DispatchQueue.main.asyncAfter(deadline: .now() + Self.streamFlushInterval) { [weak self] in
+            guard let self, self.agentTextFlushPending else { return }
+            self.agentTextFlushPending = false
+            self.flushAgentTextBuffer()
+        }
+    }
+
+    /// Write any buffered-but-uncommitted assistant text into the
+    /// transcript now, bypassing the flush timer. Called both by the timer
+    /// and by any other transcript-touching event (thought/tool/turn-end/
+    /// error) so ordering is preserved — those checks look at
+    /// `transcript.indices.last`/`streamingAssistantIndex`, which would be
+    /// stale if pending text hasn't landed in the array yet.
+    private func flushAgentTextBuffer() {
+        agentTextFlushPending = false
+        guard !agentTextBuffer.isEmpty else { return }
+        let pending = agentTextBuffer
+        agentTextBuffer = ""
+        if let i = streamingAssistantIndex, transcript.indices.contains(i),
+           case .message(var m) = transcript[i], m.role == .assistant {
+            m.text += pending
+            transcript[i] = .message(m)
+        } else {
+            transcript.append(.message(ACPMessage(role: .assistant, text: pending)))
+            streamingAssistantIndex = transcript.count - 1
         }
     }
 }

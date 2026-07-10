@@ -1,6 +1,6 @@
 // Tracks images / files attached to the composer for the next user turn.
 // Pasted bytes get written to ~/Library/Application Support/Atelier/
-// attachments/<timestamp>-<n>.<ext> so claude can @-reference them. Picked
+// attachments/paste-<uuid>.<ext> so claude can @-reference them. Picked
 // files are referenced in place — we don't copy them.
 //
 // On send, V2LiveComposer asks the store for the @-reference prefix that
@@ -9,6 +9,8 @@
 
 import Foundation
 import AppKit
+import ImageIO
+import UniformTypeIdentifiers
 
 struct V2Attachment: Identifiable, Equatable {
     let id = UUID()
@@ -25,7 +27,7 @@ final class V2AttachmentStore: ObservableObject {
     /// Where pasted-image bytes get written. Once-per-app static directory
     /// under Application Support so the path survives across launches if
     /// claude hasn't read the file yet.
-    private static let scratchDir: URL = {
+    nonisolated private static let scratchDir: URL = {
         let appSupport = FileManager.default
             .urls(for: .applicationSupportDirectory, in: .userDomainMask)
             .first!
@@ -35,17 +37,40 @@ final class V2AttachmentStore: ObservableObject {
         return appSupport
     }()
 
+    /// Persisted-image and thumbnail decode/encode are capped to this on
+    /// their longest side (ImageIO downsizes, never upscales). A raw
+    /// screenshot/RAW paste otherwise burns CPU proportional to native
+    /// resolution for a chip that renders at ~64pt (M18).
+    nonisolated private static let maxPersistedDimension: CGFloat = 4096
+
     // MARK: - Add
 
     func addFile(_ url: URL) {
         guard !items.contains(where: { $0.url == url }) else { return }
-        let thumb = Self.makeThumbnail(for: url)
-        items.append(V2Attachment(
-            url: url,
-            displayName: url.lastPathComponent,
-            isOwned: false,
-            thumbnail: thumb
-        ))
+        // Thumbnail decode is unbounded by source file size (a dropped
+        // multi-MB TIFF/HEIC decodes synchronously otherwise) — run it off
+        // @MainActor and publish only the finished attachment (M18).
+        //
+        // A plain `Task {}` here (not `.detached`) inherits this method's
+        // @MainActor isolation, so the code either side of the inner
+        // `Task.detached` stays on MainActor with no captured `self` ever
+        // crossing the actor boundary — `Task.detached([weak self])` +
+        // `MainActor.run { guard let self }` is the pattern Swift 6 strict
+        // concurrency flags as "sending self risks causing data races"
+        // (self, an @MainActor class, gets handed into a @Sendable closure).
+        // The detached hop below only ever touches static/nonisolated work.
+        Task {
+            let thumb = await Task.detached(priority: .userInitiated) {
+                Self.makeThumbnail(for: url)
+            }.value
+            guard !items.contains(where: { $0.url == url }) else { return }
+            items.append(V2Attachment(
+                url: url,
+                displayName: url.lastPathComponent,
+                isOwned: false,
+                thumbnail: thumb
+            ))
+        }
     }
 
     func addFiles(_ urls: [URL]) {
@@ -53,14 +78,27 @@ final class V2AttachmentStore: ObservableObject {
     }
 
     func addImage(_ image: NSImage) {
-        guard let url = persistImage(image) else { return }
-        let thumb = Self.makeThumbnail(for: url)
-        items.append(V2Attachment(
-            url: url,
-            displayName: url.lastPathComponent,
-            isOwned: true,
-            thumbnail: thumb
-        ))
+        // TIFF→PNG encode + thumbnail decode are synchronous, CPU-bound work
+        // — doing them on @MainActor visibly stalls the composer for a
+        // high-res screenshot/RAW paste (M18). `tiffRepresentation` has to
+        // be read on the main thread (NSImage isn't safely Sendable), but
+        // everything after that is plain Data/ImageIO work — see the note
+        // on addFile(_:) above for why this hops via a nested Task.detached
+        // over static functions instead of capturing `[weak self]` directly.
+        guard let tiff = image.tiffRepresentation else { return }
+        Task {
+            let result: (url: URL, thumb: NSImage?)? = await Task.detached(priority: .userInitiated) {
+                guard let url = Self.persistImage(tiffData: tiff) else { return nil }
+                return (url, Self.makeThumbnail(for: url))
+            }.value
+            guard let result else { return }
+            items.append(V2Attachment(
+                url: result.url,
+                displayName: result.url.lastPathComponent,
+                isOwned: true,
+                thumbnail: result.thumb
+            ))
+        }
     }
 
     // MARK: - Remove
@@ -121,33 +159,42 @@ final class V2AttachmentStore: ObservableObject {
 
     // MARK: - Persistence
 
-    private func persistImage(_ image: NSImage) -> URL? {
-        let stamp = Int(Date().timeIntervalSince1970)
-        let name = "paste-\(stamp)-\(items.count + 1).png"
-        let url = Self.scratchDir.appendingPathComponent(name)
-        guard
-            let tiff = image.tiffRepresentation,
-            let rep = NSBitmapImageRep(data: tiff),
-            let png = rep.representation(using: .png, properties: [:])
-        else { return nil }
-        do {
-            try png.write(to: url, options: .atomic)
-            return url
-        } catch {
-            return nil
-        }
+    /// Encodes + writes pasted image bytes. Called from a detached Task (see
+    /// `addImage`) so it must not touch NSImage/AppKit — ImageIO's
+    /// CGImageSource/CGImageDestination are the documented thread-safe way
+    /// to decode/downsize/encode off the main actor (M18).
+    nonisolated private static func persistImage(tiffData: Data) -> URL? {
+        guard let source = CGImageSourceCreateWithData(tiffData as CFData, nil) else { return nil }
+        let options: [CFString: Any] = [
+            kCGImageSourceCreateThumbnailFromImageAlways: true,
+            kCGImageSourceThumbnailMaxPixelSize: maxPersistedDimension,
+            kCGImageSourceCreateThumbnailWithTransform: true
+        ]
+        guard let cgImage = CGImageSourceCreateThumbnailAtIndex(source, 0, options as CFDictionary) else { return nil }
+        // UUID, not a second-resolution timestamp + this store's own
+        // `items.count` — two DIFFERENT tabs pasting within the same
+        // wall-clock second used to collide because every V2AttachmentStore
+        // counts from 0 independently while all tabs share this one static
+        // scratch dir (M15).
+        let name = "paste-\(UUID().uuidString).png"
+        let url = scratchDir.appendingPathComponent(name)
+        guard let dest = CGImageDestinationCreateWithURL(url as CFURL, UTType.png.identifier as CFString, 1, nil) else { return nil }
+        CGImageDestinationAddImage(dest, cgImage, nil)
+        guard CGImageDestinationFinalize(dest) else { return nil }
+        return url
     }
 
-    private static func makeThumbnail(for url: URL) -> NSImage? {
-        guard let image = NSImage(contentsOf: url) else { return nil }
-        let target = NSSize(width: 64, height: 64)
-        let thumb = NSImage(size: target)
-        thumb.lockFocus()
-        defer { thumb.unlockFocus() }
-        NSGraphicsContext.current?.imageInterpolation = .high
-        image.draw(in: NSRect(origin: .zero, size: target),
-                   from: NSRect(origin: .zero, size: image.size),
-                   operation: .copy, fraction: 1.0)
-        return thumb
+    /// ImageIO thumbnail instead of `NSImage(contentsOf:)` + `lockFocus`
+    /// drawing — avoids decoding the full-resolution source just to render a
+    /// 64pt chip, and (unlike NSImage) is safe to call off @MainActor (M18).
+    nonisolated private static func makeThumbnail(for url: URL) -> NSImage? {
+        guard let source = CGImageSourceCreateWithURL(url as CFURL, nil) else { return nil }
+        let options: [CFString: Any] = [
+            kCGImageSourceCreateThumbnailFromImageAlways: true,
+            kCGImageSourceThumbnailMaxPixelSize: 128, // @2x for a 64pt chip
+            kCGImageSourceCreateThumbnailWithTransform: true
+        ]
+        guard let cgImage = CGImageSourceCreateThumbnailAtIndex(source, 0, options as CFDictionary) else { return nil }
+        return NSImage(cgImage: cgImage, size: NSSize(width: cgImage.width, height: cgImage.height))
     }
 }

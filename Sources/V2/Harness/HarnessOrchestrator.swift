@@ -174,7 +174,13 @@ final class HarnessOrchestrator: ObservableObject {
 
     func start() {
         guard phase == .idle else { return }
-        prepareStorage()
+        guard prepareStorage() else {
+            // Without storageRoot, every downstream write is a silent try?
+            // no-op — fail loudly up front instead of running the whole
+            // harness in-memory with nothing persisted and no user signal.
+            phase = .failed(reason: "couldn't create harness storage directory — check disk space/permissions")
+            return
+        }
         phase = .planning
 
         currentTask = Task { [weak self] in
@@ -208,8 +214,12 @@ final class HarnessOrchestrator: ObservableObject {
     func stop() {
         currentTask?.cancel()
         currentTask = nil
-        if phase != .completed,
-           case .failed = phase {} else {
+        // Only downgrade an in-flight phase to .stopped — a terminal phase
+        // reached just before cancellation raced in must survive (mirrors
+        // LoopOrchestrator.stop()). The old `phase != .completed` guard was
+        // inverted: when phase *was* .completed the guard was false, so the
+        // else branch ran and clobbered it to .stopped.
+        if case .completed = phase {} else if case .failed = phase {} else {
             phase = .stopped
         }
     }
@@ -228,7 +238,13 @@ final class HarnessOrchestrator: ObservableObject {
 
         let result = await runOneShot(prompt: prompt, skipPermissions: false)
         plan = result
-        try? plan.write(to: planURL, atomically: true, encoding: .utf8)
+        do {
+            try plan.write(to: planURL, atomically: true, encoding: .utf8)
+        } catch {
+            // plan.md not persisted — the harness keeps running from the
+            // in-memory `plan`, but resume/inspect from disk will be stale.
+            log.error("failed to write plan.md: \(error.localizedDescription, privacy: .public)")
+        }
     }
 
     private func runWorkPhase(n: Int) async {
@@ -255,7 +271,14 @@ final class HarnessOrchestrator: ObservableObject {
             ? result
             : "\(progress)\n\n---\n\n\(result)"
         progress = appended
-        try? progress.write(to: progressURL, atomically: true, encoding: .utf8)
+        do {
+            try progress.write(to: progressURL, atomically: true, encoding: .utf8)
+        } catch {
+            // progress.md not persisted — a crash/quit mid-harness loses the
+            // resumable trail even though this iteration's in-memory state
+            // (and the review that follows) is still correct.
+            log.error("failed to write progress.md: \(error.localizedDescription, privacy: .public)")
+        }
 
         if let idx = iterations.firstIndex(where: { $0.number == n }) {
             iterations[idx].workSummary = result.prefix(800).description
@@ -282,7 +305,14 @@ final class HarnessOrchestrator: ObservableObject {
         """
 
         let raw = await runOneShot(prompt: prompt, skipPermissions: false)
-        try? raw.write(to: reviewURL(n), atomically: true, encoding: .utf8)
+        do {
+            try raw.write(to: reviewURL(n), atomically: true, encoding: .utf8)
+        } catch {
+            // reviews/<n>.md not persisted — verdict parsing below still
+            // works from `raw` in-memory, but the per-iteration audit trail
+            // on disk is missing this entry.
+            log.error("failed to write review \(n): \(error.localizedDescription, privacy: .public)")
+        }
 
         let verdict = parseVerdict(raw: raw)
         if let idx = iterations.firstIndex(where: { $0.number == n }) {
@@ -294,13 +324,23 @@ final class HarnessOrchestrator: ObservableObject {
 
     // MARK: - Helpers
 
-    private func prepareStorage() {
+    /// Returns false if either directory failed to create. Callers must not
+    /// proceed into phases that assume `storageRoot` exists — the plan/
+    /// progress/review writes below are all try? and would otherwise fail
+    /// silently, one file at a time, with no single place to catch it.
+    private func prepareStorage() -> Bool {
         let fm = FileManager.default
-        try? fm.createDirectory(at: storageRoot, withIntermediateDirectories: true)
-        try? fm.createDirectory(
-            at: storageRoot.appendingPathComponent("reviews"),
-            withIntermediateDirectories: true
-        )
+        do {
+            try fm.createDirectory(at: storageRoot, withIntermediateDirectories: true)
+            try fm.createDirectory(
+                at: storageRoot.appendingPathComponent("reviews"),
+                withIntermediateDirectories: true
+            )
+            return true
+        } catch {
+            log.error("prepareStorage failed at \(self.storageRoot.path, privacy: .public): \(error.localizedDescription, privacy: .public)")
+            return false
+        }
     }
 
     /// Spawn `claude -p` with the prompt, capture stdout text. Returns ""

@@ -14,6 +14,7 @@ enum SkillOperationError: Error, LocalizedError {
     case notFound
     case writeFailed(String)
     case cloneFailed(String)
+    case conflict
 
     var errorDescription: String? {
         switch self {
@@ -22,6 +23,7 @@ enum SkillOperationError: Error, LocalizedError {
         case .notFound:                 return "Skill not found on disk."
         case .writeFailed(let msg):     return "Couldn't write SKILL.md: \(msg)"
         case .cloneFailed(let msg):     return "Clone failed: \(msg)"
+        case .conflict:                 return "This skill changed on disk since you started editing — reload it and re-apply your changes to avoid overwriting the other edit."
         }
     }
 }
@@ -116,6 +118,16 @@ enum SkillOperations {
     /// track (e.g. a one-off community git clone).
     @discardableResult
     static func cloneToPersonal(_ skill: ClaudeSkill, pluginId: String? = nil) throws -> URL {
+        // `skill.name` becomes a raw path component below. For a plugin-
+        // marketplace skill this is trustworthy (parsed from an already-
+        // vetted install), but the git-clone path (V2AddSkillFromRepoSheet)
+        // takes it verbatim from an arbitrary repo's SKILL.md — an untrusted
+        // `name: ../../../Library/LaunchAgents/x` would otherwise write
+        // outside ~/.claude/skills/ (bug-hunt H5). createSkill already
+        // guards its own name input the same way; this closes the gap on
+        // the clone path too.
+        guard isValidName(skill.name) else { throw SkillOperationError.nameInvalid }
+
         let base = FileManager.default.homeDirectoryForCurrentUser
             .appendingPathComponent(".claude")
             .appendingPathComponent("skills")
@@ -290,12 +302,29 @@ enum SkillOperations {
         effort: String?,
         license: String?,
         argumentHint: String?,
-        body: String
+        body: String,
+        sinceModified: Date? = nil
     ) throws {
         guard skill.packaging == .directory else {
             throw SkillOperationError.writeFailed("Cannot edit a packaged .skill archive in place. Clone it first.")
         }
         let skillMd = skill.path.appendingPathComponent("SKILL.md")
+
+        // Conflict check: read-modify-write with no coordination means two
+        // windows editing the same skill within a few seconds silently
+        // resolve to "last write wins." `sinceModified` — the mtime the
+        // caller observed when IT started editing (e.g. when the sheet
+        // opened) — lets us detect that someone else already wrote this
+        // file in the meantime and fail loudly instead of clobbering it.
+        // Deliberately not full file coordination/locking, just the cheap
+        // tripwire (bug-hunt #9/M30).
+        if let sinceModified {
+            let currentMTime = (try? FileManager.default.attributesOfItem(atPath: skillMd.path))?[.modificationDate] as? Date
+            if let currentMTime, currentMTime != sinceModified {
+                throw SkillOperationError.conflict
+            }
+        }
+
         let existing = ((try? String(contentsOf: skillMd, encoding: .utf8)) ?? "")
             .replacingOccurrences(of: "\r\n", with: "\n")
         var lines = existing.components(separatedBy: "\n")
@@ -378,9 +407,18 @@ enum SkillOperations {
 
     private static func yamlEscape(_ s: String) -> String {
         // Quote if the value contains characters YAML would interpret, otherwise emit plain.
-        let needsQuoting = s.contains(":") || s.contains("\"") || s.hasPrefix("-") || s.hasPrefix(" ")
+        // `\n` matters here specifically because `when_to_use` is bound to a
+        // multi-line TextEditor in the skill editor — an unescaped embedded
+        // newline splits one `key: value` line into two physical lines in
+        // the written file, silently corrupting the frontmatter on the very
+        // next save of any skill whose "when to use" is more than one line
+        // (bug-hunt H8).
+        let needsQuoting = s.contains(":") || s.contains("\"") || s.contains("\n") || s.hasPrefix("-") || s.hasPrefix(" ")
         if !needsQuoting { return s }
-        let escaped = s.replacingOccurrences(of: "\"", with: "\\\"")
+        let escaped = s
+            .replacingOccurrences(of: "\\", with: "\\\\")
+            .replacingOccurrences(of: "\"", with: "\\\"")
+            .replacingOccurrences(of: "\n", with: "\\n")
         return "\"\(escaped)\""
     }
 }

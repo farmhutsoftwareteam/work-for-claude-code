@@ -136,6 +136,7 @@ enum AgentConfigWriter {
             let serialized = draft.tools
                 .map { $0.trimmingCharacters(in: .whitespaces) }
                 .filter { !$0.isEmpty }
+                .map(escapeToolItem)
                 .joined(separator: ", ")
             lines.append("tools: [\(serialized)]")
         }
@@ -149,13 +150,33 @@ enum AgentConfigWriter {
     }
 
     /// Quote a YAML scalar only when needed — colons, leading/trailing
-    /// whitespace, or surrounding quotes would break the parser.
+    /// whitespace, or surrounding quotes would break the parser. Also covers
+    /// the indicator characters plain YAML scalars can't start with
+    /// (`#[]{}&!|>`) and an embedded " #" (starts an inline comment) —
+    /// previously unhandled, so a field like "priority: #1" or one starting
+    /// with "[urgent]" round-tripped as broken/misread YAML on next load
+    /// (bug-hunt M6/M27).
+    private static let indicatorChars: Set<Character> = ["#", "[", "]", "{", "}", "&", "!", "|", ">"]
+
     private static func escape(_ s: String) -> String {
+        let startsWithIndicator = s.first.map(indicatorChars.contains) ?? false
         let needsQuotes = s.contains(":") || s.contains("\n") || s.first == " " || s.last == " "
+            || s.contains(" #") || startsWithIndicator
         if needsQuotes {
             let escaped = s.replacingOccurrences(of: "\"", with: "\\\"")
             return "\"\(escaped)\""
         }
         return s
+    }
+
+    /// Same rules as `escape`, plus the flow-sequence delimiters that only
+    /// matter inside `tools: [...]` — an unescaped `,`/`[`/`]` inside one
+    /// tool token unbalances or splits the list (bug-hunt #15).
+    private static func escapeToolItem(_ s: String) -> String {
+        if s.contains(",") || s.contains("[") || s.contains("]") {
+            let escaped = s.replacingOccurrences(of: "\"", with: "\\\"")
+            return "\"\(escaped)\""
+        }
+        return escape(s)
     }
 }

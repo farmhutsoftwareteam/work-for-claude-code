@@ -1,49 +1,12 @@
-// AsyncStream<StreamEvent> over a FileHandle. Uses readabilityHandler so
-// events stream as claude writes them — `FileHandle.bytes.lines` buffers
-// on pipes (waits for EOF or larger chunks) and made StreamSession sit on
-// "Initializing" forever. AtelierSpike uses the same handler-based pattern
-// and proves it streams correctly against the live binary.
+// Line-buffering used by StreamSession's stdout readabilityHandler —
+// events stream as claude writes them. `FileHandle.bytes.lines` buffers on
+// pipes (waits for EOF or larger chunks) and made StreamSession sit on
+// "Initializing" forever; an AsyncStream wrapper around readabilityHandler
+// was also tried and its events never reached the consumer. StreamSession
+// drains the handle directly with a readabilityHandler + this buffer
+// instead (see StreamSession.start()).
 
 import Foundation
-import OSLog
-
-private let log = Logger(subsystem: "com.munyamakosa.work", category: "ndjson")
-
-extension FileHandle {
-    /// Read NDJSON lines as they arrive and decode each into a StreamEvent.
-    /// Malformed lines are logged + skipped; the stream stays alive.
-    /// Continuation finishes on EOF (empty availableData) or when the
-    /// consumer cancels.
-    func ndjsonEvents(decoder: JSONDecoder = .init()) -> AsyncStream<StreamEvent> {
-        AsyncStream { continuation in
-            let buffer = LineBuffer()
-            self.readabilityHandler = { [weak self] handle in
-                let chunk = handle.availableData
-                if chunk.isEmpty {
-                    // EOF — process didn't write anything new; tear down.
-                    self?.readabilityHandler = nil
-                    continuation.finish()
-                    return
-                }
-                buffer.append(chunk)
-                for lineData in buffer.drainLines() {
-                    let trimmed = lineData
-                    guard !trimmed.isEmpty else { continue }
-                    do {
-                        let event = try decoder.decode(StreamEvent.self, from: trimmed)
-                        continuation.yield(event)
-                    } catch {
-                        let preview = String(data: trimmed.prefix(200), encoding: .utf8) ?? "<binary>"
-                        log.warning("ndjson decode skipped: \(error.localizedDescription, privacy: .public) — \(preview, privacy: .public)")
-                    }
-                }
-            }
-            continuation.onTermination = { [weak self] _ in
-                self?.readabilityHandler = nil
-            }
-        }
-    }
-}
 
 /// Append-and-drain line buffer. Used by the readabilityHandler to handle
 /// chunks that don't align with line boundaries — claude's stdout writes
@@ -68,5 +31,18 @@ final class LineBuffer: @unchecked Sendable {
             data.removeSubrange(data.startIndex...newlineIdx)
         }
         return lines
+    }
+
+    /// Whatever's left after the last drainLines() call — a line with no
+    /// trailing newline yet. On a clean stream this is always empty; on
+    /// process EOF it holds a final event that never got its trailing "\n"
+    /// (e.g. the process crashed/exited mid-write). Callers should attempt
+    /// one last decode of this on EOF instead of silently dropping it (M9,
+    /// bug-hunt 2026-07-10). Clears the buffer so it can't be double-read.
+    func drainRemainder() -> Data {
+        lock.lock(); defer { lock.unlock() }
+        let remainder = data
+        data.removeAll()
+        return remainder
     }
 }

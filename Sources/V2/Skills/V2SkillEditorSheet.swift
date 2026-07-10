@@ -29,6 +29,13 @@ struct V2SkillEditorSheet: View {
     @State private var isAiGenerated = false
     @State private var aiPromptText = ""
     @State private var generationError: String?
+    /// Handle to the in-flight generate() Task so closing the sheet mid-
+    /// generation can cancel it instead of leaving it running silently —
+    /// Task.sleep inside V2SkillGenerator's poll loop is a cooperative
+    /// cancellation point, so this actually propagates into the generator
+    /// and trips its `defer { session.stop() }`, not just a local no-op
+    /// (bug-hunt #14).
+    @State private var generateTask: Task<Void, Never>?
 
     // Form fields
     @State private var name = ""
@@ -49,6 +56,11 @@ struct V2SkillEditorSheet: View {
     @State private var assetsFolder = false
     @State private var bodyText = "## Steps\n\n1. \n"
     @State private var saveError: String?
+    /// SKILL.md's on-disk modification date at the moment THIS sheet loaded
+    /// it — passed to `updateSkill` so it can detect a concurrent edit from
+    /// another window/sheet and refuse to silently clobber it
+    /// (bug-hunt #9/M30). nil for a brand-new skill: nothing to conflict with.
+    @State private var loadedModificationDate: Date?
     // Secondary/rarely-touched fields (argument-hint, when-to-use, model,
     // effort, license, invocability) collapse behind a disclosure so the
     // body editor — the actual point of this sheet — isn't the 7th of 8
@@ -77,9 +89,13 @@ struct V2SkillEditorSheet: View {
             _argumentHint = State(initialValue: skill.argumentHint ?? "")
             _modelInvocable = State(initialValue: !skill.disableModelInvocation)
             _userInvocable = State(initialValue: skill.userInvocable)
+            let skillMdURL = skill.path.appendingPathComponent("SKILL.md")
             _bodyText = State(initialValue: (try? String(
-                contentsOf: skill.path.appendingPathComponent("SKILL.md"), encoding: .utf8
+                contentsOf: skillMdURL, encoding: .utf8
             )).flatMap(Self.extractBody) ?? "")
+            _loadedModificationDate = State(initialValue: (try? FileManager.default.attributesOfItem(
+                atPath: skillMdURL.path
+            ))?[.modificationDate] as? Date)
             _moreOptionsExpanded = State(initialValue: !(skill.whenToUse ?? "").isEmpty
                 || skill.model != nil || skill.effort != nil
                 || !(skill.license ?? "").isEmpty || !(skill.argumentHint ?? "").isEmpty
@@ -101,6 +117,7 @@ struct V2SkillEditorSheet: View {
         }
         .frame(width: 780, height: 660)
         .background(v2.paper2)
+        .onDisappear { generateTask?.cancel() }
         .enableInjection()
     }
 
@@ -393,7 +410,7 @@ struct V2SkillEditorSheet: View {
         }
         generationError = nil
         stage = .generating
-        Task {
+        generateTask = Task {
             do {
                 let draft = try await V2SkillGenerator.generate(description: aiPromptText, claudeBinary: binary)
                 name = draft.name
@@ -418,7 +435,8 @@ struct V2SkillEditorSheet: View {
             if let editingSkill {
                 try SkillOperations.updateSkill(
                     editingSkill, description: desc, whenToUse: whenToUse, model: model,
-                    effort: effort, license: license, argumentHint: argumentHint, body: bodyText
+                    effort: effort, license: license, argumentHint: argumentHint, body: bodyText,
+                    sinceModified: loadedModificationDate
                 )
                 // modelInvocable is the toggle's own sense (true = invocable);
                 // disableModelInvocation is the stored, inverted sense — they

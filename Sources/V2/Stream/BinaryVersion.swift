@@ -17,25 +17,35 @@ enum ClaudeBinary {
         for path in candidates where fm.isExecutableFile(atPath: path) {
             return URL(fileURLWithPath: path)
         }
-        // Fall back to the parent shell PATH.
+        // Fall back to the parent shell PATH. Runs a real login shell so
+        // nvm/asdf/rc-file PATH exports are honoured — which means it can
+        // hang if the user's shell rc does something slow (network calls,
+        // corporate init scripts). Bounded with a timeout (M8, bug-hunt
+        // 2026-07-10) so a caller can't be wedged indefinitely; this used to
+        // block the MainActor at app launch with no upper bound at all.
         let which = Process()
         which.executableURL = URL(fileURLWithPath: "/bin/sh")
         which.arguments = ["-lc", "command -v claude"]
         let pipe = Pipe()
         which.standardOutput = pipe
         which.standardError = Pipe()
+        let sema = DispatchSemaphore(value: 0)
+        which.terminationHandler = { _ in sema.signal() }
         do {
             try which.run()
-            which.waitUntilExit()
-            let data = pipe.fileHandleForReading.readDataToEndOfFile()
-            if let raw = String(data: data, encoding: .utf8)?
-                .trimmingCharacters(in: .whitespacesAndNewlines),
-               !raw.isEmpty,
-               fm.isExecutableFile(atPath: raw) {
-                return URL(fileURLWithPath: raw)
-            }
         } catch {
-            // fall through
+            return nil
+        }
+        guard sema.wait(timeout: .now() + 2) == .success else {
+            which.terminate()
+            return nil
+        }
+        let data = pipe.fileHandleForReading.readDataToEndOfFile()
+        if let raw = String(data: data, encoding: .utf8)?
+            .trimmingCharacters(in: .whitespacesAndNewlines),
+           !raw.isEmpty,
+           fm.isExecutableFile(atPath: raw) {
+            return URL(fileURLWithPath: raw)
         }
         return nil
     }

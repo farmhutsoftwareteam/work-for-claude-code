@@ -210,13 +210,16 @@ final class StreamSession: ObservableObject {
     // blank "stream closed".
     private var resumeFallbackArmed = false
     private var sawLiveEvent = false
-    private var eventConsumer: Task<Void, Never>?
-    private var stderrConsumer: Task<Void, Never>?
     /// Strong references to the pipe FileHandles so the OS keeps firing
     /// our readabilityHandlers. Without these, ARC has been observed to
     /// release the handles mid-session and the handler stops firing.
     private var stdoutHandle: FileHandle?
     private var stderrHandle: FileHandle?
+
+    /// Per-instance token for this session's /tmp debug log filenames — two
+    /// tabs alive at once previously shared ONE hardcoded debug path and
+    /// stomped each other's tee'd output.
+    private let debugToken = UUID().uuidString.prefix(8)
 
     // MARK: - Lifecycle
 
@@ -444,14 +447,12 @@ final class StreamSession: ObservableObject {
         signal(SIGPIPE, SIG_IGN)
 
         // Tee stdout to /tmp so we can verify chunks are arriving even when
-        // the parser path appears stuck. Truncated per session.
-        let debugLog = "/tmp/atelier-v2-stream-debug.ndjson"
-        let fm = FileManager.default
+        // the parser path appears stuck. Truncated per session, keyed by a
+        // per-instance token so two tabs alive at once don't collide on one
+        // shared file.
+        let debugLog = "/tmp/atelier-v2-stream-debug-\(debugToken).ndjson"
         try? Data().write(to: URL(fileURLWithPath: debugLog))
         let debugHandle = (try? FileHandle(forWritingTo: URL(fileURLWithPath: debugLog))) ?? FileHandle.nullDevice
-        if !fm.isWritableFile(atPath: debugLog) {
-            fm.createFile(atPath: debugLog, contents: nil)
-        }
 
         do {
             try process.run()
@@ -467,24 +468,27 @@ final class StreamSession: ObservableObject {
         self.inputWriter = writer
         self.state = .initializing
 
-        // Wake-from-hibernation: the message that triggered the respawn goes
-        // out now that stdin exists — it queues in the pipe and claude picks
-        // it up right after the init handshake.
-        if let queued = pendingWakeText {
-            pendingWakeText = nil
-            send(text: queued)
-        }
-
         // CRITICAL: claude with --input-format stream-json sits idle until
         // it receives the SDK's `initialize` control_request handshake on
         // stdin. Without this, system/init is never emitted and the session
         // is stuck on .initializing forever. (#36)
-        Task {
+        //
+        // Wake-from-hibernation: the message that triggered the respawn must
+        // go out AFTER that handshake — claude has to see `initialize`
+        // first. Sending it via a second, independent Task raced the
+        // handshake with no ordering guarantee between the two; chain them
+        // explicitly in one Task instead.
+        let queuedWakeText = pendingWakeText
+        pendingWakeText = nil
+        Task { [weak self] in
             do {
                 try await writer.initialize()
                 log.info("StreamSession sent initialize handshake")
             } catch {
                 log.error("initialize handshake failed: \(error.localizedDescription, privacy: .public)")
+            }
+            if let queuedWakeText {
+                self?.send(text: queuedWakeText)
             }
         }
 
@@ -499,10 +503,25 @@ final class StreamSession: ObservableObject {
         stdoutPipe.fileHandleForReading.readabilityHandler = { [weak self] handle in
             let chunk = handle.availableData
             guard !chunk.isEmpty else {
-                // EOF — claude closed its stdout.
+                // EOF — claude closed its stdout. A trailing line that never
+                // got its terminating \n (process crashed mid-write, or
+                // exited right after its last write — e.g. a final `result`
+                // event) would otherwise be silently dropped: try one last
+                // decode of whatever's left in the buffer first.
                 handle.readabilityHandler = nil
                 try? debugHandle.close()
+                let remainder = buffer.drainRemainder()
+                let trailingEvent: StreamEvent? = remainder.isEmpty ? nil : {
+                    do {
+                        return try decoder.decode(StreamEvent.self, from: remainder)
+                    } catch {
+                        let preview = String(data: remainder.prefix(200), encoding: .utf8) ?? "<binary>"
+                        log.warning("ndjson decode skipped (EOF tail): \(error.localizedDescription, privacy: .public) — \(preview, privacy: .public)")
+                        return nil
+                    }
+                }()
                 Task { @MainActor [weak self] in
+                    if let trailingEvent { self?.handle(event: trailingEvent) }
                     self?.handleStreamEnd()
                 }
                 return
@@ -526,7 +545,7 @@ final class StreamSession: ObservableObject {
         // Drain stderr — log + tee to /tmp so we can diagnose silent
         // spawn failures. If claude is printing 'command not found: node'
         // or similar bootstrap errors, this is where they show up.
-        let stderrDebug = "/tmp/atelier-v2-stream-debug.stderr.log"
+        let stderrDebug = "/tmp/atelier-v2-stream-debug-\(debugToken).stderr.log"
         try? Data().write(to: URL(fileURLWithPath: stderrDebug))
         let stderrDebugHandle = (try? FileHandle(forWritingTo: URL(fileURLWithPath: stderrDebug))) ?? FileHandle.nullDevice
         let stderrHandle = stderrPipe.fileHandleForReading
@@ -538,10 +557,15 @@ final class StreamSession: ObservableObject {
                 return
             }
             try? stderrDebugHandle.write(contentsOf: chunk)
-            if let line = String(data: chunk, encoding: .utf8)?
-                .trimmingCharacters(in: .whitespacesAndNewlines),
-               !line.isEmpty {
-                log.warning("claude stderr: \(line, privacy: .public)")
+            if let s = String(data: chunk, encoding: .utf8) {
+                // Log each non-empty line so a multi-line stderr chunk
+                // doesn't get squashed into one entry.
+                for line in s.split(whereSeparator: \.isNewline) {
+                    let trimmed = line.trimmingCharacters(in: .whitespaces)
+                    if !trimmed.isEmpty {
+                        log.warning("claude stderr: \(trimmed, privacy: .public)")
+                    }
+                }
             }
         }
 
@@ -700,6 +724,11 @@ final class StreamSession: ObservableObject {
     /// paste / drop — they've already implicitly granted permission to read
     /// it, so we silently allow without surfacing a prompt.
     func preApproveRead(path: String) {
+        // Unbounded growth guard: a very long session attaching many
+        // distinct files would otherwise grow this set for the session's
+        // entire lifetime. A full clear on overflow is fine — worst case a
+        // stale attachment re-prompts for permission once.
+        if preApprovedReadPaths.count > 200 { preApprovedReadPaths.removeAll() }
         preApprovedReadPaths.insert(path)
     }
 
@@ -722,6 +751,10 @@ final class StreamSession: ObservableObject {
             } catch {
                 log.error("permission reply failed: \(error.localizedDescription, privacy: .public)")
                 await MainActor.run {
+                    // Roll back the optimistic .working flip — otherwise a
+                    // write failure here leaves the composer stuck on
+                    // "Working…" forever. Mirrors send()'s failure path.
+                    self.state = .ready
                     self.transcript.append(.assistantBlock(
                         .text("⚠ permission reply failed: \(error.localizedDescription)")
                     ))
@@ -730,8 +763,12 @@ final class StreamSession: ObservableObject {
         }
     }
 
-    /// Send a `control_request` to interrupt the current turn.
+    /// Send a `control_request` to interrupt the current turn. Also evicts
+    /// any Bash tool_use entries queued for it — an interrupted turn's
+    /// pending calls will never get a matching tool_result, so they'd
+    /// otherwise leak in pendingBashCommands for the rest of the session.
     func interrupt() {
+        pendingBashCommands.removeAll()
         Task { try? await inputWriter?.interrupt() }
     }
 
@@ -842,8 +879,6 @@ final class StreamSession: ObservableObject {
     func hibernate() {
         guard state == .ready, sessionId != nil else { return }
         log.info("StreamSession hibernating session=\(self.sessionId ?? "-", privacy: .public)")
-        eventConsumer?.cancel()
-        stderrConsumer?.cancel()
         stdoutHandle?.readabilityHandler = nil
         stderrHandle?.readabilityHandler = nil
         stdoutHandle = nil
@@ -854,7 +889,7 @@ final class StreamSession: ObservableObject {
         process = nil
         Task {
             try? await writer?.close()
-            proc?.terminate()
+            if let proc { Self.terminateWithEscalation(proc) }
         }
         // Hibernation kills the claude process — any background task it
         // spawned loses its only notification channel exactly like a real
@@ -880,18 +915,42 @@ final class StreamSession: ObservableObject {
     func stop() {
         finalizeStreamingText()   // commit any partial reply before teardown
         state = .closing
-        eventConsumer?.cancel()
-        stderrConsumer?.cancel()
         stdoutHandle?.readabilityHandler = nil
         stderrHandle?.readabilityHandler = nil
         stdoutHandle = nil
         stderrHandle = nil
         Task {
             try? await inputWriter?.close()
-            process?.terminate()
+            if let process { Self.terminateWithEscalation(process) }
             orphanRunningBackgroundTasks()
             state = .terminated(reason: "user_stop")
         }
+    }
+
+    /// Send SIGTERM, then escalate to SIGKILL if the child hasn't exited
+    /// within `graceSeconds` — an ignoring/hung child would otherwise keep
+    /// running with no app-visible handle. Runs the check off the calling
+    /// queue so callers never block on it.
+    private static func terminateWithEscalation(_ proc: Process, graceSeconds: TimeInterval = 2) {
+        proc.terminate()
+        DispatchQueue.global(qos: .utility).asyncAfter(deadline: .now() + graceSeconds) {
+            if proc.isRunning {
+                log.warning("process pid=\(proc.processIdentifier) still running \(graceSeconds, privacy: .public)s after SIGTERM — sending SIGKILL")
+                kill(proc.processIdentifier, SIGKILL)
+            }
+        }
+    }
+
+    /// Synchronous, immediate SIGTERM — for the app quit path only
+    /// (TerminalsController.shutdownAll, bug-hunt H1). `stop()`'s actual
+    /// process.terminate() happens inside an async Task after awaiting the
+    /// input writer's close; applicationShouldTerminate returns .terminateNow
+    /// without waiting, so that Task may never get a scheduler turn before
+    /// the app process itself exits — which is exactly how a chat tab open
+    /// at quit time orphaned its `claude` child (macOS re-parents an
+    /// un-signaled process to launchd instead of killing it).
+    func terminateNow() {
+        process?.terminate()
     }
 
     // MARK: - Event dispatch

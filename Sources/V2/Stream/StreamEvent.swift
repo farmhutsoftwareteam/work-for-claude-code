@@ -4,6 +4,9 @@
 // Roasbeef/claude-agent-sdk-go protocol doc.
 
 import Foundation
+import OSLog
+
+private let log = Logger(subsystem: "com.munyamakosa.work", category: "streamevent")
 
 enum StreamEvent: Decodable, Sendable {
     case system(SystemEvent)
@@ -141,6 +144,11 @@ struct Message: Decodable, Sendable {
         } else if let text = try? c.decode(String.self, forKey: .content) {
             self.content = [.text(text)]
         } else {
+            // Neither shape decoded — M1 (bug-hunt 2026-07-10): this used to
+            // silently render as an empty message, indistinguishable from a
+            // legitimately empty one. Log so an unexpected content shape
+            // shows up somewhere instead of just a blank transcript row.
+            log.warning("Message decode fallback: 'content' is neither [ContentBlock] nor String — rendering empty")
             self.content = []
         }
     }

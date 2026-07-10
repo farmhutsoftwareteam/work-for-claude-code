@@ -4,6 +4,9 @@
 // (string OR array of blocks) — handled here.
 
 import Foundation
+import OSLog
+
+private let log = Logger(subsystem: "com.munyamakosa.work", category: "contentblock")
 
 enum ContentBlock: Decodable, Sendable, Identifiable {
     case text(String)
@@ -39,26 +42,46 @@ enum ContentBlock: Decodable, Sendable, Identifiable {
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         let type = (try? c.decode(String.self, forKey: .type)) ?? ""
+        // Each `try?` below is a decode fallback: if the field is missing or
+        // the wrong shape, we render an empty/default block instead of
+        // failing the whole event — but silently doing so is indistinguishable
+        // from a legitimately empty block (M1, bug-hunt 2026-07-10). Log a
+        // warning whenever a fallback actually fires so a real API-shape
+        // change shows up somewhere instead of just a blank row.
         switch type {
         case "text":
-            self = .text((try? c.decode(String.self, forKey: .text)) ?? "")
+            if let text = try? c.decode(String.self, forKey: .text) {
+                self = .text(text)
+            } else {
+                log.warning("ContentBlock decode fallback: 'text' missing/invalid on type=text")
+                self = .text("")
+            }
         case "tool_use":
-            self = .toolUse(
-                id: (try? c.decode(String.self, forKey: .id)) ?? "",
-                name: (try? c.decode(String.self, forKey: .name)) ?? "",
-                input: (try? c.decode(JSONValue.self, forKey: .input)) ?? .object([:])
-            )
+            let id = try? c.decode(String.self, forKey: .id)
+            let name = try? c.decode(String.self, forKey: .name)
+            let input = try? c.decode(JSONValue.self, forKey: .input)
+            if id == nil || name == nil || input == nil {
+                log.warning("ContentBlock decode fallback: id/name/input missing on type=tool_use")
+            }
+            self = .toolUse(id: id ?? "", name: name ?? "", input: input ?? .object([:]))
         case "tool_result":
+            let toolUseId = try? c.decode(String.self, forKey: .toolUseId)
+            let content = try? c.decode(ToolResultContent.self, forKey: .content)
+            if toolUseId == nil || content == nil {
+                log.warning("ContentBlock decode fallback: tool_use_id/content missing on type=tool_result")
+            }
             self = .toolResult(
-                toolUseId: (try? c.decode(String.self, forKey: .toolUseId)) ?? "",
-                content: (try? c.decode(ToolResultContent.self, forKey: .content)) ?? .text(""),
+                toolUseId: toolUseId ?? "",
+                content: content ?? .text(""),
                 isError: try? c.decodeIfPresent(Bool.self, forKey: .isError)
             )
         case "thinking":
-            self = .thinking(
-                text: (try? c.decode(String.self, forKey: .thinking)) ?? "",
-                signature: try? c.decodeIfPresent(String.self, forKey: .signature)
-            )
+            if let text = try? c.decode(String.self, forKey: .thinking) {
+                self = .thinking(text: text, signature: try? c.decodeIfPresent(String.self, forKey: .signature))
+            } else {
+                log.warning("ContentBlock decode fallback: 'thinking' missing/invalid on type=thinking")
+                self = .thinking(text: "", signature: try? c.decodeIfPresent(String.self, forKey: .signature))
+            }
         default:
             self = .unknown(type)
         }

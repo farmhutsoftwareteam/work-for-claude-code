@@ -126,25 +126,6 @@ struct V2LeftRail: View {
         appState.searchQuery = ""
     }
 
-    /// Open NSOpenPanel, register the chosen folder as a project, switch
-    /// the rail to it, and open a fresh Mode-B tab so the user can start
-    /// chatting in that directory immediately. ⌘O triggers this too.
-    private func openFolderAsProject() {
-        let panel = NSOpenPanel()
-        panel.canChooseFiles = false
-        panel.canChooseDirectories = true
-        panel.allowsMultipleSelection = false
-        panel.message = "Pick a folder to work in. Claude will run rooted there."
-        panel.prompt = "Open"
-        guard panel.runModal() == .OK, let url = panel.url else { return }
-
-        let path = url.path
-        guard let project = store.registerProject(at: path) else { return }
-        appState.selectProject(cwd: project.cwd, name: project.displayName)
-        appState.newTab()
-        appState.startActiveSession()
-    }
-
     @ViewBuilder
     private var railTabs: some View {
         HStack(spacing: 0) {

@@ -37,6 +37,11 @@ struct V2ACPChatView: View {
             }
         }
         .task { session.start() }
+        // stop() exists on both ACPSession and ACPClient but nothing ever
+        // called it — the node subprocess outlived this view on every close
+        // (bug-hunt H4). Neither class has a deinit either, so this hook is
+        // the only teardown path.
+        .onDisappear { session.stop() }
         .enableInjection()
     }
 

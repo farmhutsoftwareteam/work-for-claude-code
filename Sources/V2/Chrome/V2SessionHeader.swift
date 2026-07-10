@@ -302,12 +302,12 @@ struct V2SessionHeader: View {
         guard let tab = appState.activeTab,
               let session = tab.streamSession,
               let binary = appState.claudeBinary else { return }
-        session.stop()
-        // Brief delay to let the previous process clean up. The new
-        // StreamSession is built fresh by V2AppState.attachLoop pattern —
-        // here we just call session.start again on the existing one.
+        // Polls for teardown to actually finish instead of guessing a fixed
+        // delay — a bare asyncAfter here could fire start() before stop()'s
+        // async cleanup finished (silent no-op) or after the tab closed
+        // (orphaned process). See V2AppState.restartAfterStop.
         let cwd = URL(fileURLWithPath: tab.projectCwd)
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
+        appState.restartAfterStop(tabId: tab.id, session: session) {
             session.start(cwd: cwd, claudeURL: binary)
         }
     }

@@ -40,6 +40,11 @@ struct V2SkillsPanel: View {
     /// the undo window closes, so the row (and the undo option) stays valid.
     @State private var pendingDeletes: [String: (skill: ClaudeSkill, originalPath: URL, trashedAt: URL)] = [:]
 
+    /// Surfaces a thrown SkillOperations error from toggle/clone/delete —
+    /// these used to be bare `try?`, so a permission/disk failure silently
+    /// no-op'd with the row looking untouched (bug-hunt #18).
+    @State private var actionError: String?
+
     enum EditTarget: Identifiable {
         case new
         case edit(ClaudeSkill)
@@ -101,6 +106,14 @@ struct V2SkillsPanel: View {
                     reload()
                 }
             )
+        }
+        .alert("Couldn't complete that action", isPresented: Binding(
+            get: { actionError != nil },
+            set: { if !$0 { actionError = nil } }
+        )) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text(actionError ?? "")
         }
         .enableInjection()
     }
@@ -321,7 +334,9 @@ struct V2SkillsPanel: View {
     private func rowActions(_ skill: ClaudeSkill, pluginId: String?, disabled: Bool) -> some View {
         HStack(spacing: 3) {
             actionButton("pencil", help: "Edit") { editing = .edit(skill) }
-            actionButton(disabled ? "power" : "power", help: disabled ? "Enable" : "Disable") {
+            // Was the same "power" glyph for both branches — the button
+            // never visually differed by state (bug-hunt #16).
+            actionButton(disabled ? "bolt.slash" : "bolt.fill", help: disabled ? "Enable" : "Disable") {
                 toggleDisabled(skill)
             }
             if case .plugin = skill.source {
@@ -434,8 +449,24 @@ struct V2SkillsPanel: View {
     /// silence with real confirmation.
     private func cleanUpDuplicates() {
         let targets = duplicateArchives
-        for archive in targets { _ = try? SkillOperations.deleteSkill(archive) }
-        justCleanedUp = targets.count
+        // Count REAL successes, not attempts — this used to report
+        // targets.count regardless of whether each delete actually
+        // succeeded, so a permission/disk failure on one item still
+        // claimed full success (bug-hunt #12/M33).
+        var succeeded = 0
+        var lastFailure: Error?
+        for archive in targets {
+            do {
+                _ = try SkillOperations.deleteSkill(archive)
+                succeeded += 1
+            } catch {
+                lastFailure = error
+            }
+        }
+        justCleanedUp = succeeded
+        if let lastFailure, succeeded < targets.count {
+            actionError = lastFailure.localizedDescription
+        }
         reload()
         Task {
             try? await Task.sleep(nanoseconds: 2_000_000_000)
@@ -476,13 +507,21 @@ struct V2SkillsPanel: View {
     }
 
     private func toggleDisabled(_ skill: ClaudeSkill) {
-        try? SkillOperations.setDisableModelInvocation(!skill.disableModelInvocation, for: skill)
-        reload()
+        do {
+            try SkillOperations.setDisableModelInvocation(!skill.disableModelInvocation, for: skill)
+            reload()
+        } catch {
+            actionError = error.localizedDescription
+        }
     }
 
     private func clone(_ skill: ClaudeSkill, pluginId: String?) {
-        _ = try? SkillOperations.cloneToPersonal(skill, pluginId: pluginId)
-        reload()
+        do {
+            _ = try SkillOperations.cloneToPersonal(skill, pluginId: pluginId)
+            reload()
+        } catch {
+            actionError = error.localizedDescription
+        }
     }
 
     /// Lazy, per-row update check: only runs for skills carrying an Atelier
@@ -509,13 +548,17 @@ struct V2SkillsPanel: View {
     /// the window closes on its own. Reloading immediately would make undo
     /// meaningless: the row it applies to would already be gone.
     private func delete(_ skill: ClaudeSkill) {
-        guard let result = try? SkillOperations.deleteSkill(skill) else { return }
-        pendingDeletes[skill.id] = (skill, result.originalPath, result.trashedAt)
-        Task {
-            try? await Task.sleep(nanoseconds: 5_000_000_000)
-            guard pendingDeletes[skill.id] != nil else { return }   // already undone
-            pendingDeletes[skill.id] = nil
-            reload()
+        do {
+            let result = try SkillOperations.deleteSkill(skill)
+            pendingDeletes[skill.id] = (skill, result.originalPath, result.trashedAt)
+            Task {
+                try? await Task.sleep(nanoseconds: 5_000_000_000)
+                guard pendingDeletes[skill.id] != nil else { return }   // already undone
+                pendingDeletes[skill.id] = nil
+                reload()
+            }
+        } catch {
+            actionError = error.localizedDescription
         }
     }
 

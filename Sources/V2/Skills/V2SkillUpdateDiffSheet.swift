@@ -16,6 +16,10 @@ struct V2SkillUpdateDiffSheet: View {
     var onApplied: () -> Void
 
     @State private var currentContent: String = ""
+    /// Surfaces a failed `applyUpdate` — was `try?`, which dismissed and
+    /// reported success even if the write actually failed (bug-hunt
+    /// #12/M33). Shown in place of the footer's normal caption below.
+    @State private var applyError: String?
 
     var body: some View {
         VStack(spacing: 0) {
@@ -81,9 +85,9 @@ struct V2SkillUpdateDiffSheet: View {
 
     private var footer: some View {
         HStack(spacing: 10) {
-            Text("Your local edits (if any) are only lost if you choose “take upstream.”")
+            Text(applyError ?? "Your local edits (if any) are only lost if you choose “take upstream.”")
                 .font(.system(size: 10, design: .monospaced))
-                .foregroundColor(v2.faint)
+                .foregroundColor(applyError != nil ? v2.del : v2.faint)
             Spacer()
             Button("keep mine") { dismiss() }
                 .buttonStyle(.plain)
@@ -92,9 +96,13 @@ struct V2SkillUpdateDiffSheet: View {
                 .padding(.horizontal, 16).padding(.vertical, 9)
                 .overlay(Rectangle().stroke(v2.line2, lineWidth: 1))
             Button("take upstream") {
-                try? SkillOperations.applyUpdate(skill, newContent: newContent)
-                onApplied()
-                dismiss()
+                do {
+                    try SkillOperations.applyUpdate(skill, newContent: newContent)
+                    onApplied()
+                    dismiss()
+                } catch {
+                    applyError = error.localizedDescription
+                }
             }
             .buttonStyle(.plain)
             .font(.system(size: 12, design: .monospaced))

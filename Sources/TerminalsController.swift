@@ -495,6 +495,13 @@ final class TerminalsController: ObservableObject {
             let pid = view.process.shellPid
             if pid > 0 { kill(pid, SIGTERM) }
         }
+        // Mode-B chat tabs were never covered here (bug-hunt H1) — only the
+        // Mode-A PTYs above were. `terminateNow()` is the synchronous kill;
+        // stop()'s own process.terminate() runs inside an async Task that
+        // may never get scheduled before the app actually exits.
+        for tab in tabs where tab.surface == .modeB {
+            tab.streamSession?.terminateNow()
+        }
     }
 
     /// Update the human-readable title of a tab (e.g. after a rename).

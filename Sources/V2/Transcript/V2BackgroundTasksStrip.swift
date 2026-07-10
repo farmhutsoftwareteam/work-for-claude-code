@@ -7,11 +7,28 @@
 
 import SwiftUI
 import Inject
+import Combine
 
 struct V2BackgroundTasksStrip: View {
     @ObserveInjection private var inject
     @Environment(\.v2) private var v2
-    @ObservedObject var session: StreamSession
+    /// Not @ObservedObject — the transcript/composer are the only views
+    /// allowed to observe the whole StreamSession (PERFORMANCE.md §2 /
+    /// CLAUDE.md, bug-hunt M23). This strip mounts beside the transcript and
+    /// only cares about `backgroundTasks`, so it tracks just that one
+    /// publisher (below) instead of the session's blanket objectWillChange,
+    /// which fires on every ~30fps transcript flush.
+    ///
+    /// Plain `let`, NOT `@StateObject`: this view's structural position is
+    /// deliberately not keyed by tab id (same as V2LiveTranscript, for the
+    /// same reason — see V2RootView.mainBody), so a `@StateObject`-backed
+    /// observer here would initialize once on the FIRST session ever passed
+    /// in and then silently keep showing that tab's tasks forever, since
+    /// SwiftUI reuses `@StateObject` storage across re-inits with the same
+    /// view identity regardless of the new `session` value. `.task(id:)`
+    /// below re-subscribes explicitly whenever the session actually changes.
+    let session: StreamSession
+    @State private var backgroundTasks: [V2BackgroundTask] = []
     @State private var peeking: V2BackgroundTask?
     /// task id -> (last tail line seen, when it last changed). Local to the
     /// strip's lifetime — a fresh session/tab naturally starts clean.
@@ -25,20 +42,31 @@ struct V2BackgroundTasksStrip: View {
     private static let maxRows = 3
 
     var body: some View {
-        if !visibleTasks.isEmpty {
-            TimelineView(.periodic(from: .now, by: 1)) { ctx in
-                VStack(spacing: 1) {
-                    ForEach(Array(cappedRows(at: ctx.date).enumerated()), id: \.offset) { _, row in
-                        rowView(row, now: ctx.date)
+        Group {
+            if !visibleTasks.isEmpty {
+                TimelineView(.periodic(from: .now, by: 1)) { ctx in
+                    VStack(spacing: 1) {
+                        ForEach(Array(cappedRows(at: ctx.date).enumerated()), id: \.offset) { _, row in
+                            rowView(row, now: ctx.date)
+                        }
                     }
+                    .background(v2.line)
+                    .overlay(Rectangle().stroke(v2.line, lineWidth: 1))
                 }
-                .background(v2.line)
-                .overlay(Rectangle().stroke(v2.line, lineWidth: 1))
+                .padding(.horizontal, 26)
+                .padding(.vertical, 10)
+                .sheet(item: $peeking) { task in
+                    V2BackgroundTaskPeekSheet(task: task)
+                }
             }
-            .padding(.horizontal, 26)
-            .padding(.vertical, 10)
-            .sheet(item: $peeking) { task in
-                V2BackgroundTaskPeekSheet(task: task)
+        }
+        // `.task(id:)` cancels and restarts whenever the session identity
+        // changes (tab switch) — unlike @StateObject, this is guaranteed to
+        // pick up the new session rather than freezing on the first one.
+        .task(id: ObjectIdentifier(session)) {
+            backgroundTasks = session.backgroundTasks
+            for await tasks in session.$backgroundTasks.values {
+                backgroundTasks = tasks
             }
         }
     }
@@ -65,7 +93,7 @@ struct V2BackgroundTasksStrip: View {
     /// visible), then finished ones still within their linger window.
     private var visibleTasks: [V2BackgroundTask] {
         let now = Date()
-        return session.backgroundTasks
+        return backgroundTasks
             .filter { task in
                 if task.state == .running { return true }
                 guard let finishedAt = task.finishedAt else { return true }
@@ -162,7 +190,15 @@ struct V2BackgroundTasksStrip: View {
         let prior = tailTracking[task.id]
         if prior?.line != line {
             let entry = (line, now)
-            tailTracking[task.id] = entry
+            // Defer the @State write off this render pass (bug-hunt LOW):
+            // mutating @State synchronously while `body` is being computed is
+            // an anti-pattern even though it's harmless here (guarded by the
+            // equality check above, so it converges instead of looping) —
+            // same deferred-write-via-DispatchQueue.main idiom this codebase
+            // already uses for post-render @State updates (e.g. the "copied"
+            // resets in V2FilePeek/V2MarkdownText), just .async instead of
+            // .asyncAfter so it lands before the next 1Hz tick needs it.
+            DispatchQueue.main.async { tailTracking[task.id] = entry }
             return entry
         }
         return prior ?? (line, task.startedAt)

@@ -20,22 +20,40 @@ enum V2SubagentTail {
     /// toolUseId → resolved jsonl path, cached because resolution scans a
     /// directory of meta files; misses are NOT cached (the meta file appears
     /// a beat after the spawn — a re-poll next tick should find it).
-    @MainActor private static var resolved: [String: URL] = [:]
+    ///
+    /// Lock-protected rather than @MainActor (bug-hunt M22): callers now do
+    /// the stat+read+parse behind this from a detached background task, so
+    /// the once-a-second-per-visible-card cost stops landing on the main
+    /// thread. A plain NSLock is enough — these dictionaries are tiny and
+    /// held for microseconds, same pattern as CoTermRing's own lock.
+    private static let cacheLock = NSLock()
+    nonisolated(unsafe) private static var resolved: [String: URL] = [:]
 
     /// The agent's transcript file for a spawn, or nil while it hasn't
     /// appeared on disk yet. Prefers a direct agentId hit (background acks
     /// carry it); otherwise scans subagents/*.meta.json for the matching
-    /// toolUseId — which also works for runs restored from history.
-    @MainActor
+    /// toolUseId — which also works for runs restored from history. Safe to
+    /// call off the main actor — see the lock note on `resolved` above.
     static func transcript(sessionDir: URL, toolUseId: String, agentId: String?) -> URL? {
-        if let hit = resolved[toolUseId] { return hit }
+        cacheLock.lock()
+        let cached = resolved[toolUseId]
+        cacheLock.unlock()
+        if let cached { return cached }
+
         let fm = FileManager.default
         let subagents = sessionDir.appendingPathComponent("subagents")
 
         if let agentId {
             let direct = subagents.appendingPathComponent("agent-\(agentId).jsonl")
             if fm.fileExists(atPath: direct.path) {
+                cacheLock.lock()
+                // Cap growth (bug-hunt M14): an app-lifetime cache with no
+                // eviction would otherwise grow for as long as the app runs.
+                // A full clear on overflow is fine — worst case a re-visited
+                // spawn re-scans its meta file once.
+                if resolved.count > 200 { resolved.removeAll() }
                 resolved[toolUseId] = direct
+                cacheLock.unlock()
                 return direct
             }
         }
@@ -50,7 +68,10 @@ enum V2SubagentTail {
             let jsonl = meta.deletingLastPathComponent()
                 .appendingPathComponent(meta.lastPathComponent.replacingOccurrences(of: ".meta.json", with: ".jsonl"))
             guard fm.fileExists(atPath: jsonl.path) else { return nil }
+            cacheLock.lock()
+            if resolved.count > 200 { resolved.removeAll() }
             resolved[toolUseId] = jsonl
+            cacheLock.unlock()
             return jsonl
         }
         return nil
@@ -62,27 +83,53 @@ enum V2SubagentTail {
     /// first. `bytes` bounds the read; the first (likely partial) line of
     /// the chunk is dropped.
     static func activity(path: URL, bytes: Int = 256 * 1024) -> [String] {
-        guard let data = readTail(path: path, bytes: bytes) else { return [] }
-        var lines = String(decoding: data, as: UTF8.self)
+        guard let tail = readTail(path: path, bytes: bytes) else { return [] }
+        var lines = String(decoding: tail.data, as: UTF8.self)
             .split(separator: "\n", omittingEmptySubsequences: true)
         // A mid-file start means the first line is a fragment — drop it
-        // unless we read the whole file from offset 0.
-        if data.count == bytes, !lines.isEmpty { lines.removeFirst() }
+        // unless we read the whole file from offset 0. Uses the actual
+        // read-offset flag from readTail (bug-hunt M16) rather than
+        // `data.count == bytes`, which used to misfire and drop a genuine
+        // first line whenever the file's size happened to exactly equal
+        // the read bound while still being read from offset 0.
+        if tail.startedMidFile, !lines.isEmpty { lines.removeFirst() }
         return lines.compactMap { describe(line: String($0)) }
     }
 
     /// path → (file size when parsed, result). The card polls at 1Hz while
     /// an agent runs; a stat is cheap, re-parsing 64KB of JSONL every tick
     /// when nothing changed is not (PERFORMANCE.md rule 1: cache any parse).
-    @MainActor private static var lastActionCache: [String: (size: UInt64, action: String?)] = [:]
+    /// Lock-protected, not @MainActor — see the note on `resolved` above.
+    nonisolated(unsafe) private static var lastActionCache: [String: (size: UInt64, action: String?)] = [:]
 
     /// Just the most recent action, for the delegation card's one-liner.
-    @MainActor
+    /// Scans the tail chunk BACKWARD and returns the first describable line
+    /// (bug-hunt M22) instead of describing every line in the chunk just to
+    /// keep `.last` — a 64KB chunk routinely holds hundreds of JSONL events
+    /// and only the newest describable one is ever shown, so forward-parsing
+    /// the whole thing was wasted work on top of running on the main thread.
     static func lastAction(path: URL, bytes: Int = 64 * 1024) -> String? {
         let size = (try? FileManager.default.attributesOfItem(atPath: path.path)[.size] as? UInt64) ?? nil
-        if let size, let hit = lastActionCache[path.path], hit.size == size { return hit.action }
-        let action = activity(path: path, bytes: bytes).last
-        if let size { lastActionCache[path.path] = (size, action) }
+        cacheLock.lock()
+        let hit = lastActionCache[path.path]
+        cacheLock.unlock()
+        if let size, let hit, hit.size == size { return hit.action }
+
+        guard let tail = readTail(path: path, bytes: bytes) else { return nil }
+        var lines = String(decoding: tail.data, as: UTF8.self)
+            .split(separator: "\n", omittingEmptySubsequences: true)
+        if tail.startedMidFile, !lines.isEmpty { lines.removeFirst() }
+        let action = lines.reversed().lazy.compactMap { describe(line: String($0)) }.first
+
+        if let size {
+            cacheLock.lock()
+            // Cap growth (bug-hunt M14): unlike V2MarkdownText/V2RichText,
+            // this cache had no eviction — a full clear on overflow is fine
+            // here given how rarely this matters.
+            if lastActionCache.count > 200 { lastActionCache.removeAll() }
+            lastActionCache[path.path] = (size, action)
+            cacheLock.unlock()
+        }
         return action
     }
 
@@ -132,12 +179,19 @@ enum V2SubagentTail {
         return nil
     }
 
-    private static func readTail(path: URL, bytes: Int) -> Data? {
+    /// Reads the tail chunk and reports whether the read actually started
+    /// mid-file (vs. legitimately from offset 0) — callers use this instead
+    /// of inferring it from `data.count == bytes`, which misfires whenever
+    /// the file's real size happens to exactly equal the read bound
+    /// (bug-hunt M16).
+    private static func readTail(path: URL, bytes: Int) -> (data: Data, startedMidFile: Bool)? {
         guard let fh = FileHandle(forReadingAtPath: path.path) else { return nil }
         defer { try? fh.close() }
         let size = (try? fh.seekToEnd()) ?? 0
-        let start = size > UInt64(bytes) ? size - UInt64(bytes) : 0
+        let startedMidFile = size > UInt64(bytes)
+        let start = startedMidFile ? size - UInt64(bytes) : 0
         try? fh.seek(toOffset: start)
-        return try? fh.readToEnd()
+        guard let data = try? fh.readToEnd() else { return nil }
+        return (data, startedMidFile)
     }
 }

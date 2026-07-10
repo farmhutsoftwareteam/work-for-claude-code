@@ -35,6 +35,11 @@ struct V2UsageView: View {
 
     @State private var range: Range = .all
     @State private var refreshing = false
+    // Bar-row fill width, measured once per container (not per row) — see
+    // `barRow`. Two separate states because byModel/byProject are distinct
+    // containers that could in principle differ in width.
+    @State private var modelBarsWidth: CGFloat = 0
+    @State private var projectBarsWidth: CGFloat = 0
 
     var body: some View {
         ScrollView {
@@ -235,7 +240,7 @@ struct V2UsageView: View {
                 .foregroundColor(v2.faint)
             VStack(spacing: 11) {
                 ForEach(modelBars, id: \.label) { row in
-                    barRow(label: row.label, costText: row.costText, fraction: row.fraction)
+                    barRow(label: row.label, costText: row.costText, fraction: row.fraction, width: modelBarsWidth)
                 }
                 if modelBars.isEmpty {
                     Text("No model data yet.")
@@ -243,6 +248,12 @@ struct V2UsageView: View {
                         .foregroundColor(v2.faint)
                 }
             }
+            .background(
+                GeometryReader { geo in
+                    Color.clear.preference(key: V2WidthKey.self, value: geo.size.width)
+                }
+            )
+            .onPreferenceChange(V2WidthKey.self) { modelBarsWidth = $0 }
         }
         .padding(.horizontal, 20)
         .padding(.vertical, 18)
@@ -259,7 +270,7 @@ struct V2UsageView: View {
                 .foregroundColor(v2.faint)
             VStack(spacing: 9) {
                 ForEach(projectBars, id: \.label) { row in
-                    barRow(label: row.label, costText: row.costText, fraction: row.fraction, slim: true)
+                    barRow(label: row.label, costText: row.costText, fraction: row.fraction, width: projectBarsWidth, slim: true)
                 }
                 if projectBars.isEmpty {
                     Text("No project data yet.")
@@ -267,6 +278,12 @@ struct V2UsageView: View {
                         .foregroundColor(v2.faint)
                 }
             }
+            .background(
+                GeometryReader { geo in
+                    Color.clear.preference(key: V2WidthKey.self, value: geo.size.width)
+                }
+            )
+            .onPreferenceChange(V2WidthKey.self) { projectBarsWidth = $0 }
         }
         .padding(.horizontal, 20)
         .padding(.vertical, 18)
@@ -275,7 +292,13 @@ struct V2UsageView: View {
         .overlay(Rectangle().stroke(v2.line2, lineWidth: 1))
     }
 
-    private func barRow(label: String, costText: String, fraction: Double, slim: Bool = false) -> some View {
+    /// `width` is the container's measured width, sampled once per section
+    /// (see the `.background(GeometryReader …)` on byModel/byProject's bar
+    /// VStack) rather than per row — a `GeometryReader` inside this ForEach
+    /// row would violate PERFORMANCE.md rule 5 (no GeometryReader in
+    /// repeated rows), even though the real cost here is low (static,
+    /// ≤10 rows, non-streaming).
+    private func barRow(label: String, costText: String, fraction: Double, width: CGFloat, slim: Bool = false) -> some View {
         VStack(alignment: .leading, spacing: 5) {
             HStack {
                 Text(label)
@@ -288,15 +311,13 @@ struct V2UsageView: View {
                     .font(.system(size: 12, design: .monospaced))
                     .foregroundColor(v2.mute)
             }
-            GeometryReader { proxy in
-                ZStack(alignment: .leading) {
-                    Rectangle()
-                        .fill(v2.line2)
-                        .frame(height: slim ? 2 : 3)
-                    Rectangle()
-                        .fill(v2.ink)
-                        .frame(width: proxy.size.width * fraction, height: slim ? 2 : 3)
-                }
+            ZStack(alignment: .leading) {
+                Rectangle()
+                    .fill(v2.line2)
+                    .frame(height: slim ? 2 : 3)
+                Rectangle()
+                    .fill(v2.ink)
+                    .frame(width: max(0, width * fraction), height: slim ? 2 : 3)
             }
             .frame(height: slim ? 2 : 3)
         }

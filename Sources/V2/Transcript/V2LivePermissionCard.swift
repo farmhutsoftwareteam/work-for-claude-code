@@ -116,9 +116,11 @@ struct V2LivePermissionCard: View {
                     .keyboardShortcut(.delete, modifiers: [.command])
 
                     Spacer()
-                    Text("⌥ to always allow")
-                        .font(.system(size: 10.5, design: .monospaced))
-                        .foregroundColor(v2.faint)
+                    // Bug-hunt LOW: this used to advertise "⌥ to always allow"
+                    // with no Option-key handling anywhere behind it — a real
+                    // "always allow" needs persisted per-tool/per-project state,
+                    // which is out of scope for a bug-hunt fix pass. Removed
+                    // rather than ship a hint for a feature that doesn't exist.
                 }
             }
             .padding(16)

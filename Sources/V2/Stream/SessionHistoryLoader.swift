@@ -27,30 +27,51 @@ enum SessionHistoryLoader {
 
     /// Read the session's .jsonl from disk and return the events worth
     /// pre-rendering. Returns nil if the file is missing/unreadable.
-    /// Cheap enough to run on the main actor for typical sizes (≤ a few
-    /// MB), but the caller is free to dispatch via Task.detached.
+    /// Reads only a bounded tail chunk (M7, bug-hunt 2026-07-10) — this used
+    /// to read + decode the ENTIRE file just to keep the last `maxEvents`,
+    /// so an MB-scale history file was fully loaded into memory for nothing.
+    /// Same bounded-tail discipline as V2BackgroundTaskTail/V2SubagentTail in
+    /// this directory, adapted for structured JSONL: read from the end, drop
+    /// a possibly-fragmentary first line, then decode only what's left.
+    /// Cheap enough to run on the main actor, but the caller is free to
+    /// dispatch via Task.detached.
     static func load(
         sessionId: String,
         projectCwd: String,
-        maxEvents: Int = 40
+        maxEvents: Int = 40,
+        tailBytes: Int = 1 * 1024 * 1024
     ) -> Preload? {
         let url = jsonlURL(sessionId: sessionId, projectCwd: projectCwd)
         guard FileManager.default.fileExists(atPath: url.path) else {
             logger.notice("history file missing: \(url.path, privacy: .public)")
             return nil
         }
-        guard let raw = try? String(contentsOf: url, encoding: .utf8) else {
+        guard let fh = FileHandle(forReadingAtPath: url.path) else {
+            logger.warning("history file unreadable: \(url.path, privacy: .public)")
+            return nil
+        }
+        let fileSize = (try? fh.seekToEnd()) ?? 0
+        let startedMidFile = fileSize > UInt64(tailBytes)
+        let start = startedMidFile ? fileSize - UInt64(tailBytes) : 0
+        try? fh.seek(toOffset: start)
+        let data = (try? fh.readToEnd()) ?? Data()
+        try? fh.close()
+        guard !data.isEmpty else {
             logger.warning("history file unreadable: \(url.path, privacy: .public)")
             return nil
         }
 
+        var lines = data.split(separator: 0x0A, omittingEmptySubsequences: true)
+        // A mid-file start means the first line is very likely a truncated
+        // fragment of whatever line straddled our read boundary — drop it
+        // (same guard V2SubagentTail.activity uses) unless we actually read
+        // from byte 0 of the real file.
+        if startedMidFile, !lines.isEmpty { lines.removeFirst() }
+
         let decoder = JSONDecoder()
         var renderable: [StreamEvent] = []
-        for line in raw.split(separator: "\n", omittingEmptySubsequences: true) {
-            guard let data = line.data(using: .utf8) else { continue }
-            guard let event = try? decoder.decode(StreamEvent.self, from: data) else {
-                continue
-            }
+        for lineData in lines {
+            guard let event = try? decoder.decode(StreamEvent.self, from: lineData) else { continue }
             switch event {
             case .user, .assistant:
                 renderable.append(event)
@@ -62,7 +83,11 @@ enum SessionHistoryLoader {
         }
 
         // Trim to the most recent `maxEvents`. Count the user turns dropped so
-        // the transcript can surface "↑ N earlier messages" hint.
+        // the transcript can surface "↑ N earlier messages" hint. Note this
+        // count is only accurate WITHIN the tail window we read — if the
+        // file is bigger than `tailBytes`, turns before the window aren't
+        // counted at all. That's an acceptable trade for not reading the
+        // whole file just to keep an omitted-count exact.
         var omittedUserTurns = 0
         var trimmed = renderable
         if renderable.count > maxEvents {

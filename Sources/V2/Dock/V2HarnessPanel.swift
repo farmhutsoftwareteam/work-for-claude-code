@@ -68,10 +68,26 @@ struct V2HarnessPanel: View {
     private var statusIndicator: some View {
         if let harness = appState.activeTab?.harness {
             HStack(spacing: 6) {
+                // Each of the three "in progress" cases handled directly
+                // (rather than routed through a helper that switched over
+                // the FULL Phase enum with a `default: return ""` standing
+                // in for branches the sole call site could never reach) so
+                // there's no dead code at all — every branch here is real
+                // (bug-hunt #17).
                 switch harness.phase {
-                case .planning, .working, .reviewing:
+                case .planning:
                     V2PulseDot(size: 7, color: v2.ink)
-                    Text(phaseLabel(harness.phase))
+                    Text("planning")
+                        .font(.system(size: 10.5, design: .monospaced))
+                        .foregroundColor(v2.mute)
+                case .working(let n):
+                    V2PulseDot(size: 7, color: v2.ink)
+                    Text("work · iter \(n)")
+                        .font(.system(size: 10.5, design: .monospaced))
+                        .foregroundColor(v2.mute)
+                case .reviewing(let n):
+                    V2PulseDot(size: 7, color: v2.ink)
+                    Text("review · iter \(n)")
                         .font(.system(size: 10.5, design: .monospaced))
                         .foregroundColor(v2.mute)
                 case .completed:
@@ -423,15 +439,6 @@ struct V2HarnessPanel: View {
     }
 
     // MARK: - Phase helpers
-
-    private func phaseLabel(_ phase: HarnessOrchestrator.Phase) -> String {
-        switch phase {
-        case .planning: return "planning"
-        case .working(let n): return "work · iter \(n)"
-        case .reviewing(let n): return "review · iter \(n)"
-        default: return ""
-        }
-    }
 
     private func isWorking(_ h: HarnessOrchestrator) -> Bool {
         if case .working = h.phase { return true }

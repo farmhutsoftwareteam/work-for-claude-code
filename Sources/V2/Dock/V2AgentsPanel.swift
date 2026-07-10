@@ -15,6 +15,11 @@ struct V2AgentsPanel: View {
     @State private var filter: ScopeFilter = .all
     @State private var agents: [V2Agent] = []
     @State private var editing: EditTarget?
+    /// Surfaces a failed delete instead of the prior silent `try?` — a
+    /// permission/disk error looked identical to success with nothing
+    /// telling the user the agent file is still sitting on disk
+    /// (bug-hunt #18).
+    @State private var deleteError: String?
 
     enum EditTarget: Identifiable {
         case new(scope: AgentConfigWriter.Scope)
@@ -68,6 +73,14 @@ struct V2AgentsPanel: View {
                     onCancel: { editing = nil }
                 )
             }
+        }
+        .alert("Couldn't delete agent", isPresented: Binding(
+            get: { deleteError != nil },
+            set: { if !$0 { deleteError = nil } }
+        )) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text(deleteError ?? "")
         }
         .enableInjection()
     }
@@ -306,8 +319,12 @@ struct V2AgentsPanel: View {
                 return
             }
         }
-        try? AgentConfigWriter.delete(slug: agent.slug, from: scope)
-        reload()
+        do {
+            try AgentConfigWriter.delete(slug: agent.slug, from: scope)
+            reload()
+        } catch {
+            deleteError = error.localizedDescription
+        }
     }
 
     // MARK: - Helpers

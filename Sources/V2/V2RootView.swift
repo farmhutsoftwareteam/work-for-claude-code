@@ -140,7 +140,12 @@ struct V2RootView: View {
         )
         .task {
             appState.attach(terminals: terminals)
-            appState.resolveBinary()
+            // Awaited (M8, bug-hunt 2026-07-10): resolveBinary() now hops off
+            // the MainActor internally so a slow shell rc (nvm/asdf/corporate
+            // init scripts) can't hang app launch — but restoreWorkspaceIfNeeded
+            // below still needs claudeBinary set before it runs, so this
+            // `.task` awaits the result rather than firing it off unordered.
+            await appState.resolveBinary()
             // Reopen the previous workspace — tabs come back HIBERNATED
             // (transcript preloaded, zero subprocesses; first message wakes
             // each via --resume). Must run after attach + resolveBinary:

@@ -26,6 +26,10 @@ struct V2AddSkillFromRepoSheet: View {
     /// several ⇒ shown as a picker so nothing gets chosen for the user.
     @State private var gitCandidates: [ClaudeSkill] = []
     @State private var gitSelected: ClaudeSkill?
+    /// Live handle to the in-flight `git clone`, so dismissing the sheet
+    /// mid-clone can actually terminate it (bug-hunt H7) instead of leaving
+    /// it running with nothing left referencing it.
+    @State private var activeGitProcess: Process?
 
     var body: some View {
         VStack(spacing: 0) {
@@ -174,6 +178,17 @@ struct V2AddSkillFromRepoSheet: View {
         cleanupGitPreview()
         let raw = gitURL.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !raw.isEmpty else { return }
+
+        // Reject anything that isn't a plausible repo URL before it ever
+        // reaches git — belt-and-suspenders alongside the "--" separator
+        // below (bug-hunt H6): a bare "-"-prefixed value would otherwise be
+        // parsable by git as a flag, e.g. "--upload-pack=/some/script".
+        guard raw.hasPrefix("https://") || raw.hasPrefix("http://")
+            || raw.hasPrefix("git@") || raw.hasPrefix("ssh://") else {
+            gitError = "That doesn't look like a repo URL — expected it to start with https://, git@, or ssh://."
+            return
+        }
+
         gitBusy = true
         defer { gitBusy = false }
 
@@ -187,27 +202,8 @@ struct V2AddSkillFromRepoSheet: View {
         let cloneDir = FileManager.default.temporaryDirectory
             .appendingPathComponent("atelier-skill-source-\(UUID().uuidString.prefix(8))")
 
-        let proc = Process()
-        proc.executableURL = URL(fileURLWithPath: "/usr/bin/git")
-        var args = ["clone", "--depth", "1"]
-        if let branch { args += ["--branch", branch] }
-        args += [cloneURL, cloneDir.path]
-        proc.arguments = args
-        proc.standardOutput = FileHandle.nullDevice
-        let errPipe = Pipe()
-        proc.standardError = errPipe
-
-        do {
-            try proc.run()
-            proc.waitUntilExit()
-        } catch {
-            gitError = "Couldn't run git: \(error.localizedDescription)"
-            return
-        }
-        guard proc.terminationStatus == 0 else {
-            let errData = errPipe.fileHandleForReading.readDataToEndOfFile()
-            let msg = String(data: errData, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines)
-            gitError = msg?.isEmpty == false ? msg : "git clone failed."
+        if let failure = await runGitClone(cloneURL: cloneURL, branch: branch, cloneDir: cloneDir) {
+            gitError = failure
             try? FileManager.default.removeItem(at: cloneDir)
             return
         }
@@ -341,7 +337,15 @@ struct V2AddSkillFromRepoSheet: View {
 
     private func installGitPreview() {
         guard let gitSelected else { return }
-        _ = try? SkillOperations.cloneToPersonal(gitSelected)
+        // Was `try?` — a permission/name-collision/disk failure silently
+        // proceeded to report success (cleared the form, called onInstalled,
+        // dismissed) with nothing actually written (bug-hunt #12/M33).
+        do {
+            _ = try SkillOperations.cloneToPersonal(gitSelected)
+        } catch {
+            gitError = error.localizedDescription
+            return
+        }
         cleanupGitPreview()
         gitURL = ""
         onInstalled()
@@ -349,9 +353,72 @@ struct V2AddSkillFromRepoSheet: View {
     }
 
     private func cleanupGitPreview() {
+        if let activeGitProcess, activeGitProcess.isRunning { activeGitProcess.terminate() }
+        activeGitProcess = nil
         if let gitCloneDir { try? FileManager.default.removeItem(at: gitCloneDir) }
         gitCloneDir = nil
         gitCandidates = []
         gitSelected = nil
+    }
+
+    /// Runs `git clone` and suspends (no blocking wait — bug-hunt H7) until
+    /// it exits or `timeout` elapses, whichever first; a hung/unreachable
+    /// host gets terminated instead of orphaned. Returns an error message on
+    /// failure, nil on success. `--` ends git's own flag parsing before the
+    /// positional repo URL, closing the injection risk (bug-hunt H6)
+    /// independent of the scheme check the caller already does.
+    private func runGitClone(cloneURL: String, branch: String?, cloneDir: URL, timeout: TimeInterval = 30) async -> String? {
+        let proc = Process()
+        proc.executableURL = URL(fileURLWithPath: "/usr/bin/git")
+        var args = ["clone", "--depth", "1"]
+        if let branch { args += ["--branch", branch] }
+        args += ["--", cloneURL, cloneDir.path]
+        proc.arguments = args
+        proc.standardOutput = FileHandle.nullDevice
+        let errPipe = Pipe()
+        proc.standardError = errPipe
+
+        do {
+            try proc.run()
+        } catch {
+            return "Couldn't run git: \(error.localizedDescription)"
+        }
+        activeGitProcess = proc
+
+        let timedOut = await withCheckedContinuation { (cont: CheckedContinuation<Bool, Never>) in
+            let resumeLock = NSLock()
+            // The NSLock makes access to `resumed` genuinely safe across the
+            // two closures below, but that's a runtime guarantee the Swift 6
+            // strict-concurrency checker can't see syntactically — it flags
+            // any `var` captured by two escaping closures regardless of
+            // locking. `nonisolated(unsafe)` opts out of that check for this
+            // one variable, which is correct here since we ARE the ones
+            // providing the synchronization it can't verify.
+            nonisolated(unsafe) var resumed = false
+            proc.terminationHandler = { _ in
+                resumeLock.lock(); defer { resumeLock.unlock() }
+                guard !resumed else { return }
+                resumed = true
+                cont.resume(returning: false)
+            }
+            DispatchQueue.global().asyncAfter(deadline: .now() + timeout) {
+                resumeLock.lock(); defer { resumeLock.unlock() }
+                guard !resumed else { return }
+                resumed = true
+                proc.terminate()
+                cont.resume(returning: true)
+            }
+        }
+        activeGitProcess = nil
+
+        if timedOut {
+            return "git clone timed out after \(Int(timeout))s — the host may be unreachable."
+        }
+        guard proc.terminationStatus == 0 else {
+            let errData = errPipe.fileHandleForReading.readDataToEndOfFile()
+            let msg = String(data: errData, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines)
+            return msg?.isEmpty == false ? msg : "git clone failed."
+        }
+        return nil
     }
 }

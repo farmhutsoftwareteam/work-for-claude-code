@@ -114,6 +114,15 @@ final class ACPClient: @unchecked Sendable {
 
     // MARK: - Lifecycle
 
+    /// Defense-in-depth alongside the explicit `stop()` call site
+    /// (V2ACPChatView.onDisappear) — if some other owner ever forgets to
+    /// call stop(), the subprocess still dies when this object does instead
+    /// of outliving the view it was created for (bug-hunt H4).
+    deinit {
+        process?.terminate()
+        try? stdinHandle?.close()
+    }
+
     /// Spawn `node <acpIndexJS>` and run the initialize → session/new
     /// handshake. `cwd` is the project directory the session operates in.
     func start(nodeURL: URL, acpIndexJS: URL, cwd: URL, completion: @escaping (Bool) -> Void) {
@@ -478,22 +487,44 @@ final class ACPClient: @unchecked Sendable {
         writeMessage(["jsonrpc": "2.0", "id": id, "result": result])
     }
 
-    private func writeMessage(_ obj: [String: Any]) {
-        guard let data = try? JSONSerialization.data(withJSONObject: obj) else { return }
+    /// Returns whether the write actually succeeded. On failure — almost
+    /// always the child process has died — and only when `obj` is one of
+    /// OUR requests (has a "method", distinguishing it from a `respond()`
+    /// call answering the AGENT's request, which reuses the agent's own id
+    /// namespace and must not be looked up here), fires and removes the
+    /// matching `pending[id]` handler with a failure instead of leaving it
+    /// registered forever. Previously this only logged, so the caller's
+    /// completion handler (registered in sendRequest) dangled — the UI
+    /// stayed stuck at `.working` with no error surfaced (bug-hunt #11/M32).
+    @discardableResult
+    private func writeMessage(_ obj: [String: Any]) -> Bool {
+        guard let data = try? JSONSerialization.data(withJSONObject: obj) else { return false }
         var line = data
         line.append(0x0A)
-        writeLock.lock(); defer { writeLock.unlock() }
+        var succeeded = true
+        writeLock.lock()
         // Raw write(2) — write the whole frame, handling partial writes.
         line.withUnsafeBytes { (raw: UnsafeRawBufferPointer) in
             var off = 0
             let total = raw.count
-            guard let base = raw.baseAddress else { return }
+            guard let base = raw.baseAddress else { succeeded = false; return }
             while off < total {
                 let n = write(stdinFD, base + off, total - off)
-                if n <= 0 { log.error("acp write failed (errno \(errno))"); return }
+                if n <= 0 { log.error("acp write failed (errno \(errno))"); succeeded = false; return }
                 off += n
             }
         }
+        writeLock.unlock()
+
+        if !succeeded, let id = obj["id"] as? Int, obj["method"] != nil {
+            pendingLock.lock()
+            let handler = pending.removeValue(forKey: id)
+            pendingLock.unlock()
+            if let handler {
+                onMain { handler(.failure(ACPError(message: "write failed", code: -1))) }
+            }
+        }
+        return succeeded
     }
 
     // MARK: - Environment
