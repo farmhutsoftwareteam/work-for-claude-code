@@ -192,3 +192,172 @@ final class V2ProseTextView: NSTextView {
         return lm.usedRect(for: container).size
     }
 }
+
+// MARK: - Merged prose run (#72)
+
+/// One NSTextView for a whole RUN of contiguous prose blocks — paragraphs,
+/// headings, bullets, ordered lists — so drag-selection flows across them.
+/// Per-block NSTextViews (V2RichText above, still used for standalone
+/// prose) bound every selection to a single paragraph, which users read as
+/// "the highlighter can only select one line."
+///
+/// Perf contract (PERFORMANCE.md): the assembled string is cached by the
+/// run's content key, and the per-piece inline parses inside it come from
+/// V2RichText.attributed's own cache — so while a reply streams, only the
+/// TAIL run re-assembles (from cached pieces), and every stable run is a
+/// pure cache hit. updateNSView is key-guarded like V2RichText's.
+struct V2ProseRunView: NSViewRepresentable {
+    @Environment(\.v2) private var v2
+    let blocks: [V2MarkdownText.MDBlock]
+    /// Stable serialization of the run's content (built once in
+    /// V2MarkdownText.groupRuns) — the cache/compare key.
+    let runKey: String
+    var size: CGFloat = 13
+    var baseDir: String? = nil
+
+    func makeCoordinator() -> V2RichText.Coordinator { V2RichText.Coordinator() }
+
+    func makeNSView(context: Context) -> V2ProseTextView {
+        let tv = V2ProseTextView()
+        tv.isEditable = false
+        tv.isSelectable = true
+        tv.drawsBackground = false
+        tv.textContainerInset = .zero
+        tv.textContainer?.lineFragmentPadding = 0
+        tv.textContainer?.widthTracksTextView = false
+        tv.isAutomaticLinkDetectionEnabled = false
+        tv.delegate = context.coordinator
+        tv.linkTextAttributes = [:]
+        return tv
+    }
+
+    func updateNSView(_ tv: V2ProseTextView, context: Context) {
+        let dark = (v2.ink == V2Theme.dark.ink)
+        let key = "\(size)|\(dark)|\(baseDir ?? "")|\(runKey)"
+        guard context.coordinator.lastKey != key else { return }
+        context.coordinator.lastKey = key
+        tv.textStorage?.setAttributedString(
+            Self.assembled(blocks, key: key, size: size, palette: v2, dark: dark, baseDir: baseDir)
+        )
+    }
+
+    func sizeThatFits(_ proposal: ProposedViewSize, nsView: V2ProseTextView, context: Context) -> CGSize? {
+        guard let width = proposal.width, width.isFinite, width > 0,
+              let container = nsView.textContainer, let lm = nsView.layoutManager
+        else { return nil }
+        container.containerSize = NSSize(width: width, height: .greatestFiniteMagnitude)
+        lm.ensureLayout(for: container)
+        let used = lm.usedRect(for: container)
+        return CGSize(width: width, height: ceil(used.height))
+    }
+
+    // MARK: Assembly (cached by run key)
+
+    nonisolated(unsafe) private static var runCache: [String: NSAttributedString] = [:]
+    private static let runCacheLimit = 512
+
+    /// Visual parity constants, mirroring the old per-block SwiftUI layout:
+    /// 11pt between blocks (the VStack spacing), 7pt between list items,
+    /// hanging indents where the old HStack put the wrapped text.
+    private static let blockSpacing: CGFloat = 11
+    private static let itemSpacing: CGFloat = 7
+    private static let bulletIndent: CGFloat = 18
+    private static let orderedIndent: CGFloat = 22
+
+    static func assembled(
+        _ blocks: [V2MarkdownText.MDBlock], key: String,
+        size: CGFloat, palette: V2Palette, dark: Bool, baseDir: String?
+    ) -> NSAttributedString {
+        if let hit = runCache[key] { return hit }
+
+        let out = NSMutableAttributedString()
+
+        func paraStyle(headIndent: CGFloat = 0, tabAt: CGFloat? = nil,
+                       spacingAfter: CGFloat, spacingBefore: CGFloat = 0) -> NSParagraphStyle {
+            let p = NSMutableParagraphStyle()
+            p.lineSpacing = size * 0.66
+            p.headIndent = headIndent
+            p.paragraphSpacing = spacingAfter
+            p.paragraphSpacingBefore = spacingBefore
+            if let tabAt { p.tabStops = [NSTextTab(textAlignment: .left, location: tabAt)] }
+            return p
+        }
+
+        /// A cached V2RichText piece with this run's paragraph style applied
+        /// over the top (the piece's own style only carried lineSpacing).
+        func piece(_ markdown: String, style: NSParagraphStyle) -> NSAttributedString {
+            let base = V2RichText.attributed(markdown, size: size, palette: palette, dark: dark, baseDir: baseDir)
+            let copy = NSMutableAttributedString(attributedString: base)
+            copy.addAttribute(.paragraphStyle, value: style, range: NSRange(location: 0, length: copy.length))
+            return copy
+        }
+
+        func newlineIfNeeded() {
+            if out.length > 0 { out.append(NSAttributedString(string: "\n")) }
+        }
+
+        for block in blocks {
+            switch block {
+            case .paragraph(let text):
+                newlineIfNeeded()
+                out.append(piece(text, style: paraStyle(spacingAfter: blockSpacing)))
+
+            case .heading(let level, let text):
+                newlineIfNeeded()
+                let style = paraStyle(spacingAfter: blockSpacing, spacingBefore: 3)
+                if level >= 2 {
+                    // ## / ### → section label per design (helv uppercase, mute).
+                    out.append(NSAttributedString(string: text.uppercased(), attributes: [
+                        .font: NSFont.systemFont(ofSize: 12, weight: .semibold),
+                        .kern: 0.48,
+                        .foregroundColor: NSColor(palette.mute),
+                        .paragraphStyle: style,
+                    ]))
+                } else {
+                    out.append(NSAttributedString(string: text, attributes: [
+                        .font: NSFont.monospacedSystemFont(ofSize: 15, weight: .semibold),
+                        .foregroundColor: NSColor(palette.ink),
+                        .paragraphStyle: style,
+                    ]))
+                }
+
+            case .bullet(let items):
+                for (idx, item) in items.enumerated() {
+                    newlineIfNeeded()
+                    let last = idx == items.count - 1
+                    let style = paraStyle(headIndent: bulletIndent, tabAt: bulletIndent,
+                                          spacingAfter: last ? blockSpacing : itemSpacing)
+                    out.append(NSAttributedString(string: "•\t", attributes: [
+                        .font: NSFont.monospacedSystemFont(ofSize: size, weight: .regular),
+                        .foregroundColor: NSColor(palette.mute),
+                        .paragraphStyle: style,
+                    ]))
+                    out.append(piece(item, style: style))
+                }
+
+            case .ordered(let items):
+                for (idx, item) in items.enumerated() {
+                    newlineIfNeeded()
+                    let last = idx == items.count - 1
+                    let style = paraStyle(headIndent: orderedIndent, tabAt: orderedIndent,
+                                          spacingAfter: last ? blockSpacing : itemSpacing)
+                    out.append(NSAttributedString(string: "\(idx + 1).\t", attributes: [
+                        .font: NSFont.monospacedSystemFont(ofSize: size, weight: .regular),
+                        .foregroundColor: NSColor(palette.mute),
+                        .paragraphStyle: style,
+                    ]))
+                    out.append(piece(item, style: style))
+                }
+
+            case .codeFence, .table:
+                // Chrome blocks never reach a prose run (groupRuns splits on
+                // them); tolerate rather than trap if that invariant slips.
+                continue
+            }
+        }
+
+        if runCache.count >= runCacheLimit { runCache.removeAll(keepingCapacity: true) }
+        runCache[key] = out
+        return out
+    }
+}

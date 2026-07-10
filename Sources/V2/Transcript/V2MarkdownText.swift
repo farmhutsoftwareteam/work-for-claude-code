@@ -18,26 +18,39 @@ struct V2MarkdownText: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 11) {
-            // Identity is the block's SOURCE START LINE, not its array index
-            // (bug-hunt M24) — a GFM table's header row starts out absorbed
-            // into a preceding `.paragraph` (the delimiter row hasn't
-            // streamed in yet to confirm it's a table); once it lands, the
-            // paragraph shrinks and a NEW `.table` block is inserted ahead of
-            // it, shifting every later block's ARRAY offset by one even
-            // though none of them actually moved in the source text. With
-            // `id: \.offset` that shift read as "every block after this
-            // point is a different element," tearing down their SwiftUI
-            // state (e.g. an open/closed code-block copy button). Start-line
-            // ids don't shift: the paragraph keeps its original id (its
-            // start line didn't move, just its end), and the table's id is
-            // simply new — exactly matching what actually changed.
-            ForEach(blocks) { item in
-                blockView(item.block)
+            // Rows are RUNS, not individual blocks (#72): contiguous prose
+            // blocks (paragraphs, headings, bullets, ordered lists) merge
+            // into ONE NSTextView so drag-selection flows across them —
+            // per-block NSTextViews bounded every selection to a single
+            // paragraph ("the text highlighter can only select one line").
+            // Code fences and tables keep their own chrome (copy button,
+            // grid) and bound selection there, which matches expectation.
+            //
+            // Identity is the run's first block's SOURCE START LINE, same
+            // scheme as the per-block ids before it (bug-hunt M24) — a
+            // table materializing mid-stream splits a run without shifting
+            // the ids of anything whose source position didn't move.
+            ForEach(runs) { run in
+                switch run.kind {
+                case .prose(let blocks):
+                    V2ProseRunView(blocks: blocks, runKey: run.key, baseDir: baseDir)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                case .chrome(let block):
+                    blockView(block)
+                }
             }
         }
         .textSelection(.enabled)
     }
 
+    private var runs: [IDRun] {
+        Self.cachedRuns(text)
+    }
+
+    /// Chrome blocks (code fences, tables) — the prose cases below are
+    /// unreachable in normal rendering now that prose renders via merged
+    /// runs (V2ProseRunView), but they're kept as a working fallback so a
+    /// prose block arriving through any other path still renders correctly.
     @ViewBuilder
     private func blockView(_ block: MDBlock) -> some View {
         switch block {
@@ -219,6 +232,80 @@ struct V2MarkdownText: View {
     struct IDBlock: Identifiable {
         let id: Int
         let block: MDBlock
+    }
+
+    // MARK: - Prose runs (#72)
+
+    /// A render row: either a merged run of contiguous prose blocks (one
+    /// NSTextView — selection flows across all of them) or a single chrome
+    /// block (code fence / table) with its own custom view.
+    enum RunKind {
+        case prose([MDBlock])
+        case chrome(MDBlock)
+    }
+
+    /// `id` is the run's first block's source start line (M24 semantics).
+    /// `key` is a stable serialization of the run's CONTENT — the run
+    /// view's updateNSView compares it to skip rebuilds, and the assembled
+    /// NSAttributedString is cached by it, so stable runs cost nothing
+    /// while a sibling streams.
+    struct IDRun: Identifiable {
+        let id: Int
+        let kind: RunKind
+        let key: String
+    }
+
+    /// Cached alongside chunkCache with the same key + lifecycle: grouping
+    /// (and key-string building) runs once per unique message text, never
+    /// per render.
+    nonisolated(unsafe) private static var runsCache: [String: [IDRun]] = [:]
+
+    private static func cachedRuns(_ text: String) -> [IDRun] {
+        if let hit = runsCache[text] { return hit }
+        let result = groupRuns(cachedChunk(text))
+        if runsCache.count >= parseCacheLimit { runsCache.removeAll(keepingCapacity: true) }
+        runsCache[text] = result
+        return result
+    }
+
+    static func groupRuns(_ blocks: [IDBlock]) -> [IDRun] {
+        var out: [IDRun] = []
+        var pending: [MDBlock] = []
+        var pendingId: Int?
+        var keyParts: [String] = []
+
+        func flush() {
+            if let id = pendingId, !pending.isEmpty {
+                out.append(IDRun(id: id, kind: .prose(pending), key: keyParts.joined(separator: "\u{02}")))
+            }
+            pending = []; pendingId = nil; keyParts = []
+        }
+
+        for item in blocks {
+            switch item.block {
+            case .codeFence, .table:
+                flush()
+                out.append(IDRun(id: item.id, kind: .chrome(item.block), key: ""))
+            case .paragraph(let s):
+                if pendingId == nil { pendingId = item.id }
+                pending.append(item.block)
+                keyParts.append("p:\(s)")
+            case .heading(let level, let text):
+                if pendingId == nil { pendingId = item.id }
+                pending.append(item.block)
+                keyParts.append("h\(level):\(text)")
+            case .bullet(let items):
+                if pendingId == nil { pendingId = item.id }
+                pending.append(item.block)
+                keyParts.append("b:\(items.joined(separator: "\u{01}"))")
+            case .ordered(let items):
+                if pendingId == nil { pendingId = item.id }
+                pending.append(item.block)
+                keyParts.append("o:\(items.joined(separator: "\u{01}"))")
+            }
+        }
+        flush()
+        return out
     }
 
     static func chunk(_ text: String) -> [IDBlock] {
