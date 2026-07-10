@@ -6,6 +6,27 @@
         <description>Updates for Work</description>
         <language>en</language>
         <item>
+            <title>Version 2.8.0</title>
+            <pubDate>Fri, 10 Jul 2026 04:10:45 +0400</pubDate>
+            <sparkle:version>46</sparkle:version>
+            <sparkle:shortVersionString>2.8.0</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>15.0</sparkle:minimumSystemVersion>
+            <description><![CDATA[
+                <h3>Atelier 2.8.0 — see your agents work, not just background tasks</h3>
+                <ul>
+                    <li><b>Delegated agents are now visible.</b> When Claude hands work off to a subagent, it shows up in the transcript as a delegation card — what it's doing, how long it's been running, and a live one-line tail of its current action.</li>
+                    <li><b>Click a delegation card to watch it work.</b> The peek follows the agent's own transcript live, and shows its final report once it's done.</li>
+                    <li><b>Co-driven terminals no longer stack up forever.</b> A clean finish folds the pane automatically, the close button is a real "dismiss," and Claude can close a terminal itself once it's read the output.</li>
+                    <li><b>Skills "+ new" is a clear two-way choice</b> — Add with Claude or Add with repo — and the SKILL.md body editor now fills the sheet instead of a cramped 160px box.</li>
+                </ul>
+            ]]></description>
+            <enclosure
+                url="https://work.munyamakosa.com/Work-2.8.0.dmg"
+                length="12811633"
+                type="application/octet-stream"
+                sparkle:edSignature="0eXdbexoCUH94u4PyWwx+Drumsc+rnAskKL929gpqgHAXab4XK0U6lr1XoRg6njBZuwc5HO0xAnGNKS+Skw5Cg==" />
+        </item>
+        <item>
             <title>Version 2.7.0</title>
             <pubDate>Thu, 09 Jul 2026 21:36:40 +0400</pubDate>
             <sparkle:version>45</sparkle:version>
