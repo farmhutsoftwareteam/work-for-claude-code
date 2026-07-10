@@ -6,6 +6,28 @@
         <description>Updates for Work</description>
         <language>en</language>
         <item>
+            <title>Version 2.8.2</title>
+            <pubDate>Fri, 10 Jul 2026 16:41:01 +0400</pubDate>
+            <sparkle:version>48</sparkle:version>
+            <sparkle:shortVersionString>2.8.2</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>15.0</sparkle:minimumSystemVersion>
+            <description><![CDATA[
+                <h3>Atelier 2.8.2 — the tab bugs, found and fixed</h3>
+                <ul>
+                    <li><b>Fixed: switching to a tab sometimes showed an empty chat.</b> A memory-address recycling bug silently ate the "this tab changed" signal — sessions now carry a stable identity, so this can't happen.</li>
+                    <li><b>Fixed: reopening the app with several tabs bounced the scroll around.</b> The restore burst now collapses into a single update.</li>
+                    <li><b>Fixed: thinking blocks were always empty.</b> Streamed thinking text was never captured — you can now actually read the model's reasoning.</li>
+                    <li><b>Select across paragraphs.</b> Drag-selection no longer dies at a single paragraph or bullet; prose is one continuous selectable surface. Right-click any message → Copy message.</li>
+                    <li><b>Running commands show elapsed time</b> — a five-minute test run no longer looks identical to a hung one — and reopened conversations stop showing forever-spinning tool rows.</li>
+                </ul>
+            ]]></description>
+            <enclosure
+                url="https://work.munyamakosa.com/Work-2.8.2.dmg"
+                length="12990720"
+                type="application/octet-stream"
+                sparkle:edSignature="ZQptqCQDDWrAaKgURNRK2MdPOWUOeVscc3n4+NLWxDeCQAbB0+3ONVAMd6+pw05vG2uSkfZkXwQBjQ8xPiK2BA==" />
+        </item>
+        <item>
             <title>Version 2.8.1</title>
             <pubDate>Fri, 10 Jul 2026 14:35:02 +0400</pubDate>
             <sparkle:version>47</sparkle:version>
