@@ -129,6 +129,18 @@ final class StreamSession: ObservableObject {
     private var flushPending = false
     private let streamFlushInterval: TimeInterval = 0.033
 
+    /// Accumulates `thinking_delta` chunks (verified against real captured
+    /// wire text: the final assistant snapshot's `.thinking` block always
+    /// has `thinking: ""` — the full text ONLY ever arrives via these
+    /// deltas, same as text_delta does for the reply). The comment this
+    /// replaces assumed thinking blocks "fully arrive" in the snapshot;
+    /// that assumption was never checked against a real session and was
+    /// wrong — every extended-thinking block rendered as an expandable row
+    /// with nothing inside once opened. Consumed (and cleared) the moment a
+    /// `.thinking` block is appended below, so back-to-back thinking blocks
+    /// within one turn each pick up only what accumulated since the last one.
+    private var thinkingBuffer = ""
+
     /// Number of older user turns that exist on disk but weren't rendered
     /// into the transcript (we cap the preload at the latest N events).
     /// Drives the "↑ N earlier messages" affordance at the top of the
@@ -363,6 +375,7 @@ final class StreamSession: ObservableObject {
         flushPending = false
         streamingIndex = nil
         streamBuffer = ""
+        thinkingBuffer = ""
 
         // Resolve the permission mode for this spawn: explicit arg →
         // persisted default → "acceptEdits". Persisting it here (and in
@@ -827,6 +840,7 @@ final class StreamSession: ObservableObject {
         flushPending = false
         streamingIndex = nil
         streamBuffer = ""
+        thinkingBuffer = ""
         toolOutcomes.removeAll()
         backgroundTasks.removeAll()
         subagentRuns.removeAll()
@@ -995,9 +1009,12 @@ final class StreamSession: ObservableObject {
             // stream_event text_deltas (live streaming) AND a final assistant
             // snapshot containing the same text. Rendering both duplicates
             // every reply. Strategy: trust stream_events for text (already
-            // accumulated incrementally), use the assistant event only for
-            // tool_use / thinking blocks which don't fully arrive via deltas
-            // in a render-ready shape.
+            // accumulated incrementally); tool_use blocks DO fully arrive in
+            // the snapshot, but thinking blocks do NOT — verified against
+            // real captured wire text, the snapshot's `.thinking` block
+            // always has an empty `thinking` field, same as text would if we
+            // ignored text_delta. thinkingBuffer (declared above) is what
+            // actually holds the content; see its doc comment.
             finalizeStreamingText()   // seal streamed text before any tool/thinking block
             for block in m.message.content {
                 switch block {
@@ -1039,7 +1056,17 @@ final class StreamSession: ObservableObject {
                         }
                     }
                     transcript.append(.assistantBlock(block))
-                case .toolResult, .thinking, .unknown:
+                case .thinking(let text, let signature):
+                    // The snapshot's own `text` is always empty (see
+                    // thinkingBuffer's doc comment) — substitute what
+                    // actually accumulated from thinking_delta events.
+                    // Falls back to the snapshot's text on the off chance
+                    // that assumption is ever wrong for some future API
+                    // shape, rather than silently preferring an empty buffer.
+                    let resolved = thinkingBuffer.isEmpty ? text : thinkingBuffer
+                    thinkingBuffer = ""
+                    transcript.append(.assistantBlock(.thinking(text: resolved, signature: signature)))
+                case .toolResult, .unknown:
                     transcript.append(.assistantBlock(block))
                 }
             }
@@ -1252,6 +1279,12 @@ final class StreamSession: ObservableObject {
         guard let delta = s.event.delta else { return }
         if delta.type == "text_delta", let text = delta.text {
             appendStreamingText(text)
+        } else if delta.type == "thinking_delta", let thinking = delta.thinking {
+            // O(1) amortized append, mirroring streamBuffer above — never
+            // `existing + delta` (PERFORMANCE.md rule 1). No live row to
+            // flush into yet; the block doesn't exist in `transcript` until
+            // the assistant snapshot arrives, so this just accumulates.
+            thinkingBuffer += thinking
         }
     }
 
