@@ -87,7 +87,25 @@ struct V2LiveTranscript: View {
                         uniquingKeysWith: { _, latest in latest }
                     )
                     let sessionDir = session.sessionDir
-                    ForEach(firstVisibleIndex..<session.transcript.count, id: \.self) { i in
+                    // Clamped here, not just reset reactively by the
+                    // .onChange below: on the SAME render where a tab switch
+                    // swaps `session` to a new object, `firstVisibleIndex` is
+                    // still whatever the PREVIOUS tab left it at — .onChange
+                    // only fires as a reaction AFTER this render commits.
+                    // Switching from a long conversation to a shorter one
+                    // could momentarily pair a stale, too-high start index
+                    // with the new session's (smaller) transcript.count —
+                    // `a..<b` traps if a > b, and a tab that always hits this
+                    // during the switch would read as "I moved to a tab and
+                    // the messages never show" (the row it settles into
+                    // right after recovering is silently wrong too, since
+                    // the reactive reset lands one render late). Clamping the
+                    // window's bounds to what's actually valid THIS render
+                    // makes the row list correct immediately, every time —
+                    // the .onChange below still fixes up the @State itself
+                    // so scroll position stays sane on the next interaction.
+                    let windowStart = min(max(0, firstVisibleIndex), session.transcript.count)
+                    ForEach(windowStart..<session.transcript.count, id: \.self) { i in
                         row(for: session.transcript[i], runs: runsById, sessionDir: sessionDir)
                     }
 
