@@ -49,6 +49,13 @@ struct V2SkillEditorSheet: View {
     @State private var assetsFolder = false
     @State private var bodyText = "## Steps\n\n1. \n"
     @State private var saveError: String?
+    // Secondary/rarely-touched fields (argument-hint, when-to-use, model,
+    // effort, license, invocability) collapse behind a disclosure so the
+    // body editor — the actual point of this sheet — isn't the 7th of 8
+    // fields you scroll past to reach (Serial Position Effect). Defaults
+    // open when editing a skill that already has one of them set, so
+    // existing configuration is never hidden (Mental Model law).
+    @State private var moreOptionsExpanded: Bool
 
     init(mode: Mode, onSaved: @escaping () -> Void) {
         self.mode = mode
@@ -56,6 +63,7 @@ struct V2SkillEditorSheet: View {
         switch mode {
         case .new:
             _stage = State(initialValue: .prompt)
+            _moreOptionsExpanded = State(initialValue: false)
         case .edit(let skill):
             _stage = State(initialValue: .form)
             _name = State(initialValue: skill.name)
@@ -72,6 +80,10 @@ struct V2SkillEditorSheet: View {
             _bodyText = State(initialValue: (try? String(
                 contentsOf: skill.path.appendingPathComponent("SKILL.md"), encoding: .utf8
             )).flatMap(Self.extractBody) ?? "")
+            _moreOptionsExpanded = State(initialValue: !(skill.whenToUse ?? "").isEmpty
+                || skill.model != nil || skill.effort != nil
+                || !(skill.license ?? "").isEmpty || !(skill.argumentHint ?? "").isEmpty
+                || skill.disableModelInvocation || !skill.userInvocable)
         }
     }
 
@@ -87,7 +99,7 @@ struct V2SkillEditorSheet: View {
             case .form:       formStage
             }
         }
-        .frame(width: 780, height: 600)
+        .frame(width: 780, height: 660)
         .background(v2.paper2)
         .enableInjection()
     }
@@ -220,62 +232,79 @@ struct V2SkillEditorSheet: View {
                 .overlay(alignment: .bottom) { Rectangle().fill(v2.line).frame(height: 1) }
             }
 
-            ScrollView {
-                VStack(alignment: .leading, spacing: 16) {
-                    HStack(spacing: 14) {
-                        field("name") {
-                            TextField("", text: $name)
-                                .textFieldStyle(.plain)
-                                .disabled(!isNew)
-                                .padding(8)
-                                .background(isNew ? v2.card : v2.paper3)
-                                .overlay(Rectangle().stroke(v2.line2, lineWidth: 1))
-                        }
-                        field("argument-hint") {
-                            TextField("<file> [--fix]", text: $argumentHint)
-                                .textFieldStyle(.plain).padding(8)
-                                .background(v2.card).overlay(Rectangle().stroke(v2.line2, lineWidth: 1))
-                        }
-                    }
-                    field("description") {
-                        TextField("", text: $desc)
-                            .textFieldStyle(.plain).padding(8)
-                            .background(v2.card).overlay(Rectangle().stroke(v2.line2, lineWidth: 1))
-                    }
-                    field("when to use") {
-                        TextEditor(text: $whenToUse)
-                            .font(.system(size: 12.5)).frame(height: 46).padding(6)
-                            .background(v2.card).overlay(Rectangle().stroke(v2.line2, lineWidth: 1))
-                            .scrollContentBackground(.hidden)
-                    }
-                    HStack(spacing: 14) {
-                        field("model") { segmented(["sonnet", "opus", "haiku"], selection: $model) }
-                        field("effort") { segmented(["low", "medium", "high"], selection: $effort) }
-                        field("license") {
-                            TextField("MIT", text: $license)
-                                .textFieldStyle(.plain).padding(8)
-                                .background(v2.card).overlay(Rectangle().stroke(v2.line2, lineWidth: 1))
-                        }
-                    }
-                    HStack(spacing: 24) {
-                        toggleRow("model-invocable", isOn: $modelInvocable)
-                        toggleRow("user-invocable", isOn: $userInvocable)
-                    }
-                    if isNew {
-                        toggleRow("create a references / scripts / assets folder alongside SKILL.md", isOn: $assetsFolder)
-                    }
-                    field("SKILL.md body") {
-                        TextEditor(text: $bodyText)
-                            .font(.system(size: 12.5, design: .monospaced)).frame(height: 160).padding(8)
-                            .background(v2.card).overlay(Rectangle().stroke(v2.line2, lineWidth: 1))
-                            .scrollContentBackground(.hidden)
-                    }
-                    if let saveError {
-                        Text(saveError).font(.system(size: 11, design: .monospaced)).foregroundColor(v2.del)
-                    }
+            VStack(alignment: .leading, spacing: 14) {
+                field("name") {
+                    TextField("", text: $name)
+                        .textFieldStyle(.plain)
+                        .disabled(!isNew)
+                        .padding(8)
+                        .background(isNew ? v2.card : v2.paper3)
+                        .overlay(Rectangle().stroke(v2.line2, lineWidth: 1))
                 }
-                .padding(22)
+                field("description") {
+                    TextField("", text: $desc)
+                        .textFieldStyle(.plain).padding(8)
+                        .background(v2.card).overlay(Rectangle().stroke(v2.line2, lineWidth: 1))
+                }
+
+                // The actual point of this sheet — dominant size, second
+                // field down, never sharing a scroll gesture with the form
+                // around it (see the header comment on moreOptionsExpanded).
+                field("SKILL.md body") {
+                    TextEditor(text: $bodyText)
+                        .font(.system(size: 12.5, design: .monospaced)).padding(8)
+                        .background(v2.card).overlay(Rectangle().stroke(v2.line2, lineWidth: 1))
+                        .scrollContentBackground(.hidden)
+                }
+                .frame(maxHeight: .infinity)
+
+                DisclosureGroup(isExpanded: $moreOptionsExpanded) {
+                    VStack(alignment: .leading, spacing: 14) {
+                        HStack(spacing: 14) {
+                            field("argument-hint") {
+                                TextField("<file> [--fix]", text: $argumentHint)
+                                    .textFieldStyle(.plain).padding(8)
+                                    .background(v2.card).overlay(Rectangle().stroke(v2.line2, lineWidth: 1))
+                            }
+                            field("license") {
+                                TextField("MIT", text: $license)
+                                    .textFieldStyle(.plain).padding(8)
+                                    .background(v2.card).overlay(Rectangle().stroke(v2.line2, lineWidth: 1))
+                            }
+                        }
+                        field("when to use") {
+                            TextEditor(text: $whenToUse)
+                                .font(.system(size: 12.5)).frame(height: 46).padding(6)
+                                .background(v2.card).overlay(Rectangle().stroke(v2.line2, lineWidth: 1))
+                                .scrollContentBackground(.hidden)
+                        }
+                        HStack(spacing: 14) {
+                            field("model") { segmented(["sonnet", "opus", "haiku"], selection: $model) }
+                            field("effort") { segmented(["low", "medium", "high"], selection: $effort) }
+                        }
+                        HStack(spacing: 24) {
+                            toggleRow("model-invocable", isOn: $modelInvocable)
+                            toggleRow("user-invocable", isOn: $userInvocable)
+                        }
+                        if isNew {
+                            toggleRow("create a references / scripts / assets folder alongside SKILL.md", isOn: $assetsFolder)
+                        }
+                    }
+                    .padding(.top, 12)
+                } label: {
+                    Text("more options")
+                        .font(.system(size: 10.5, design: .monospaced))
+                        .kerning(0.5)
+                        .foregroundColor(v2.mute)
+                }
+                .tint(v2.ink)
+
+                if let saveError {
+                    Text(saveError).font(.system(size: 11, design: .monospaced)).foregroundColor(v2.del)
+                }
             }
+            .padding(22)
+            .frame(maxHeight: .infinity)
 
             HStack(spacing: 10) {
                 if let editingSkill {

@@ -17,6 +17,8 @@ struct V2SkillsPanel: View {
     @State private var expandedPlugins: Set<String> = []
     @State private var editing: EditTarget?
     @State private var showingMarketplace = false
+    @State private var showingAddFromRepo = false
+    @State private var showingNewChooser = false
     @State private var justCleanedUp: Int?
     struct UpdateDiffTarget: Identifiable {
         let skill: ClaudeSkill
@@ -87,6 +89,9 @@ struct V2SkillsPanel: View {
         .sheet(isPresented: $showingMarketplace) {
             V2SkillsMarketplaceSheet(onInstalled: { reload() })
         }
+        .sheet(isPresented: $showingAddFromRepo) {
+            V2AddSkillFromRepoSheet(onInstalled: { reload() })
+        }
         .sheet(item: $showingUpdateDiff) { target in
             V2SkillUpdateDiffSheet(
                 skill: target.skill,
@@ -108,7 +113,7 @@ struct V2SkillsPanel: View {
                 .font(.system(size: 15, weight: .medium))
                 .kerning(-0.15)
             Spacer()
-            Button { editing = .new } label: {
+            Button { showingNewChooser = true } label: {
                 Text("+ new")
                     .font(.system(size: 10.5, design: .monospaced))
                     .foregroundColor(v2.ink)
@@ -118,11 +123,52 @@ struct V2SkillsPanel: View {
                     .overlay(Rectangle().stroke(v2.line2, lineWidth: 1))
             }
             .buttonStyle(.plain)
-            .help("Create a new skill — by hand or let Claude draft it from a description")
+            .help("Add a skill — write it with Claude, or add one from a repo")
+            .popover(isPresented: $showingNewChooser, arrowEdge: .bottom) {
+                newSkillChooser
+            }
         }
         .padding(.horizontal, 18)
         .padding(.vertical, 14)
         .overlay(alignment: .bottom) { Rectangle().fill(v2.line).frame(height: 1) }
+    }
+
+    /// Two ways in, nothing else — "add with Claude" (describe it, Claude
+    /// drafts the SKILL.md, review before saving) or "add with repo" (paste
+    /// a GitHub/GitLab URL, install one already written by someone else).
+    private var newSkillChooser: some View {
+        VStack(spacing: 0) {
+            chooserRow(
+                title: "Add with Claude",
+                subtitle: "Describe it — Claude drafts the SKILL.md, you review before it saves",
+                action: { showingNewChooser = false; editing = .new }
+            )
+            Rectangle().fill(v2.line).frame(height: 1)
+            chooserRow(
+                title: "Add with repo",
+                subtitle: "Paste a GitHub/GitLab URL — installs a skill someone else wrote",
+                action: { showingNewChooser = false; showingAddFromRepo = true }
+            )
+        }
+        .frame(width: 300)
+    }
+
+    private func chooserRow(title: String, subtitle: String, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            VStack(alignment: .leading, spacing: 3) {
+                Text(title)
+                    .font(.system(size: 13, weight: .medium))
+                    .foregroundColor(v2.ink)
+                Text(subtitle)
+                    .font(.system(size: 10.5, design: .monospaced))
+                    .foregroundColor(v2.faint)
+            }
+            .padding(.horizontal, 14)
+            .padding(.vertical, 11)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
     }
 
     private var emptyState: some View {
