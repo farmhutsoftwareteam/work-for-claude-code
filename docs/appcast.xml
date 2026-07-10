@@ -6,6 +6,27 @@
         <description>Updates for Work</description>
         <language>en</language>
         <item>
+            <title>Version 2.8.1</title>
+            <pubDate>Fri, 10 Jul 2026 14:35:02 +0400</pubDate>
+            <sparkle:version>47</sparkle:version>
+            <sparkle:shortVersionString>2.8.1</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>15.0</sparkle:minimumSystemVersion>
+            <description><![CDATA[
+                <h3>Atelier 2.8.1 — a real crash fixed, plus a full stability pass</h3>
+                <ul>
+                    <li><b>Fixed a crash in the co-driven terminal.</b> Running something like vim, htop, or tmux co-driven for long enough could crash the app — reachable automatically, with zero agent activity, once enough output had passed through the pane.</li>
+                    <li><b>Two real security gaps closed in the skill-from-repo flow.</b> A malicious skill name in a cloned repo could have written files outside Atelier's skills folder; a crafted URL could have been read as a git flag instead of a repo address.</li>
+                    <li><b>Quitting Atelier now actually stops your chat sessions</b> — previously only terminal tabs were signaled on quit.</li>
+                    <li><b>The ACP preview no longer leaks its process</b> when you close it, plus a long list of smaller stability fixes across streaming, the composer, skills, and agents.</li>
+                </ul>
+            ]]></description>
+            <enclosure
+                url="https://work.munyamakosa.com/Work-2.8.1.dmg"
+                length="12945546"
+                type="application/octet-stream"
+                sparkle:edSignature="aMN1yqzMxvibyRELVZsRKhRAvFd3mBafyZUquqtxPyh+pRHxJxTzs16L4c9+zzWXO96dvWpuhb3qMx8RQIp2Aw==" />
+        </item>
+        <item>
             <title>Version 2.8.0</title>
             <pubDate>Fri, 10 Jul 2026 04:10:45 +0400</pubDate>
             <sparkle:version>46</sparkle:version>
