@@ -6,6 +6,26 @@
         <description>Updates for Work</description>
         <language>en</language>
         <item>
+            <title>Version 2.9.0</title>
+            <pubDate>Sat, 11 Jul 2026 17:26:18 +0400</pubDate>
+            <sparkle:version>49</sparkle:version>
+            <sparkle:shortVersionString>2.9.0</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>15.0</sparkle:minimumSystemVersion>
+            <description><![CDATA[
+                <h3>Atelier 2.9.0 — Observer mode</h3>
+                <ul>
+                    <li><b>Watch any session live, wherever it runs.</b> Start a session from a terminal, another machine, or any tool other than Atelier — it shows up in the history rail with a pulsing "live" badge, and opens as a real-time, read-only view: same live chat, background-task strip, and delegation cards, no way to accidentally take over a conversation something else owns.</li>
+                    <li><b>Chrome-style tab strip</b> — tabs shrink to fit as you open more instead of scrolling off-screen invisibly; once fully shrunk, a searchable dropdown finds any tab by title.</li>
+                    <li><b>Fixed: ⌘1–⌘9 and ⌘]/⌘[ didn't do anything</b> — jump-to-tab and next/previous-tab shortcuts are wired correctly now.</li>
+                </ul>
+            ]]></description>
+            <enclosure
+                url="https://work.munyamakosa.com/Work-2.9.0.dmg"
+                length="13115307"
+                type="application/octet-stream"
+                sparkle:edSignature="LPEJdFashOKH9q0mteMJPDWoN60c4D1C8zPyJGwzhjsQ4O+29HNFm+8NkRhMOioq3sOmalTBXvJGwNTBlgN2DQ==" />
+        </item>
+        <item>
             <title>Version 2.8.2</title>
             <pubDate>Fri, 10 Jul 2026 16:41:01 +0400</pubDate>
             <sparkle:version>48</sparkle:version>
