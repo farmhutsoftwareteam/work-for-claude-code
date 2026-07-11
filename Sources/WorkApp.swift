@@ -141,12 +141,17 @@ struct WorkApp: App {
                 }
                 .keyboardShortcut("w", modifiers: .command)
                 Divider()
-                Button("Next Tab") { terminals.cycleFocus(delta: 1) }
+                // Staged on `terminals` and dispatched by V2RootView, which
+                // is the one that actually owns V2AppState.activeTabId —
+                // these used to write straight to terminals.activeTabId,
+                // which only the legacy v1 window reads, so they were
+                // silent no-ops in the v2 window everyone actually uses.
+                Button("Next Tab") { terminals.tabJumpRequest = .cycle(1) }
                     .keyboardShortcut("]", modifiers: [.command, .shift])
-                Button("Previous Tab") { terminals.cycleFocus(delta: -1) }
+                Button("Previous Tab") { terminals.tabJumpRequest = .cycle(-1) }
                     .keyboardShortcut("[", modifiers: [.command, .shift])
                 ForEach(1..<10) { i in
-                    Button("Jump to Tab \(i)") { terminals.focus(index: i) }
+                    Button("Jump to Tab \(i)") { terminals.tabJumpRequest = .position(i) }
                         .keyboardShortcut(KeyEquivalent(Character("\(i)")), modifiers: .command)
                 }
             }

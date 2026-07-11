@@ -17,6 +17,23 @@ final class TerminalsController: ObservableObject {
     @Published private(set) var tabs: [TerminalTab] = []
     @Published var activeTabId: UUID?
 
+    /// One-shot tab-jump request from the Window menu commands (⌘1–9,
+    /// ⌘]/⌘[) — WorkApp.swift's `.commands` are scoped to the v2 window,
+    /// but only own `terminals`, not `V2AppState` (which the v2 tab strip
+    /// actually reads `activeTabId` from). Setting `activeTabId` here
+    /// would only move the LEGACY v1 window's selection — v2 never
+    /// observed it, so these commands were silent no-ops in the app
+    /// people actually use. V2RootView observes this and dispatches into
+    /// V2AppState, then clears it. (⌘W needs no such bridge — it already
+    /// has a correct v2-local handler in V2RootView that shadows
+    /// WorkApp's, since in-hierarchy shortcuts win over Commands-level
+    /// ones on a matching key.)
+    enum TabJumpCommand: Equatable {
+        case position(Int)   // 1-based, matches ⌘1…⌘9
+        case cycle(Int)      // +1 / -1, matches ⌘]/⌘[
+    }
+    @Published var tabJumpRequest: TabJumpCommand?
+
     /// Set when a `request*` entry point fires while the "ask before starting"
     /// preference is on. The root view's confirmation dialog binds to this and
     /// calls `confirmPendingStart(skipPermissions:)` or `cancelPendingStart()`.
@@ -443,24 +460,6 @@ final class TerminalsController: ObservableObject {
     /// Switch to the next/previous tab for Cmd+] / Cmd+[ style nav.
     /// v1 nav restricted to Mode-A tabs (the v1 tab bar is the only place
     /// these shortcuts trigger from; v2 has its own navigation).
-    func cycleFocus(delta: Int) {
-        let modeA = tabs.filter { $0.surface == .modeA }
-        guard !modeA.isEmpty,
-              let currentId = activeTabId,
-              let currentIdx = modeA.firstIndex(where: { $0.id == currentId })
-        else { return }
-        let next = (currentIdx + delta + modeA.count) % modeA.count
-        activeTabId = modeA[next].id
-    }
-
-    /// Jump to the Nth Mode-A tab (1-based for Cmd+1 … Cmd+9).
-    func focus(index oneBased: Int) {
-        let modeA = tabs.filter { $0.surface == .modeA }
-        let i = oneBased - 1
-        guard modeA.indices.contains(i) else { return }
-        activeTabId = modeA[i].id
-    }
-
     /// Inject text directly into a tab's PTY, as if the user typed it.
     /// Used by the integrations panel to auto-trigger `/mcp` after install
     /// so users get end-to-end OAuth without leaving Work or memorizing

@@ -595,6 +595,25 @@ final class V2AppState: ObservableObject {
         persistWorkspace()
     }
 
+    /// ⌘1…⌘9 — jump to the Nth open tab, 1-based, in strip order (both
+    /// surfaces mixed, same order V2SessionTabs renders `tabs` in).
+    func activateTab(atPosition oneBased: Int) {
+        let i = oneBased - 1
+        guard tabs.indices.contains(i) else { return }
+        activate(tabId: tabs[i].id)
+    }
+
+    /// ⌘]/⌘[ — cycle the active tab by `delta` (+1 / -1), wrapping.
+    func cycleActiveTab(delta: Int) {
+        guard !tabs.isEmpty else { return }
+        guard let current = activeTabId, let idx = tabs.firstIndex(where: { $0.id == current }) else {
+            activate(tabId: tabs[0].id)
+            return
+        }
+        let next = (idx + delta + tabs.count) % tabs.count
+        activate(tabId: tabs[next].id)
+    }
+
     /// Open `claude mcp login <server>` in an embedded terminal tab so the
     /// OAuth flow gets a real TTY. Activates it so the user lands on the
     /// terminal and can complete sign-in there.

@@ -138,6 +138,18 @@ struct V2RootView: View {
             .opacity(0)
             .frame(width: 0, height: 0)
         )
+        // ⌘1–9 / ⌘]/⌘[ — WorkApp's Window-menu commands can't reach
+        // V2AppState directly (it's owned here, not by WorkApp), so they
+        // stage a request on `terminals` instead; dispatch it into
+        // V2AppState the moment it lands, then clear it (one-shot).
+        .onChange(of: terminals.tabJumpRequest) { _, request in
+            switch request {
+            case .position(let n): appState.activateTab(atPosition: n)
+            case .cycle(let delta): appState.cycleActiveTab(delta: delta)
+            case nil: break
+            }
+            if request != nil { terminals.tabJumpRequest = nil }
+        }
         .task {
             appState.attach(terminals: terminals)
             // Awaited (M8, bug-hunt 2026-07-10): resolveBinary() now hops off

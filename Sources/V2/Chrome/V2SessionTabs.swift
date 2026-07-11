@@ -26,29 +26,59 @@ struct V2SessionTabs: View {
     @Environment(\.v2) private var v2
     @EnvironmentObject private var appState: V2AppState
     @EnvironmentObject private var terminals: TerminalsController
+    @State private var containerWidth: CGFloat = 0
+
+    // Chrome's model: shrink tabs to fit BEFORE ever falling back to
+    // scroll/overflow — a fixed-width strip that just scrolled off-screen
+    // is how tabs "went invisible" in the first place. Below minTabWidth
+    // there's no room left for the close button + a sliver of title, so
+    // shrink stops and the overflow search (Chrome's ⌄ tab-search) takes
+    // over as the findability escape hatch instead.
+    private let minTabWidth: CGFloat = 84
+    private let maxTabWidth: CGFloat = 220
+    private let newTabButtonWidth: CGFloat = 40
+    private let overflowButtonWidth: CGFloat = 32
 
     var body: some View {
         if allTabs.isEmpty {
             EmptyView()
         } else {
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(alignment: .center, spacing: 0) {
-                    ForEach(allTabs) { tab in
-                        V2TabChip(
-                            tab: tab,
-                            status: appState.tabStatus(tab),
-                            isActive: tab.id == appState.activeTabId,
-                            showProject: multipleProjectsOpen,
-                            onActivate: { appState.activate(tabId: tab.id) },
-                            onClose: { appState.close(tabId: tab.id) }
-                        )
+            HStack(spacing: 0) {
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(alignment: .center, spacing: 0) {
+                        ForEach(allTabs) { tab in
+                            V2TabChip(
+                                tab: tab,
+                                status: appState.tabStatus(tab),
+                                isActive: tab.id == appState.activeTabId,
+                                showProject: multipleProjectsOpen,
+                                width: tabWidth,
+                                onActivate: { appState.activate(tabId: tab.id) },
+                                onClose: { appState.close(tabId: tab.id) }
+                            )
+                        }
                     }
-                    newTabButton
                 }
+                if showOverflow {
+                    V2TabOverflowMenu(
+                        tabs: allTabs,
+                        activeTabId: appState.activeTabId,
+                        statusFor: { appState.tabStatus($0) },
+                        onSelect: { appState.activate(tabId: $0) }
+                    )
+                    .frame(width: overflowButtonWidth)
+                }
+                newTabButton
             }
             .frame(height: 52)
             .background(v2.paper2)
             .overlay(alignment: .bottom) { Rectangle().fill(v2.line).frame(height: 1) }
+            .background(
+                GeometryReader { geo in
+                    Color.clear.preference(key: V2WidthKey.self, value: geo.size.width)
+                }
+            )
+            .onPreferenceChange(V2WidthKey.self) { containerWidth = $0 }
             .enableInjection()
         }
     }
@@ -71,6 +101,27 @@ struct V2SessionTabs: View {
     private var multipleProjectsOpen: Bool {
         Set(terminals.tabs.map { $0.projectCwd }).count > 1
     }
+
+    /// Width every tab chip would need to divide the strip evenly, ignoring
+    /// the floor — used only to decide whether shrinking is enough or the
+    /// overflow search has to take over.
+    private var idealTabWidth: CGFloat {
+        guard !allTabs.isEmpty, containerWidth > 0 else { return maxTabWidth }
+        return (containerWidth - newTabButtonWidth) / CGFloat(allTabs.count)
+    }
+
+    private var showOverflow: Bool { idealTabWidth < minTabWidth }
+
+    /// The actual per-chip width: divide the space left after the new-tab
+    /// button (and the overflow control, once it's showing), clamped to
+    /// the comfortable/floor range. Once this bottoms out at minTabWidth,
+    /// the strip's ScrollView takes over exactly like it always did.
+    private var tabWidth: CGFloat {
+        guard !allTabs.isEmpty, containerWidth > 0 else { return maxTabWidth }
+        let reserved = newTabButtonWidth + (showOverflow ? overflowButtonWidth : 0)
+        let ideal = (containerWidth - reserved) / CGFloat(allTabs.count)
+        return min(maxTabWidth, max(minTabWidth, ideal))
+    }
 }
 
 // MARK: - Tab chip
@@ -82,9 +133,15 @@ private struct V2TabChip: View {
     let status: V2TabStatus
     let isActive: Bool
     var showProject: Bool = false
+    let width: CGFloat
     let onActivate: () -> Void
     let onClose: () -> Void
     @State private var hover = false
+
+    /// Below this, the project subtitle is the first thing to go — it's
+    /// secondary info, and Chrome's own floor state (favicon-only, no
+    /// title at all) shows title always wins what little room is left.
+    private static let projectLabelFloor: CGFloat = 150
 
     var body: some View {
         HStack(spacing: 10) {
@@ -96,18 +153,18 @@ private struct V2TabChip: View {
                     .kerning(-0.14)
                     .foregroundColor(v2.ink)
                     .lineLimit(1).truncationMode(.tail)
-                if showProject {
+                if showProject, width >= Self.projectLabelFloor {
                     Text(projectLabel)
                         .font(.system(size: 10, design: .monospaced))
                         .foregroundColor(v2.faint)
                         .lineLimit(1).truncationMode(.tail)
                 }
             }
-            .frame(maxWidth: 128, alignment: .leading)
+            .frame(maxWidth: .infinity, alignment: .leading)
             trailing
         }
         .padding(.horizontal, 14)
-        .frame(height: 52)
+        .frame(width: width, height: 52)
         .background(isActive ? v2.card : Color.clear)
         .overlay { if isActive { Rectangle().stroke(v2.line2, lineWidth: 1) } }
         // Status underline (done/needs) OR the working indeterminate line —
@@ -214,6 +271,113 @@ private struct V2TabChip: View {
     static func elapsed(since: Date, now: Date) -> String {
         let s = max(0, Int(now.timeIntervalSince(since)))
         return "\(s / 60):" + String(format: "%02d", s % 60)
+    }
+}
+
+// MARK: - Overflow search
+
+/// Chrome's ⌄ tab-search dropdown: once shrink bottoms out, scanning a row
+/// of minimum-width chips by eye doesn't work — this is a searchable list
+/// by title instead, not just another way to scroll.
+private struct V2TabOverflowMenu: View {
+    @Environment(\.v2) private var v2
+    let tabs: [TerminalTab]
+    let activeTabId: UUID?
+    let statusFor: (TerminalTab) -> V2TabStatus
+    let onSelect: (UUID) -> Void
+    @State private var isPresented = false
+    @State private var query = ""
+
+    var body: some View {
+        Button { isPresented = true } label: {
+            Image(systemName: "chevron.down")
+                .font(.system(size: 10, weight: .medium))
+                .foregroundColor(v2.faint)
+                .frame(width: 32, height: 52)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .help("Search tabs (\(tabs.count) open)")
+        .popover(isPresented: $isPresented, arrowEdge: .bottom) {
+            content.onAppear { query = "" }
+        }
+    }
+
+    private var content: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            HStack(spacing: 7) {
+                Image(systemName: "magnifyingglass")
+                    .font(.system(size: 11))
+                    .foregroundColor(v2.faint)
+                TextField("Search \(tabs.count) tabs", text: $query)
+                    .textFieldStyle(.plain)
+                    .font(.system(size: 12.5))
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 9)
+            .overlay(alignment: .bottom) { Rectangle().fill(v2.line).frame(height: 1) }
+
+            ScrollView {
+                LazyVStack(alignment: .leading, spacing: 0) {
+                    ForEach(filtered) { tab in
+                        Button {
+                            onSelect(tab.id)
+                            isPresented = false
+                        } label: {
+                            row(for: tab)
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+            }
+            .frame(maxHeight: 320)
+        }
+        .frame(width: 260)
+    }
+
+    private var filtered: [TerminalTab] {
+        let q = query.trimmingCharacters(in: .whitespaces).lowercased()
+        guard !q.isEmpty else { return tabs }
+        return tabs.filter {
+            $0.title.lowercased().contains(q) || $0.projectCwd.lowercased().contains(q)
+        }
+    }
+
+    @ViewBuilder
+    private func row(for tab: TerminalTab) -> some View {
+        HStack(spacing: 8) {
+            statusDot(for: statusFor(tab))
+            Text(tab.title)
+                .font(.system(size: 12.5))
+                .fontWeight(tab.id == activeTabId ? .medium : .regular)
+                .foregroundColor(v2.ink)
+                .lineLimit(1).truncationMode(.tail)
+            Spacer(minLength: 6)
+            Text((tab.projectCwd as NSString).lastPathComponent)
+                .font(.system(size: 10, design: .monospaced))
+                .foregroundColor(v2.faint)
+                .lineLimit(1).truncationMode(.middle)
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 7)
+        .background(tab.id == activeTabId ? v2.paper2 : Color.clear)
+        .contentShape(Rectangle())
+    }
+
+    @ViewBuilder
+    private func statusDot(for status: V2TabStatus) -> some View {
+        switch status {
+        case .idle:
+            Circle().stroke(v2.faint, lineWidth: 1).frame(width: 7, height: 7)
+        case .working:
+            Circle().fill(v2.ink).frame(width: 7, height: 7)
+        case .workingBackground:
+            Circle().fill(v2.ink).opacity(0.5).frame(width: 7, height: 7)
+        case .doneUnseen:
+            Circle().fill(v2.add).frame(width: 7, height: 7)
+        case .needsYou:
+            Circle().fill(v2.del).frame(width: 7, height: 7)
+        }
     }
 }
 
