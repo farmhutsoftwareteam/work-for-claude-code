@@ -157,6 +157,21 @@ enum V2SubagentTail {
                 let trimmed = firstLine.trimmingCharacters(in: .whitespaces)
                 guard !trimmed.isEmpty else { continue }
                 return trimmed.count > 140 ? String(trimmed.prefix(140)) + "…" : trimmed
+            case "thinking":
+                // Persisted thinking blocks are ALWAYS empty on disk — same
+                // wire quirk as the main session (real text only ever
+                // arrives via the live thinking_delta stream, never
+                // persisted) — so there's no content to preview. But
+                // presence alone is real signal: without this case,
+                // describe() returned nil here, and lastAction()'s backward
+                // scan just re-surfaced whatever tool call came before it.
+                // Verified against a real 10-minute subagent transcript:
+                // thinking-only stretches of 30-90+ seconds are the NORM,
+                // not an edge case (thinking → tool_use → thinking → …
+                // nearly the whole run) — the card's one-liner sat frozen
+                // on stale text the entire time, with only a small pulsing
+                // dot as the sole "still alive" cue.
+                return "‹ thinking…"
             default:
                 continue
             }
