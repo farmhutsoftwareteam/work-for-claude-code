@@ -16,6 +16,7 @@ enum StreamEvent: Decodable, Sendable {
     case result(ResultEvent)
     case controlRequest(ControlRequest)
     case controlResponse(ControlResponse)
+    case rateLimitEvent(RateLimitEvent)
     case unknown(type: String)
 
     private enum CodingKeys: String, CodingKey { case type }
@@ -31,9 +32,41 @@ enum StreamEvent: Decodable, Sendable {
         case "result":           self = .result(try ResultEvent(from: decoder))
         case "control_request":  self = .controlRequest(try ControlRequest(from: decoder))
         case "control_response": self = .controlResponse(try ControlResponse(from: decoder))
+        case "rate_limit_event": self = .rateLimitEvent(try RateLimitEvent(from: decoder))
         default:                 self = .unknown(type: type)
         }
     }
+}
+
+// MARK: - rate_limit_event
+
+/// A standalone top-level event (NOT a `system` subtype) claude emits
+/// out-of-band with the account's current rate-limit standing — confirmed
+/// via real captured wire data (/tmp/atelier-v2-stream-debug-*.ndjson while
+/// live-hitting 429s). Previously unhandled: fell to `.unknown`, logged, and
+/// dropped — no crash, but also no signal anywhere in the app that the
+/// account was approaching or over its limit.
+struct RateLimitEvent: Decodable, Sendable {
+    let sessionId: String?
+    let rateLimitInfo: RateLimitInfo
+
+    enum CodingKeys: String, CodingKey {
+        case sessionId = "session_id"
+        case rateLimitInfo = "rate_limit_info"
+    }
+}
+
+struct RateLimitInfo: Decodable, Sendable, Equatable {
+    /// "allowed" | "rejected" | … — whether requests are currently going
+    /// through under this limit.
+    let status: String
+    /// Unix seconds when this limit window resets.
+    let resetsAt: Int?
+    /// "five_hour" | "weekly" | … — which limit window this describes.
+    let rateLimitType: String?
+    let overageStatus: String?
+    let overageDisabledReason: String?
+    let isUsingOverage: Bool?
 }
 
 // MARK: - system
@@ -49,15 +82,24 @@ struct SystemEvent: Decodable, Sendable {
     let permissionMode: String?
     let apiKeySource: String?
 
-    // api_retry fields
+    // api_retry fields. retryDelayMs and errorStatus are confirmed-real wire
+    // types (captured live off a 429): {"attempt":1,"max_retries":10,
+    // "retry_delay_ms":594.128…,"error_status":429,"error":"rate_limit"} —
+    // retryDelayMs is a Double (was mistyped Int) and errorStatus is a
+    // numeric HTTP status (was mistyped String). Either mismatch alone is
+    // fatal to JSONDecoder (a present key of the wrong type throws even
+    // when the property is Optional — Optional only covers an ABSENT key),
+    // so every api_retry event was silently dropped in its entirety: no
+    // decode, no retry banner, no `isRetrying`/`lastRetry` update, no log
+    // beyond a 200-char "ndjson decode skipped" preview.
     let attempt: Int?
     let maxRetries: Int?
-    let retryDelayMs: Int?
-    let errorStatus: String?
+    let retryDelayMs: Double?
+    let errorStatus: Int?
 
     // api_error fields (distinct key names from api_retry — claude emits
     // a nested `error` object + camelCase retry fields here).
-    let errorDetail: APIErrorDetail?
+    let errorDetail: ErrorField?
     let retryInMs: Double?
     let retryAttempt: Int?
 
@@ -67,6 +109,32 @@ struct SystemEvent: Decodable, Sendable {
     let message: String?
     let stopReason: String?
 
+    /// The `error` key's shape differs by subtype — api_retry sends a bare
+    /// string ("rate_limit"), api_error sends a nested {message, formatted}
+    /// object (confirmed for api_retry via live capture; api_error's shape
+    /// per the pre-existing code, no live sample seen yet). A single fixed
+    /// type can't model both, so decode whichever is actually present.
+    enum ErrorField: Decodable, Sendable {
+        case text(String)
+        case detail(APIErrorDetail)
+
+        init(from decoder: Decoder) throws {
+            let c = try decoder.singleValueContainer()
+            if let s = try? c.decode(String.self) {
+                self = .text(s)
+            } else {
+                self = .detail(try c.decode(APIErrorDetail.self))
+            }
+        }
+
+        var text: String? {
+            switch self {
+            case .text(let s): return s
+            case .detail(let d): return d.formatted ?? d.message
+            }
+        }
+    }
+
     struct APIErrorDetail: Decodable, Sendable {
         let message: String?
         let formatted: String?
@@ -75,7 +143,7 @@ struct SystemEvent: Decodable, Sendable {
     /// Best human-readable body for an arbitrary system event, used when we
     /// surface it as an inline systemNote.
     var noteText: String? {
-        content ?? message ?? stopReason ?? errorDetail?.formatted ?? errorDetail?.message
+        content ?? message ?? stopReason ?? errorDetail?.text
     }
 
     enum CodingKeys: String, CodingKey {

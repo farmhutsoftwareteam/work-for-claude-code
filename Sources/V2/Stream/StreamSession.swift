@@ -220,6 +220,11 @@ final class StreamSession: ObservableObject {
         let errorStatus: String?
     }
 
+    /// Most recent rate_limit_event — a standalone top-level event (not a
+    /// `system` subtype), previously undecoded entirely (fell to `.unknown`
+    /// and was dropped). Stored, not yet surfaced anywhere in the UI.
+    @Published private(set) var rateLimitInfo: RateLimitInfo?
+
     // MARK: - Internals
 
     private var process: Process?
@@ -1202,6 +1207,7 @@ final class StreamSession: ObservableObject {
         case .result:          spName = "handle.result"
         case .controlRequest:  spName = "handle.controlRequest"
         case .controlResponse: spName = "handle.controlResponse"
+        case .rateLimitEvent:  spName = "handle.rateLimitEvent"
         case .unknown:         spName = "handle.unknown"
         }
         let spInterval = sp.beginInterval(spName, id: sp.makeSignpostID())
@@ -1215,7 +1221,7 @@ final class StreamSession: ObservableObject {
         case .system, .assistant, .user, .streamEvent, .result:
             sawLiveEvent = true
             resumeFallbackArmed = false
-        case .controlRequest, .controlResponse, .unknown:
+        case .controlRequest, .controlResponse, .rateLimitEvent, .unknown:
             break
         }
         switch event {
@@ -1409,6 +1415,8 @@ final class StreamSession: ObservableObject {
                     state = .ready
                 }
             }
+        case .rateLimitEvent(let evt):
+            rateLimitInfo = evt.rateLimitInfo
         case .unknown(let t):
             log.notice("unknown event type: \(t, privacy: .public)")
         }
@@ -1438,8 +1446,10 @@ final class StreamSession: ObservableObject {
             lastRetry = RetryInfo(
                 attempt: sys.attempt ?? 1,
                 maxRetries: sys.maxRetries ?? 5,
-                retryDelayMs: sys.retryDelayMs,
-                errorStatus: sys.errorStatus
+                retryDelayMs: sys.retryDelayMs.map { Int($0) },
+                // Prefer the short reason ("rate_limit") over the bare HTTP
+                // code — matches api_error's human-readable convention below.
+                errorStatus: sys.errorDetail?.text ?? sys.errorStatus.map(String.init)
             )
         case "api_error":
             // Same shape as api_retry under a different subtype + key names.
@@ -1452,7 +1462,7 @@ final class StreamSession: ObservableObject {
                 attempt: sys.retryAttempt ?? 1,
                 maxRetries: sys.maxRetries ?? 10,
                 retryDelayMs: sys.retryInMs.map { Int($0) },
-                errorStatus: sys.errorDetail?.message ?? sys.errorDetail?.formatted ?? "API error"
+                errorStatus: sys.errorDetail?.text ?? "API error"
             )
         case "compact_boundary":
             transcript.append(.compactBoundary)
