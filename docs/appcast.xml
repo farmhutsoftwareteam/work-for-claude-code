@@ -6,6 +6,29 @@
         <description>Updates for Work</description>
         <language>en</language>
         <item>
+            <title>Version 2.9.3</title>
+            <pubDate>Mon, 13 Jul 2026 16:49:21 +0400</pubDate>
+            <sparkle:version>52</sparkle:version>
+            <sparkle:shortVersionString>2.9.3</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>15.0</sparkle:minimumSystemVersion>
+            <description><![CDATA[
+                <h3>Atelier 2.9.3 — MCP setup, actually easy this time</h3>
+                <ul>
+                    <li><b>The MCP marketplace is finally connected.</b> "+ add" opens a searchable catalog with one-click, prefilled install instead of a blank form.</li>
+                    <li><b>Use an existing server in a new project.</b> Any global MCP server gets a "→ project" action that copies it into the current project with the same name.</li>
+                    <li><b>OAuth sign-in now starts automatically</b> the moment you add a remote server, plus a "Sign in again…" option for switching accounts or a stale token.</li>
+                    <li><b>Fixed: MCP servers stuck on "starting" forever.</b> Status now refreshes live instead of freezing at the one-time snapshot taken when the session spawned.</li>
+                    <li><b>A guardrail against committing secrets</b> — saving a literal API key into a project-shared server config now offers a one-tap "keep it private" alternative.</li>
+                    <li>Servers for the same service under different accounts now group under one heading.</li>
+                </ul>
+            ]]></description>
+            <enclosure
+                url="https://work.munyamakosa.com/Work-2.9.3.dmg"
+                length="13282184"
+                type="application/octet-stream"
+                sparkle:edSignature="coIRYiboCIX4R1oGOCTIvDrkCo9gPXB9nEiXcKifssofsUaHiqxvrpenLuvDMuJLfernlzG76XXcliBVru3MAA==" />
+        </item>
+        <item>
             <title>Version 2.9.2</title>
             <pubDate>Mon, 13 Jul 2026 14:56:49 +0400</pubDate>
             <sparkle:version>51</sparkle:version>
