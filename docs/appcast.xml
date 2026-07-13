@@ -6,6 +6,26 @@
         <description>Updates for Work</description>
         <language>en</language>
         <item>
+            <title>Version 2.9.2</title>
+            <pubDate>Mon, 13 Jul 2026 14:56:49 +0400</pubDate>
+            <sparkle:version>51</sparkle:version>
+            <sparkle:shortVersionString>2.9.2</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>15.0</sparkle:minimumSystemVersion>
+            <description><![CDATA[
+                <h3>Atelier 2.9.2 — "is this still doing anything?"</h3>
+                <ul>
+                    <li><b>Fixed: a stalled reply looked identical to a finished one.</b> The streaming indicator used to shrink to a single small dot the instant the first word arrived; if generation then paused, there was no signal it was still alive. Now shows "still working… Ns since last update" once a reply's gone quiet for a few seconds.</li>
+                    <li><b>Fixed: the header went silent while a subagent kept working.</b> The header now shows "Working in background" instead of "Ready" until everything's actually done.</li>
+                    <li><b>Fixed: Usage tab cost totals were under-reporting real spend.</b> 1-hour prompt caching was being priced at the cheaper 5-minute rate, and Claude Sonnet 5 had no pricing entry at all — its usage silently didn't count toward totals. Also fixed per-turn duration being truncated instead of rounded.</li>
+                </ul>
+            ]]></description>
+            <enclosure
+                url="https://work.munyamakosa.com/Work-2.9.2.dmg"
+                length="13155536"
+                type="application/octet-stream"
+                sparkle:edSignature="+7uC38rofhjMM6pSwgFWeylFBb5smQ5G2xAKz+EgtBV9NyN1rF4F+GLQtvjcL049Tgjhc7hoZUGXbeV/DvyqAg==" />
+        </item>
+        <item>
             <title>Version 2.9.1</title>
             <pubDate>Mon, 13 Jul 2026 14:04:22 +0400</pubDate>
             <sparkle:version>50</sparkle:version>

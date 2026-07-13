@@ -184,13 +184,31 @@
         </div>
 
 
+    <article id="v2-9-2" class="release-article" style="display:grid;grid-template-columns:200px 1fr;gap:40px;padding:38px 0;border-bottom:1px solid var(--line);">
+      <div>
+        <div style="font-family:var(--helv);font-weight:500;font-size:22px;letter-spacing:-.01em;">
+          <a href="#v2-9-2" style="color:var(--ink);text-decoration:none;">v2.9.2</a>
+        </div>
+        <div style="font-family:var(--mono);font-size:11px;color:var(--mute);margin-top:6px;">2026 · jul 13</div>
+        <div style="display:inline-block;font-family:var(--mono);font-size:10px;letter-spacing:.08em;text-transform:uppercase;border:1px solid var(--line2);padding:3px 8px;margin-top:12px;">latest</div>
+        <div style="font-family:var(--mono);font-size:10px;color:var(--mute);margin-top:10px;">macOS 15.0+</div>
+      </div>
+      <div class="release-body" style="font-family:var(--helv);font-size:16px;line-height:1.6;color:rgba(27,28,30,.82);">
+        <h3>"Is this still doing anything?"</h3>
+        <ul>
+          <li><b>Fixed: a stalled reply looked identical to a finished one</b> — the streaming indicator now shows "still working… Ns since last update" once a reply's gone quiet for a few seconds, instead of a silent dot.</li>
+          <li><b>Fixed: the header went silent while a subagent kept working</b> — it now shows "Working in background" instead of "Ready" until everything's actually done.</li>
+          <li><b>Fixed: Usage tab cost totals were under-reporting real spend</b> — 1-hour prompt caching was priced at the cheaper 5-minute rate, and Claude Sonnet 5 had no pricing entry at all. Also fixed per-turn duration being truncated instead of rounded.</li>
+        </ul>
+      </div>
+    </article>
+
     <article id="v2-9-1" class="release-article" style="display:grid;grid-template-columns:200px 1fr;gap:40px;padding:38px 0;border-bottom:1px solid var(--line);">
       <div>
         <div style="font-family:var(--helv);font-weight:500;font-size:22px;letter-spacing:-.01em;">
           <a href="#v2-9-1" style="color:var(--ink);text-decoration:none;">v2.9.1</a>
         </div>
         <div style="font-family:var(--mono);font-size:11px;color:var(--mute);margin-top:6px;">2026 · jul 13</div>
-        <div style="display:inline-block;font-family:var(--mono);font-size:10px;letter-spacing:.08em;text-transform:uppercase;border:1px solid var(--line2);padding:3px 8px;margin-top:12px;">latest</div>
         <div style="font-family:var(--mono);font-size:10px;color:var(--mute);margin-top:10px;">macOS 15.0+</div>
       </div>
       <div class="release-body" style="font-family:var(--helv);font-size:16px;line-height:1.6;color:rgba(27,28,30,.82);">
