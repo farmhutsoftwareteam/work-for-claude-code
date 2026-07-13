@@ -6,6 +6,25 @@
         <description>Updates for Work</description>
         <language>en</language>
         <item>
+            <title>Version 2.9.1</title>
+            <pubDate>Mon, 13 Jul 2026 14:04:22 +0400</pubDate>
+            <sparkle:version>50</sparkle:version>
+            <sparkle:shortVersionString>2.9.1</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>15.0</sparkle:minimumSystemVersion>
+            <description><![CDATA[
+                <h3>Atelier 2.9.1 — smooth streaming again</h3>
+                <ul>
+                    <li><b>Fixed: sloppy scroll and content flickering while a reply streams.</b> A renderer change in 2.8.2 was quietly rebuilding the entire message on every streaming update — thirty times a second — instead of just the new words. The streaming message now updates only its growing tail; cross-paragraph selection still works exactly as before once a reply lands.</li>
+                    <li><b>Fixed: rate-limit retries were silently dropped.</b> Two decode bugs meant real 429 retries never showed the "retrying…" indicator, and a separate rate-limit status event was being logged and discarded entirely instead of parsed.</li>
+                </ul>
+            ]]></description>
+            <enclosure
+                url="https://work.munyamakosa.com/Work-2.9.1.dmg"
+                length="13133268"
+                type="application/octet-stream"
+                sparkle:edSignature="qa1fCrFbYODpIizdzFtELrofVMVhZQPQZsFdtWIDMRgKYm7PA7HMN89XGXnrSIUROxT5ZadsdRF0Ec3MQlC+Bg==" />
+        </item>
+        <item>
             <title>Version 2.9.0</title>
             <pubDate>Sat, 11 Jul 2026 17:26:18 +0400</pubDate>
             <sparkle:version>49</sparkle:version>
