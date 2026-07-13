@@ -184,13 +184,31 @@
         </div>
 
 
+    <article id="v2-9-4" class="release-article" style="display:grid;grid-template-columns:200px 1fr;gap:40px;padding:38px 0;border-bottom:1px solid var(--line);">
+      <div>
+        <div style="font-family:var(--helv);font-weight:500;font-size:22px;letter-spacing:-.01em;">
+          <a href="#v2-9-4" style="color:var(--ink);text-decoration:none;">v2.9.4</a>
+        </div>
+        <div style="font-family:var(--mono);font-size:11px;color:var(--mute);margin-top:6px;">2026 · jul 13</div>
+        <div style="display:inline-block;font-family:var(--mono);font-size:10px;letter-spacing:.08em;text-transform:uppercase;border:1px solid var(--line2);padding:3px 8px;margin-top:12px;">latest</div>
+        <div style="font-family:var(--mono);font-size:10px;color:var(--mute);margin-top:10px;">macOS 15.0+</div>
+      </div>
+      <div class="release-body" style="font-family:var(--helv);font-size:16px;line-height:1.6;color:rgba(27,28,30,.82);">
+        <h3>Subagent visibility, fixed for real</h3>
+        <ul>
+          <li><b>Fixed: subagent tool calls leaking into your main conversation</b> — a delegated agent's actions (including its errors) rendered as ordinary tool widgets in the main transcript; they now stay on the delegation card.</li>
+          <li><b>Fixed: the delegation card's peek never showed errors</b> — failing tool calls inside an agent were invisible; they now show as a red "✗ reason" line.</li>
+          <li><b>Fixed: delegation cards freezing during thinking</b> — the card now shows "‹ thinking…" instead of freezing on stale text for 30–90+ seconds.</li>
+        </ul>
+      </div>
+    </article>
+
     <article id="v2-9-3" class="release-article" style="display:grid;grid-template-columns:200px 1fr;gap:40px;padding:38px 0;border-bottom:1px solid var(--line);">
       <div>
         <div style="font-family:var(--helv);font-weight:500;font-size:22px;letter-spacing:-.01em;">
           <a href="#v2-9-3" style="color:var(--ink);text-decoration:none;">v2.9.3</a>
         </div>
         <div style="font-family:var(--mono);font-size:11px;color:var(--mute);margin-top:6px;">2026 · jul 13</div>
-        <div style="display:inline-block;font-family:var(--mono);font-size:10px;letter-spacing:.08em;text-transform:uppercase;border:1px solid var(--line2);padding:3px 8px;margin-top:12px;">latest</div>
         <div style="font-family:var(--mono);font-size:10px;color:var(--mute);margin-top:10px;">macOS 15.0+</div>
       </div>
       <div class="release-body" style="font-family:var(--helv);font-size:16px;line-height:1.6;color:rgba(27,28,30,.82);">

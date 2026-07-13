@@ -6,6 +6,26 @@
         <description>Updates for Work</description>
         <language>en</language>
         <item>
+            <title>Version 2.9.4</title>
+            <pubDate>Mon, 13 Jul 2026 17:27:21 +0400</pubDate>
+            <sparkle:version>53</sparkle:version>
+            <sparkle:shortVersionString>2.9.4</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>15.0</sparkle:minimumSystemVersion>
+            <description><![CDATA[
+                <h3>Atelier 2.9.4 — subagent visibility, fixed for real</h3>
+                <ul>
+                    <li><b>Fixed: subagent tool calls leaking into your main conversation.</b> A delegated agent's own actions — including its errors — rendered as ordinary tool widgets in the main transcript. Subagent activity now stays on its delegation card.</li>
+                    <li><b>Fixed: the delegation card's peek never showed errors.</b> A failing tool call inside an agent was completely invisible; failures now show as a red "✗ reason" line.</li>
+                    <li><b>Fixed: delegation cards freezing during thinking.</b> Agents reason for 30–90+ second stretches between tool calls; the card now shows "‹ thinking…" instead of freezing on stale text.</li>
+                </ul>
+            ]]></description>
+            <enclosure
+                url="https://work.munyamakosa.com/Work-2.9.4.dmg"
+                length="13284690"
+                type="application/octet-stream"
+                sparkle:edSignature="9DQU3zXx6c82UfxFAySmWvnLFd4nZXT3XoymNdcB176Z44zYjTJvtnTfxpDcadVs+hLh3DUjxi6wuW788KHdCw==" />
+        </item>
+        <item>
             <title>Version 2.9.3</title>
             <pubDate>Mon, 13 Jul 2026 16:49:21 +0400</pubDate>
             <sparkle:version>52</sparkle:version>
