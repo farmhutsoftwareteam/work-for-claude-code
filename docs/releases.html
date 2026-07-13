@@ -184,13 +184,31 @@
         </div>
 
 
+    <article id="v2-9-5" class="release-article" style="display:grid;grid-template-columns:200px 1fr;gap:40px;padding:38px 0;border-bottom:1px solid var(--line);">
+      <div>
+        <div style="font-family:var(--helv);font-weight:500;font-size:22px;letter-spacing:-.01em;">
+          <a href="#v2-9-5" style="color:var(--ink);text-decoration:none;">v2.9.5</a>
+        </div>
+        <div style="font-family:var(--mono);font-size:11px;color:var(--mute);margin-top:6px;">2026 · jul 13</div>
+        <div style="display:inline-block;font-family:var(--mono);font-size:10px;letter-spacing:.08em;text-transform:uppercase;border:1px solid var(--line2);padding:3px 8px;margin-top:12px;">latest</div>
+        <div style="font-family:var(--mono);font-size:10px;color:var(--mute);margin-top:10px;">macOS 15.0+</div>
+      </div>
+      <div class="release-body" style="font-family:var(--helv);font-size:16px;line-height:1.6;color:rgba(27,28,30,.82);">
+        <h3>MCP setup keeps getting safer</h3>
+        <ul>
+          <li><b>Can't save a broken server anymore</b> — an empty credential field now blocks the save with a clear message, instead of writing a server that reads "configured" but can never authenticate.</li>
+          <li><b>Plugin MCP servers are now visible and reusable</b> — servers shipped inside plugins appear in the MCP panel and get the same "→ project" action as your own, with URL-parameter binding that keeps OAuth and writes zero tokens to disk.</li>
+          <li><b>MCP editor and marketplace buttons</b> now use Atelier's own design language instead of native macOS styles.</li>
+        </ul>
+      </div>
+    </article>
+
     <article id="v2-9-4" class="release-article" style="display:grid;grid-template-columns:200px 1fr;gap:40px;padding:38px 0;border-bottom:1px solid var(--line);">
       <div>
         <div style="font-family:var(--helv);font-weight:500;font-size:22px;letter-spacing:-.01em;">
           <a href="#v2-9-4" style="color:var(--ink);text-decoration:none;">v2.9.4</a>
         </div>
         <div style="font-family:var(--mono);font-size:11px;color:var(--mute);margin-top:6px;">2026 · jul 13</div>
-        <div style="display:inline-block;font-family:var(--mono);font-size:10px;letter-spacing:.08em;text-transform:uppercase;border:1px solid var(--line2);padding:3px 8px;margin-top:12px;">latest</div>
         <div style="font-family:var(--mono);font-size:10px;color:var(--mute);margin-top:10px;">macOS 15.0+</div>
       </div>
       <div class="release-body" style="font-family:var(--helv);font-size:16px;line-height:1.6;color:rgba(27,28,30,.82);">

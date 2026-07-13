@@ -6,6 +6,26 @@
         <description>Updates for Work</description>
         <language>en</language>
         <item>
+            <title>Version 2.9.5</title>
+            <pubDate>Mon, 13 Jul 2026 19:09:09 +0400</pubDate>
+            <sparkle:version>54</sparkle:version>
+            <sparkle:shortVersionString>2.9.5</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>15.0</sparkle:minimumSystemVersion>
+            <description><![CDATA[
+                <h3>Atelier 2.9.5 — MCP setup keeps getting safer</h3>
+                <ul>
+                    <li><b>Can't save a broken server anymore.</b> Saving an MCP server with an empty credential field is now blocked with a clear message — previously it saved a server that read "configured" but could never authenticate.</li>
+                    <li><b>Plugin MCP servers are now visible and reusable.</b> Servers that ship inside plugins (like the official Supabase plugin's OAuth server) appear in the MCP panel before a session starts, and get the same "→ project" action as your own — copy one into a project and bind it with a URL parameter, keeping OAuth and writing zero tokens to disk.</li>
+                    <li><b>Buttons across the MCP editor and marketplace now use Atelier's own design language</b> instead of native macOS styles.</li>
+                </ul>
+            ]]></description>
+            <enclosure
+                url="https://work.munyamakosa.com/Work-2.9.5.dmg"
+                length="13292105"
+                type="application/octet-stream"
+                sparkle:edSignature="B6ZwUTm8adO1/R5aQINJbAmWzJgei+8wj8qy4jHlGvZ7b/6T5iw1N5nglqiyTJ42l0lQKJQsKy66+49arxMMDA==" />
+        </item>
+        <item>
             <title>Version 2.9.4</title>
             <pubDate>Mon, 13 Jul 2026 17:27:21 +0400</pubDate>
             <sparkle:version>53</sparkle:version>
