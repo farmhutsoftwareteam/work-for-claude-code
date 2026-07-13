@@ -332,6 +332,22 @@ struct V2SessionHeader: View {
                     case .idle, .hibernated:
                         // Resting reads as quiet, not dead — hollow like idle.
                         Circle().stroke(v2.line2, lineWidth: 1).frame(width: 7, height: 7)
+                    case .ready where appState.tabStatus(tab) == .workingBackground:
+                        // The FOREGROUND turn is done, but a delegated
+                        // subagent or a `run_in_background` shell command
+                        // it started is still going. This is the header —
+                        // the one indicator that's always on screen
+                        // regardless of scroll position — so it used to go
+                        // straight to a flat "Ready" the instant the reply
+                        // landed, even while real work continued off-screen
+                        // (the tab strip's own calmer ring was the only
+                        // surviving cue, and it's easy to miss). Same slow
+                        // ring language as the tab chip, not the vivid
+                        // working pulse — still present, not urgent.
+                        ZStack {
+                            Circle().fill(v2.ink).frame(width: 7, height: 7)
+                            V2RadarRing(color: v2.ink, slow: true)
+                        }
                     default:
                         Circle().fill(v2.ink).frame(width: 7, height: 7)
                     }
@@ -353,7 +369,8 @@ struct V2SessionHeader: View {
             guard let s = tab.streamSession else { return "Idle" }
             switch s.state {
             case .idle: return "Idle"
-            case .ready: return "Ready"
+            case .ready:
+                return appState.tabStatus(tab) == .workingBackground ? "Working in background" : "Ready"
             case .hibernated: return "Resting"
             case .spawning: return "Spawning"
             case .initializing: return "Initializing"

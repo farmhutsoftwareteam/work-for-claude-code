@@ -196,6 +196,18 @@ final class StreamSession: ObservableObject {
     /// "stuck". Set in send(); only meaningful while state == .working.
     @Published private(set) var turnStartedAt: Date?
 
+    /// Last time ANY stream token (text or thinking delta) arrived —
+    /// updated in handleStreamEvent, on every delta. Deliberately NOT
+    /// @Published: once streaming starts this would fire ~30x/sec, and
+    /// nothing needs to reactively observe it — V2LiveTranscript's stall
+    /// indicator polls it via TimelineView instead (PERFORMANCE.md rule 2).
+    /// Powers the "still working… Ns since last update" cue for a reply
+    /// that's mid-stream but has gone quiet (rate limiting, a slow
+    /// embedded tool call, network hiccup) — before this, the indicator
+    /// collapsed to a bare dot the instant the FIRST token landed and gave
+    /// no signal at all if generation then stalled.
+    private(set) var lastStreamActivityAt = Date()
+
     /// True while a resumed session is reading its history off disk (before
     /// the process spawns). Drives a "Loading conversation…" indicator so the
     /// click registers and the UI never looks frozen.
@@ -1493,6 +1505,7 @@ final class StreamSession: ObservableObject {
         // Token-by-token streaming — append onto the last assistant text block
         // if there is one; otherwise start a new text block.
         guard let delta = s.event.delta else { return }
+        lastStreamActivityAt = Date()
         if delta.type == "text_delta", let text = delta.text {
             appendStreamingText(text)
         } else if delta.type == "thinking_delta", let thinking = delta.thinking {

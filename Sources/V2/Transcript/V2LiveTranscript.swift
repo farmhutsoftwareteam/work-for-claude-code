@@ -236,6 +236,11 @@ struct V2LiveTranscript: View {
     /// state flips to .working. Before its first token arrives we show a
     /// labelled pulsing row ("Working…") so there's never dead air after
     /// send; once text is streaming the shimmer skeleton carries the load.
+    /// How long a streaming reply can go quiet before the stall cue kicks
+    /// in. Short enough to reassure before the user gets anxious; long
+    /// enough that normal inter-token/inter-sentence gaps never flash it.
+    private static let stallThreshold: TimeInterval = 4
+
     @ViewBuilder
     private var workingIndicator: some View {
         let hasStreamingText: Bool = {
@@ -243,11 +248,30 @@ struct V2LiveTranscript: View {
             return false
         }()
         if hasStreamingText {
-            // Reply is already streaming — the growing text is the indicator, so
-            // keep just a single cheap pulse. (The old 3× GeometryReader shimmer
-            // re-ran a layout pass on every token.)
-            V2PulseDot(size: 6, color: v2.faint)
-                .padding(.top, 2)
+            // Reply is streaming — normally the growing text IS the
+            // indicator, so keep just a single cheap pulse. But a stall
+            // mid-reply (rate limiting, a slow tool call embedded in the
+            // same turn, a network hiccup) used to be visually IDENTICAL
+            // to a finished reply — nothing ticked, nothing said "still
+            // alive". Poll once a second (TimelineView, not @Published —
+            // no extra republish load) and surface the same "still alive"
+            // promise the pre-first-token state already makes once it's
+            // actually been quiet a while.
+            TimelineView(.periodic(from: .now, by: 1)) { ctx in
+                let quiet = ctx.date.timeIntervalSince(session.lastStreamActivityAt)
+                if quiet >= Self.stallThreshold {
+                    HStack(spacing: 9) {
+                        V2PulseDot(size: 7, color: v2.ink)
+                        Text("Still working… \(Int(quiet))s since last update")
+                            .font(.system(size: 12, design: .monospaced))
+                            .foregroundColor(v2.mute)
+                    }
+                    .padding(.top, 2)
+                } else {
+                    V2PulseDot(size: 6, color: v2.faint)
+                        .padding(.top, 2)
+                }
+            }
         } else {
             // Nothing back yet — explicit labelled cue with a live elapsed
             // counter so a slow first token reads as "alive", not "stuck".

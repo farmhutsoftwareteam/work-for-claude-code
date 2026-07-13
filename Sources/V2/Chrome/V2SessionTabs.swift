@@ -384,7 +384,7 @@ private struct V2TabOverflowMenu: View {
 // MARK: - Status animations (GeometryReader-free, per PERFORMANCE.md)
 
 /// A ring that scales out and fades — the "working" radar pulse.
-private struct V2RadarRing: View {
+struct V2RadarRing: View {
     let color: Color
     /// The background-task variant: slower (2.6s vs 1.8s), dimmer at rest
     /// (.32 vs .55), and a smaller max scale (2.3 vs 2.6) — matches the
