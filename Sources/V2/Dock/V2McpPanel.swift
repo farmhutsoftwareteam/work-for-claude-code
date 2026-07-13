@@ -198,7 +198,27 @@ struct V2McpPanel: View {
             add(store.localUserMCPs[cwd] ?? [])
         }
         add(store.standaloneMCPs)
+        // Plugin-provided servers (e.g. the official Supabase plugin's
+        // remote OAuth server) — previously invisible here, they only ever
+        // appeared in the LIVE view once a session loaded them. Shown so
+        // they're discoverable pre-session and so "→ project" can copy one
+        // down as a project-scoped variant (the per-project OAuth pattern:
+        // same remote URL + a binding param like ?project_ref=…, no tokens
+        // on disk). Added last: a project/local/user entry of the same name
+        // wins the dedupe, matching the project-first mental model.
+        for (_, servers) in store.pluginMCPs.sorted(by: { $0.key < $1.key }) { add(servers) }
         return out
+    }
+
+    /// "→ project" copy-down applies to servers that live ABOVE the current
+    /// project: user-scope and plugin-provided. Project/local entries are
+    /// already project-bound.
+    private func canCopyToProject(_ server: MCPServer) -> Bool {
+        guard projectCwd != nil else { return false }
+        switch server.source {
+        case .global, .plugin: return true
+        default: return false
+        }
     }
 
     private var serverCount: Int {
@@ -264,11 +284,12 @@ struct V2McpPanel: View {
                     .foregroundColor(v2.faint)
             }
             Spacer()
-            // User-scope servers get a quiet "→ project" affordance: copy
-            // this entry down to the selected project's local scope (same
-            // name = per-project override via scope precedence). Only shown
-            // when a project is actually selected to copy into.
-            if case .global = server.source, projectCwd != nil {
+            // User-scope and plugin servers get a quiet "→ project"
+            // affordance: copy this entry down to the selected project's
+            // local scope (same name = per-project override via scope
+            // precedence). Only shown when a project is selected to copy
+            // into.
+            if canCopyToProject(server) {
                 Button { useInProjectServer = server } label: {
                     Text("→ project")
                         .font(.system(size: 10, design: .monospaced))
@@ -296,7 +317,7 @@ struct V2McpPanel: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .overlay(alignment: .bottom) { Rectangle().fill(v2.line).frame(height: 1) }
         .contextMenu {
-            if case .global = server.source, projectCwd != nil {
+            if canCopyToProject(server) {
                 Button("Use in this project…") { useInProjectServer = server }
             }
             // Re-auth escape hatch: the inline button only exists while the

@@ -241,7 +241,7 @@ struct MCPEditor: View {
                 .disabled(isEditMode)
                 .help(isEditMode ? "Names can't be changed — delete and re-add to rename" : "")
             if isUseInProject {
-                Text("Keeping the same name makes this a per-project override: in this project Claude uses THIS entry instead of the user-scope one (local > project > user — the whole entry wins, nothing merges). Adjust the project-specific bits below, e.g. a Supabase project_ref.")
+                Text("Keeping the same name makes this a per-project override: in this project Claude uses THIS entry instead of the user-scope one (local > project > user — the whole entry wins, nothing merges). Adjust the project-specific bits below — an env var for stdio servers, or a URL parameter for remote ones (e.g. https://mcp.supabase.com/mcp?project_ref=abc123 — OAuth still works, and no token ever touches disk).")
                     .font(.system(size: 10))
                     .foregroundStyle(.tertiary)
                     .fixedSize(horizontal: false, vertical: true)
