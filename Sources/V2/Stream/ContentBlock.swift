@@ -13,6 +13,19 @@ enum ContentBlock: Decodable, Sendable, Identifiable {
     case toolUse(id: String, name: String, input: JSONValue)
     case toolResult(toolUseId: String, content: ToolResultContent, isError: Bool?)
     case thinking(text: String, signature: String?)
+    /// A pasted/attached image. Only the media type is kept — the base64
+    /// payload is deliberately DROPPED at decode (a transcript full of
+    /// multi-MB screenshots retained for the window's lifetime is a memory
+    /// leak wearing a feature costume; rendering actual thumbnails is a
+    /// future feature that should stream from disk, not the enum).
+    case image(mediaType: String?)
+    /// The API silently switched the session to a different model
+    /// (rate-limit / availability fallback) — e.g. fable-5 → opus-4-8.
+    /// Real captured shape: {"type":"fallback","from":{"model":…},
+    /// "to":{"model":…}}. Rendered as a system note: a turn answered by a
+    /// different model than the user picked is exactly the kind of thing
+    /// that must never be silent.
+    case fallback(fromModel: String?, toModel: String?)
     case unknown(String)
 
     var id: String {
@@ -27,6 +40,8 @@ enum ContentBlock: Decodable, Sendable, Identifiable {
         case .toolUse(let id, _, _):         return "use-\(id)"
         case .toolResult(let id, _, _):      return "res-\(id)"
         case .thinking(let t, _):            return "think-\(t.hashValue)"
+        case .image(let m):                  return "img-\(m ?? "unknown")"
+        case .fallback(let f, let t):        return "fb-\(f ?? "?")-\(t ?? "?")"
         case .unknown(let t):                return "unk-\(t)"
         }
     }
@@ -37,6 +52,16 @@ enum ContentBlock: Decodable, Sendable, Identifiable {
         case content
         case isError = "is_error"
         case thinking, signature
+        case source, from, to
+    }
+
+    /// Nested shapes for image/fallback decoding.
+    private struct ImageSource: Decodable {
+        let mediaType: String?
+        enum CodingKeys: String, CodingKey { case mediaType = "media_type" }
+    }
+    private struct ModelRef: Decodable {
+        let model: String?
     }
 
     init(from decoder: Decoder) throws {
@@ -82,6 +107,13 @@ enum ContentBlock: Decodable, Sendable, Identifiable {
                 log.warning("ContentBlock decode fallback: 'thinking' missing/invalid on type=thinking")
                 self = .thinking(text: "", signature: try? c.decodeIfPresent(String.self, forKey: .signature))
             }
+        case "image":
+            let source = try? c.decode(ImageSource.self, forKey: .source)
+            self = .image(mediaType: source?.mediaType)
+        case "fallback":
+            let from = try? c.decode(ModelRef.self, forKey: .from)
+            let to = try? c.decode(ModelRef.self, forKey: .to)
+            self = .fallback(fromModel: from?.model, toModel: to?.model)
         default:
             self = .unknown(type)
         }

@@ -518,6 +518,29 @@ struct V2AssistantBlock: View {
             V2LiveToolResult(content: content, isError: isError ?? false)
         case .thinking(let text, _):
             V2LiveThinkingBlock(text: text)
+        case .image(let mediaType):
+            // A pasted/attached image. The base64 payload is dropped at
+            // decode (see ContentBlock.image) so this is a labeled chip,
+            // not a thumbnail — honest about what it is without retaining
+            // megabytes per screenshot for the window's lifetime.
+            HStack(spacing: 7) {
+                Image(systemName: "photo")
+                    .font(.system(size: 11))
+                    .foregroundColor(v2.mute)
+                Text("image\(mediaType.map { " · \($0.replacingOccurrences(of: "image/", with: ""))" } ?? "")")
+                    .font(.system(size: 11, design: .monospaced))
+                    .foregroundColor(v2.mute)
+            }
+            .padding(.horizontal, 10).padding(.vertical, 7)
+            .background(v2.paper2)
+            .overlay(Rectangle().stroke(v2.line, lineWidth: 1))
+        case .fallback(let from, let to):
+            // Normally routed to a systemNote before reaching here (see
+            // StreamSession); kept renderable so the block is never a
+            // bracketed mystery if it arrives through another path.
+            Text("model fallback: \(from ?? "?") → \(to ?? "?")")
+                .font(.system(size: 11, design: .monospaced))
+                .foregroundColor(v2.mute)
         case .unknown(let type):
             Text("[unknown block: \(type)]")
                 .font(.system(size: 11, design: .monospaced))

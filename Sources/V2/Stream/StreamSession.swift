@@ -363,7 +363,13 @@ final class StreamSession: ObservableObject {
                             ))
                         }
                         transcript.append(.assistantBlock(block))
-                    case .toolResult, .thinking, .unknown:
+                    case .fallback(let from, let to):
+                        // Same treatment as the live path — see handle(event:).
+                        transcript.append(.systemNote(
+                            kind: .info,
+                            text: "model fallback: \(from ?? "?") was unavailable — this turn ran on \(to ?? "another model")"
+                        ))
+                    case .toolResult, .thinking, .image, .unknown:
                         transcript.append(.assistantBlock(block))
                     }
                 }
@@ -1336,7 +1342,15 @@ final class StreamSession: ObservableObject {
                     let resolved = thinkingBuffer.isEmpty ? text : thinkingBuffer
                     thinkingBuffer = ""
                     transcript.append(.assistantBlock(.thinking(text: resolved, signature: signature)))
-                case .toolResult, .unknown:
+                case .fallback(let from, let to):
+                    // The API silently answered with a DIFFERENT model than
+                    // the session's (rate-limit/availability fallback) —
+                    // surface it; a swapped model must never be invisible.
+                    transcript.append(.systemNote(
+                        kind: .info,
+                        text: "model fallback: \(from ?? "?") was unavailable — this turn ran on \(to ?? "another model")"
+                    ))
+                case .toolResult, .image, .unknown:
                     transcript.append(.assistantBlock(block))
                 }
             }
