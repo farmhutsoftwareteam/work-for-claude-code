@@ -144,7 +144,7 @@ struct MCPEditor: View {
                 Text(titleText)
                     .font(.system(size: 16, weight: .semibold))
                 Spacer()
-                Button("Cancel") { dismiss() }
+                V2ChipButton(label: "cancel") { dismiss() }
                     .keyboardShortcut(.cancelAction)
             }
             .padding(20)
@@ -174,19 +174,18 @@ struct MCPEditor: View {
 
             Divider()
 
-            // Footer
+            // Footer — Atelier chip, not native .borderedProminent (the
+            // rounded blue Apple button reads as a foreign object in the
+            // graphite/ivory system; see V2ChipButton's doc comment).
             HStack {
                 Spacer()
-                Button(action: save) {
-                    if isSaving {
-                        ProgressView().controlSize(.small)
-                    } else {
-                        Text(saveText)
-                    }
+                if isSaving {
+                    ProgressView().controlSize(.small)
+                        .padding(.trailing, 6)
                 }
-                .buttonStyle(.borderedProminent)
-                .keyboardShortcut(.defaultAction)
-                .disabled(isSaving)
+                V2ChipButton(label: saveText.lowercased(), prominent: true, action: save)
+                    .keyboardShortcut(.defaultAction)
+                    .disabled(isSaving)
             }
             .padding(16)
         }
@@ -661,6 +660,22 @@ struct MCPEditor: View {
         // typed 0 or a non-numeric value that became nil.)
         if let ms = draft.timeoutMs, ms <= 0 {
             return "Timeout must be a positive number of seconds."
+        }
+        // Empty env/header values: the marketplace seeds a package's
+        // required variables as EMPTY strings for the user to fill in, and
+        // saving one through produced a server that reads "configured" in
+        // the panel but can't authenticate at runtime — a real user hit
+        // exactly this with the stdio Supabase server saved with no
+        // SUPABASE_ACCESS_TOKEN value ("it says configured but I never
+        // signed in"). Fill it or delete the row; an empty variable is
+        // never useful.
+        let emptyEnv = draft.env.filter { $0.value.trimmingCharacters(in: .whitespaces).isEmpty }.keys.sorted()
+        if !emptyEnv.isEmpty {
+            return "\(emptyEnv.joined(separator: ", ")) \(emptyEnv.count == 1 ? "has" : "have") no value — fill it in or remove the row. An empty variable saves a server that looks configured but can't authenticate."
+        }
+        let emptyHeaders = draft.headers.filter { $0.value.trimmingCharacters(in: .whitespaces).isEmpty }.keys.sorted()
+        if !emptyHeaders.isEmpty {
+            return "Header \(emptyHeaders.joined(separator: ", ")) \(emptyHeaders.count == 1 ? "has" : "have") no value — fill it in or remove the row."
         }
         return nil
     }

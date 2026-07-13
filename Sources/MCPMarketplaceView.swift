@@ -31,7 +31,7 @@ struct MCPMarketplaceView: View {
 
                 Spacer()
 
-                Button("Close") { dismiss() }
+                V2ChipButton(label: "close") { dismiss() }
                     .keyboardShortcut(.cancelAction)
             }
             .padding(16)
@@ -259,9 +259,7 @@ struct MCPMarketplaceView: View {
 
             Spacer()
 
-            Button("Install", action: onInstall)
-                .buttonStyle(.borderedProminent)
-                .controlSize(.small)
+            V2ChipButton(label: "install", prominent: true, action: onInstall)
         }
         .padding(10)
         .background(Color.primary.opacity(0.03), in: RoundedRectangle(cornerRadius: 6))
@@ -295,10 +293,9 @@ struct MCPMarketplaceView: View {
                 .font(.system(size: 11))
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
-            Button("Try again") {
+            V2ChipButton(label: "try again") {
                 Task { await fetch(query: query) }
             }
-            .controlSize(.small)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .padding(30)

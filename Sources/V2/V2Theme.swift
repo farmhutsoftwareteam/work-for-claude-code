@@ -128,3 +128,33 @@ enum V2ThemeChoice: String, CaseIterable, Identifiable {
         }
     }
 }
+
+// MARK: - Chip button (the app's standard button)
+
+/// Atelier's chip button — mono label, square 1px stroke, card fill. This is
+/// the button EVERY surface reachable from the v2 window uses; never native
+/// buttonStyles (.borderedProminent / .bordered) there — the rounded blue
+/// Apple chrome reads as a foreign object inside the graphite/ivory system
+/// (user feedback, 2026-07-13). `prominent` = ink stroke + ink label (the
+/// primary action); default = quiet secondary.
+struct V2ChipButton: View {
+    @Environment(\.v2) private var v2
+    let label: String
+    var prominent: Bool = false
+    var size: CGFloat = 11
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            Text(label)
+                .font(.system(size: size, design: .monospaced))
+                .foregroundColor(prominent ? v2.ink : v2.mute)
+                .padding(.horizontal, 10)
+                .padding(.vertical, 5)
+                .background(v2.card)
+                .overlay(Rectangle().stroke(prominent ? v2.ink : v2.line2, lineWidth: 1))
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+    }
+}
