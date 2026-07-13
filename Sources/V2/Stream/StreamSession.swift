@@ -286,6 +286,10 @@ final class StreamSession: ObservableObject {
         for event in preload.events {
             switch event {
             case .user(let m):
+                // Sidechain guard, same as the live path (handle(event:)) —
+                // a subagent's own tool_result/text lives in its dedicated
+                // transcript file (V2SubagentTail), not the parent's.
+                guard m.parentToolUseId == nil else { continue }
                 for block in m.message.content {
                     switch block {
                     case .text(let s):
@@ -333,6 +337,7 @@ final class StreamSession: ObservableObject {
                     }
                 }
             case .assistant(let m):
+                guard m.parentToolUseId == nil else { continue }
                 for block in m.message.content {
                     // Unlike live handling we KEEP text blocks here — the
                     // streaming deltas that would normally populate the
@@ -1254,6 +1259,21 @@ final class StreamSession: ObservableObject {
         case .system(let sys):
             handleSystem(sys)
         case .assistant(let m):
+            // Sidechain guard: a subagent's OWN tool calls/text arrive on
+            // the PARENT session's stdout tagged with parent_tool_use_id —
+            // confirmed via a real capture (a Read call inside a delegated
+            // agent that hit a validation error). Nothing here ever checked
+            // it, so subagent activity rendered as ordinary top-level tool
+            // widgets, indistinguishable from the main assistant's own
+            // actions — including that error, which then looked like an
+            // unattributed main-session failure instead of a subagent
+            // hiccup it may have already self-corrected a moment later.
+            // The delegation card + peek sheet (#38/#39) are the real
+            // surface for subagent activity; skip it here entirely. Doesn't
+            // affect the Task spawn call itself or its own ack — those are
+            // TOP-LEVEL events with no parent_tool_use_id (the sidechain
+            // doesn't start until the subagent's first internal action).
+            guard m.parentToolUseId == nil else { return }
             // With --include-partial-messages + --verbose, claude emits BOTH
             // stream_event text_deltas (live streaming) AND a final assistant
             // snapshot containing the same text. Rendering both duplicates
@@ -1321,6 +1341,9 @@ final class StreamSession: ObservableObject {
                 }
             }
         case .user(let m):
+            // Same sidechain guard as .assistant above — a subagent's own
+            // tool_result events are tagged with parent_tool_use_id too.
+            guard m.parentToolUseId == nil else { return }
             // Tool results echo back in user events — render as a result row.
             finalizeStreamingText()
             for block in m.message.content {
@@ -1527,6 +1550,12 @@ final class StreamSession: ObservableObject {
     }
 
     private func handleStreamEvent(_ s: StreamEventInner) {
+        // Sidechain guard (same as .assistant/.user in handle(event:)): no
+        // real capture has shown a subagent streaming a text_delta into the
+        // parent's stdout, but the field IS present on this event type too
+        // — belt-and-suspenders against a subagent's words landing inside
+        // the main assistant's own in-progress reply.
+        guard s.parentToolUseId == nil else { return }
         // Token-by-token streaming — append onto the last assistant text block
         // if there is one; otherwise start a new text block.
         guard let delta = s.event.delta else { return }

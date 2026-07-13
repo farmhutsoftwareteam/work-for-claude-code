@@ -88,9 +88,15 @@ struct V2DelegationCard: View {
                         .foregroundColor(trailingColor)
                 }
                 if isRunning {
+                    // "✗ …" (V2SubagentTail.describe's error line) gets the
+                    // same red the rest of the app uses for a failed tool
+                    // result — a subagent hitting an error mid-run (which
+                    // it often self-corrects a moment later) previously
+                    // looked identical to routine progress.
+                    let isErrorLine = liveActionText?.hasPrefix("✗") ?? false
                     Text(liveActionText ?? "working…")
                         .font(.system(size: 10.5, design: .monospaced))
-                        .foregroundColor(v2.faint)
+                        .foregroundColor(isErrorLine ? v2.del : v2.faint)
                         .lineLimit(1)
                         .truncationMode(.tail)
                 }

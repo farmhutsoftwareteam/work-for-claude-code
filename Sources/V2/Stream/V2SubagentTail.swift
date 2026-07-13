@@ -136,47 +136,86 @@ enum V2SubagentTail {
     // MARK: - Line → readable action
 
     /// A transcript line rendered as one feed row, or nil for lines that
-    /// aren't worth a row (attachments, results echoing back, meta events).
+    /// aren't worth a row (attachments, meta events, successful tool
+    /// results — a success doesn't say anything the preceding "› tool"
+    /// line didn't already imply, and every tool call gets one, so
+    /// surfacing all of them would double the feed for no new information).
+    ///
+    /// Handles BOTH assistant lines (tool_use/text/thinking) and user lines
+    /// (tool_result) — it used to only look at assistant lines at all, so a
+    /// subagent tool call that FAILED was invisible here even though it's
+    /// exactly the moment a user opening the peek sheet most wants to see.
+    /// Confirmed via a real capture: a Read call inside a delegated agent
+    /// hit an InputValidationError, and neither the live one-liner nor the
+    /// full feed ever showed it — the only trace was the next successful
+    /// tool call quietly appearing as if nothing had happened.
     private static func describe(line: String) -> String? {
         guard let obj = (try? JSONSerialization.jsonObject(with: Data(line.utf8))) as? [String: Any],
-              obj["type"] as? String == "assistant",
               let message = obj["message"] as? [String: Any],
               let content = message["content"] as? [[String: Any]]
         else { return nil }
 
-        for block in content {
-            switch block["type"] as? String {
-            case "tool_use":
-                let name = (block["name"] as? String) ?? "tool"
-                let input = (block["input"] as? [String: Any]) ?? [:]
-                if let brief = briefInput(input) { return "› \(name) — \(brief)" }
-                return "› \(name)"
-            case "text":
-                guard let text = block["text"] as? String else { continue }
+        switch obj["type"] as? String {
+        case "assistant":
+            for block in content {
+                switch block["type"] as? String {
+                case "tool_use":
+                    let name = (block["name"] as? String) ?? "tool"
+                    let input = (block["input"] as? [String: Any]) ?? [:]
+                    if let brief = briefInput(input) { return "› \(name) — \(brief)" }
+                    return "› \(name)"
+                case "text":
+                    guard let text = block["text"] as? String else { continue }
+                    let firstLine = text.split(separator: "\n").first.map(String.init) ?? text
+                    let trimmed = firstLine.trimmingCharacters(in: .whitespaces)
+                    guard !trimmed.isEmpty else { continue }
+                    return trimmed.count > 140 ? String(trimmed.prefix(140)) + "…" : trimmed
+                case "thinking":
+                    // Persisted thinking blocks are ALWAYS empty on disk —
+                    // same wire quirk as the main session (real text only
+                    // ever arrives via the live thinking_delta stream,
+                    // never persisted) — so there's no content to preview.
+                    // But presence alone is real signal: without this case,
+                    // describe() returned nil here, and lastAction()'s
+                    // backward scan just re-surfaced whatever tool call
+                    // came before it. Verified against a real 10-minute
+                    // subagent transcript: thinking-only stretches of
+                    // 30-90+ seconds are the NORM, not an edge case
+                    // (thinking → tool_use → thinking → … nearly the whole
+                    // run) — the card's one-liner sat frozen on stale text
+                    // the entire time, with only a small pulsing dot as the
+                    // sole "still alive" cue.
+                    return "‹ thinking…"
+                default:
+                    continue
+                }
+            }
+            return nil
+        case "user":
+            for block in content {
+                guard block["type"] as? String == "tool_result",
+                      block["is_error"] as? Bool == true
+                else { continue }
+                let text = toolResultText(block["content"])
                 let firstLine = text.split(separator: "\n").first.map(String.init) ?? text
                 let trimmed = firstLine.trimmingCharacters(in: .whitespaces)
-                guard !trimmed.isEmpty else { continue }
-                return trimmed.count > 140 ? String(trimmed.prefix(140)) + "…" : trimmed
-            case "thinking":
-                // Persisted thinking blocks are ALWAYS empty on disk — same
-                // wire quirk as the main session (real text only ever
-                // arrives via the live thinking_delta stream, never
-                // persisted) — so there's no content to preview. But
-                // presence alone is real signal: without this case,
-                // describe() returned nil here, and lastAction()'s backward
-                // scan just re-surfaced whatever tool call came before it.
-                // Verified against a real 10-minute subagent transcript:
-                // thinking-only stretches of 30-90+ seconds are the NORM,
-                // not an edge case (thinking → tool_use → thinking → …
-                // nearly the whole run) — the card's one-liner sat frozen
-                // on stale text the entire time, with only a small pulsing
-                // dot as the sole "still alive" cue.
-                return "‹ thinking…"
-            default:
-                continue
+                guard !trimmed.isEmpty else { return "✗ error" }
+                return "✗ " + (trimmed.count > 140 ? String(trimmed.prefix(140)) + "…" : trimmed)
             }
+            return nil
+        default:
+            return nil
         }
-        return nil
+    }
+
+    /// `tool_result.content` is either a plain string or an array of
+    /// content blocks (text/image mixed) — extract whatever text is there.
+    private static func toolResultText(_ raw: Any?) -> String {
+        if let s = raw as? String { return s }
+        if let blocks = raw as? [[String: Any]] {
+            return blocks.compactMap { $0["text"] as? String }.joined(separator: "\n")
+        }
+        return ""
     }
 
     /// The most human-identifying scrap of a tool input — a path's last
