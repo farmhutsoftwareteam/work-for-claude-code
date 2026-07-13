@@ -43,7 +43,8 @@ struct V2McpPanel: View {
             content
         }
         .sheet(isPresented: $addingMCP) {
-            MCPEditor(mode: .add(defaultScope: .user)) {
+            MCPEditor(mode: .add(defaultScope: .user),
+                      onSavedDraft: { draft, _ in maybeAutoSignIn(draft) }) {
                 addingMCP = false
                 Task { await store.load() }
             }
@@ -75,7 +76,7 @@ struct V2McpPanel: View {
             MCPEditor(mode: .addFromMarketplace(
                 draft: install.draft,
                 defaultScope: projectCwd.map { .local(cwd: $0) } ?? .user
-            )) {
+            ), onSavedDraft: { draft, _ in maybeAutoSignIn(draft) }) {
                 marketplaceInstallDraft = nil
                 Task { await store.load() }
             }
@@ -84,7 +85,8 @@ struct V2McpPanel: View {
         }
         .sheet(item: $useInProjectServer) { server in
             if let cwd = projectCwd {
-                MCPEditor(mode: .useInProject(draft: .from(server), cwd: cwd)) {
+                MCPEditor(mode: .useInProject(draft: .from(server), cwd: cwd),
+                          onSavedDraft: { draft, _ in maybeAutoSignIn(draft) }) {
                     useInProjectServer = nil
                     Task { await store.load() }
                 }
@@ -297,6 +299,12 @@ struct V2McpPanel: View {
             if case .global = server.source, projectCwd != nil {
                 Button("Use in this project…") { useInProjectServer = server }
             }
+            // Re-auth escape hatch: the inline button only exists while the
+            // needs-auth cache flags the server, but "switch account" /
+            // "token expired but cache hasn't noticed" are real cases.
+            if oauth {
+                Button("Sign in again…") { authenticate(server.name) }
+            }
         }
     }
 
@@ -450,6 +458,26 @@ struct V2McpPanel: View {
 
     private func cancelAuth(_ name: String) {
         authHandles[name]?.cancel()
+    }
+
+    /// Auto-start OAuth sign-in right after a remote server is saved —
+    /// adding is the intent to use, and without this the sign-in button
+    /// doesn't even EXIST yet (it's gated on claude's needs-auth cache,
+    /// which only learns about a server after a session has failed
+    /// against it). Skipped when the config carries an auth-ish header:
+    /// that server is token-authenticated and the browser dance would be
+    /// wrong. The existing banner shows progress and offers cancel.
+    private func maybeAutoSignIn(_ draft: MCPDraft) {
+        switch draft.transport {
+        case .http, .sse: break
+        default: return
+        }
+        let headerAuthed = draft.headers.keys.contains { k in
+            let lk = k.lowercased()
+            return lk.contains("authorization") || lk.contains("token") || lk.contains("key")
+        }
+        guard !headerAuthed else { return }
+        authenticate(draft.name)
     }
 
     private func authenticate(_ name: String) {

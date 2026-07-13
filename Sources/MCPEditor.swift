@@ -27,6 +27,12 @@ struct MCPEditor: View {
 
     let mode: Mode
     let onSaved: () -> Void
+    /// Richer completion for callers that need the saved config — the v2
+    /// panel uses it to auto-start OAuth sign-in for a freshly added
+    /// remote server (adding is the intent to use; making the user hunt
+    /// for a sign-in button that doesn't even appear until a session has
+    /// FAILED against the server was the worst part of the add flow).
+    var onSavedDraft: ((MCPDraft, MCPConfigWriter.Scope) -> Void)?
 
     @EnvironmentObject var store: Store
     @Environment(\.dismiss) private var dismiss
@@ -87,9 +93,10 @@ struct MCPEditor: View {
         return "Create MCP"
     }
 
-    init(mode: Mode, onSaved: @escaping () -> Void) {
+    init(mode: Mode, onSavedDraft: ((MCPDraft, MCPConfigWriter.Scope) -> Void)? = nil, onSaved: @escaping () -> Void) {
         self.mode = mode
         self.onSaved = onSaved
+        self.onSavedDraft = onSavedDraft
 
         switch mode {
         case .add(let defaultScope):
@@ -620,6 +627,7 @@ struct MCPEditor: View {
                 }.value
 
                 await store.reloadMCPs()
+                onSavedDraft?(currentDraft, currentScope)
                 onSaved()
                 dismiss()
             } catch {
