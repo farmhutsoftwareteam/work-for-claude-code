@@ -886,6 +886,20 @@ final class StreamSession: ObservableObject {
         }
     }
 
+    /// Re-poll live MCP server status (the mcp_status control request).
+    /// `mcpServers` otherwise only ever holds the snapshot system/init took
+    /// at spawn — a server that was still connecting then read "starting"
+    /// in the UI forever, even long after it connected or failed. The MCP
+    /// panel calls this on appear + on a short cadence while visible.
+    func refreshMCPStatus() {
+        guard !isObserving else { return }
+        switch state { case .working, .ready, .awaitingPermission: break; default: return }
+        Task {
+            do { try await inputWriter?.requestMCPStatus() }
+            catch { log.error("mcp_status request failed: \(error.localizedDescription, privacy: .public)") }
+        }
+    }
+
     /// Send a user turn. Triggers a new assistant cycle from the binary.
     func send(text: String) {
         // The hard observer rule: watching must never become writing. A
@@ -1425,6 +1439,17 @@ final class StreamSession: ObservableObject {
                 }
                 if state == .spawning || state == .initializing {
                     state = .ready
+                }
+            }
+            // Reply to refreshMCPStatus() — swap in the LIVE per-server
+            // statuses (init's snapshot goes stale the moment a "pending"
+            // server finishes connecting).
+            if cr.response.requestId.hasPrefix("mcp_status"),
+               cr.response.subtype == "success",
+               let arr = cr.response.response?.dig("mcpServers")?.asArray {
+                mcpServers = arr.compactMap { m in
+                    guard let name = m.dig("name")?.asString else { return nil }
+                    return MCPServerInfo(name: name, status: m.dig("status")?.asString)
                 }
             }
         case .rateLimitEvent(let evt):

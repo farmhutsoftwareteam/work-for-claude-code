@@ -7,12 +7,20 @@ struct MCPEditor: View {
         case add(defaultScope: MCPConfigWriter.Scope)
         case addFromMarketplace(draft: MCPDraft, defaultScope: MCPConfigWriter.Scope)
         case edit(MCPServer, scope: MCPConfigWriter.Scope)
+        /// "Use in this project": copy an existing (usually user-scope)
+        /// server down to project/local scope, prefilled, SAME NAME — Claude
+        /// Code's scope precedence (local > project > user, whole entry, no
+        /// merging) makes the same-named copy a per-project override. This
+        /// is how "supabase, but pointed at THIS project's project_ref"
+        /// works without a second hand-rolled `supabase-myproject` entry.
+        case useInProject(draft: MCPDraft, cwd: String)
 
         var id: String {
             switch self {
             case .add: return "add"
             case .addFromMarketplace(let draft, _): return "marketplace-\(draft.name)"
             case .edit(let mcp, _): return "edit-\(mcp.name)"
+            case .useInProject(let draft, let cwd): return "useinproject-\(draft.name)-\(cwd)"
             }
         }
     }
@@ -29,6 +37,10 @@ struct MCPEditor: View {
     @State private var scope: MCPConfigWriter.Scope
     @State private var isSaving = false
     @State private var errorMessage: String?
+    /// Secret guardrail: .mcp.json (project scope) is committed to git.
+    /// Saving a literal token/key into it is the "oops, pushed a secret"
+    /// class of accident — intercept once with a choice, don't hard-block.
+    @State private var showSecretWarning = false
 
     enum TransportType: String, CaseIterable {
         case stdio, http, sse
@@ -51,6 +63,11 @@ struct MCPEditor: View {
         return false
     }
 
+    private var isUseInProject: Bool {
+        if case .useInProject = mode { return true }
+        return false
+    }
+
     private var originalName: String? {
         if case .edit(let mcp, _) = mode { return mcp.name }
         return nil
@@ -59,12 +76,14 @@ struct MCPEditor: View {
     private var titleText: String {
         if isEditMode { return "Edit \(originalName ?? "")" }
         if isMarketplaceInstall { return "Install from Marketplace" }
+        if case .useInProject(let draft, _) = mode { return "Use \(draft.name) in this project" }
         return "New MCP Server"
     }
 
     private var saveText: String {
         if isEditMode { return "Save Changes" }
         if isMarketplaceInstall { return "Install" }
+        if isUseInProject { return "Add to Project" }
         return "Create MCP"
     }
 
@@ -95,6 +114,19 @@ struct MCPEditor: View {
             default: _selectedType = State(initialValue: .stdio)
             }
             _scope = State(initialValue: s)
+        case .useInProject(let prefilled, let cwd):
+            _draft = State(initialValue: prefilled)
+            switch prefilled.transport {
+            case .stdio: _selectedType = State(initialValue: .stdio)
+            case .http: _selectedType = State(initialValue: .http)
+            case .sse: _selectedType = State(initialValue: .sse)
+            default: _selectedType = State(initialValue: .stdio)
+            }
+            // Local, not project: matches `claude mcp add`'s own default and
+            // is the safe choice for a copy that usually carries credentials
+            // (local never touches version control). Scope picker still
+            // offers .project for teams that want it shared.
+            _scope = State(initialValue: .local(cwd: cwd))
         }
     }
 
@@ -152,6 +184,19 @@ struct MCPEditor: View {
             .padding(16)
         }
         .frame(width: 520, height: 620)
+        .confirmationDialog(
+            "This looks like a secret headed for git",
+            isPresented: $showSecretWarning,
+            titleVisibility: .visible
+        ) {
+            if let localScope = warningLocalScope {
+                Button("Save to Local scope instead (private)") { performSave(overrideScope: localScope) }
+            }
+            Button("Save to .mcp.json anyway", role: .destructive) { performSave() }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("\(literalSecrets.joined(separator: ", ")) contain\(literalSecrets.count == 1 ? "s" : "") a literal value, and Project scope writes .mcp.json — a file meant to be committed. Local scope keeps it out of version control, or reference an environment variable instead (e.g. ${SUPABASE_ACCESS_TOKEN}).")
+        }
         .onChange(of: selectedType) { _, newType in
             // When switching types, preserve the URL between http/sse and clear env when
             // switching away from stdio (env vars are stdio-only).
@@ -189,6 +234,12 @@ struct MCPEditor: View {
                 .textFieldStyle(.roundedBorder)
                 .disabled(isEditMode)
                 .help(isEditMode ? "Names can't be changed — delete and re-add to rename" : "")
+            if isUseInProject {
+                Text("Keeping the same name makes this a per-project override: in this project Claude uses THIS entry instead of the user-scope one (local > project > user — the whole entry wins, nothing merges). Adjust the project-specific bits below, e.g. a Supabase project_ref.")
+                    .font(.system(size: 10))
+                    .foregroundStyle(.tertiary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
         }
     }
 
@@ -506,6 +557,24 @@ struct MCPEditor: View {
 
     // MARK: - Save
 
+    /// env/header entries that look like literal secrets: key smells like a
+    /// credential, value is non-empty and NOT a `${VAR}` reference (env
+    /// expansion is the git-safe way to put secrets in a committed file —
+    /// both Claude Code and Atelier's MCPEnvExpand resolve it at load).
+    private var literalSecrets: [String] {
+        let pattern = try? NSRegularExpression(
+            pattern: "(?i)(token|secret|password|passwd|credential|api.?key|access.?key|private.?key|authorization|bearer)"
+        )
+        func smells(_ key: String) -> Bool {
+            guard let pattern else { return false }
+            return pattern.firstMatch(in: key, range: NSRange(key.startIndex..., in: key)) != nil
+        }
+        var out: [String] = []
+        for (k, v) in draft.env where smells(k) && !v.isEmpty && !v.contains("${") { out.append(k) }
+        for (k, v) in draft.headers where smells(k) && !v.isEmpty && !v.contains("${") { out.append(k) }
+        return out.sorted()
+    }
+
     private func save() {
         // Guard against double-invocation (rapid clicks, keyboard repeat)
         guard !isSaving else { return }
@@ -518,10 +587,30 @@ struct MCPEditor: View {
             return
         }
 
+        // Secret guardrail: project scope writes .mcp.json, which is meant
+        // to be committed. A literal token in there ends up in git history.
+        // The dialog's buttons call performSave() directly (bypassing this
+        // gate — SwiftUI flips isPresented false BEFORE the button action
+        // runs, so re-entering save() here would just re-arm the dialog);
+        // "save anyway" stays available since some teams knowingly put
+        // throwaway/dev tokens in .mcp.json.
+        if case .project = scope, !literalSecrets.isEmpty {
+            showSecretWarning = true
+            return
+        }
+
+        performSave()
+    }
+
+    /// The actual write — past validation and the secret gate.
+    /// `overrideScope` lets the guardrail dialog redirect a risky
+    /// project-scope save to local scope in one tap.
+    private func performSave(overrideScope: MCPConfigWriter.Scope? = nil) {
+        if let overrideScope { scope = overrideScope }
         isSaving = true
         errorMessage = nil
         let currentDraft = draft
-        let currentScope = scope
+        let currentScope = overrideScope ?? scope
         let original = originalName
 
         Task { @MainActor in
@@ -538,6 +627,13 @@ struct MCPEditor: View {
                 errorMessage = error.localizedDescription
             }
         }
+    }
+
+    /// The project-scope cwd while the secret warning is up (the dialog's
+    /// "keep it private" button retargets the save there as local scope).
+    private var warningLocalScope: MCPConfigWriter.Scope? {
+        if case .project(let cwd) = scope { return .local(cwd: cwd) }
+        return nil
     }
 
     /// Cross-field validation for the Phase-1D / 1E advanced sections.

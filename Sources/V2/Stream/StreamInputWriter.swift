@@ -80,6 +80,21 @@ actor StreamInputWriter {
         ))
     }
 
+    /// Ask claude for the CURRENT status of every MCP server — the reply
+    /// (control_response with an `mcpServers` array) is the only way to see
+    /// a server move past the snapshot system/init reported: the binary
+    /// never pushes MCP status changes on its own (verified against live
+    /// wire captures — a server that finished connecting after init showed
+    /// "pending" forever until a reconnect). Verified live against the real
+    /// binary: subtype "mcp_status" returns name + status + config + scope
+    /// per server.
+    func requestMCPStatus() throws {
+        try writeLine(ControlRequestEnvelope(
+            requestId: nextRequestId(prefix: "mcp_status"),
+            request: .init(subtype: "mcp_status")
+        ))
+    }
+
     // MARK: - Lifecycle
 
     func close() throws {

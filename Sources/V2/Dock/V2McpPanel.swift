@@ -26,6 +26,11 @@ struct V2McpPanel: View {
     @State private var showingMarketplace = false
     @State private var pendingMarketplaceDraft: MCPDraft?
     @State private var marketplaceInstallDraft: MCPDraft?
+    /// "Use in this project" (scope copy-down): the user-scope server being
+    /// copied to this project's local scope with the same name — Claude
+    /// Code's precedence (local > project > user) makes it a per-project
+    /// override, e.g. supabase pointed at THIS project's project_ref.
+    @State private var useInProjectServer: MCPServer?
     @State private var authing: Set<String> = []   // servers mid sign-in
     @State private var authHandles: [String: V2AuthHandle] = [:]   // cancel handles
     @State private var authFailedServer: String?   // last server whose sign-in failed
@@ -62,12 +67,30 @@ struct V2McpPanel: View {
             get: { marketplaceInstallDraft.map(MarketplaceInstall.init) },
             set: { marketplaceInstallDraft = $0?.draft }
         )) { install in
-            MCPEditor(mode: .addFromMarketplace(draft: install.draft, defaultScope: .user)) {
+            // Default marketplace installs to LOCAL scope when a project is
+            // selected — project-first is the working model here (a server
+            // usually binds to one project's resources), and it matches
+            // `claude mcp add`'s own default. The editor's scope picker
+            // still offers user scope for the genuinely-global ones.
+            MCPEditor(mode: .addFromMarketplace(
+                draft: install.draft,
+                defaultScope: projectCwd.map { .local(cwd: $0) } ?? .user
+            )) {
                 marketplaceInstallDraft = nil
                 Task { await store.load() }
             }
             .environmentObject(store)
             .frame(minWidth: 560, minHeight: 600)
+        }
+        .sheet(item: $useInProjectServer) { server in
+            if let cwd = projectCwd {
+                MCPEditor(mode: .useInProject(draft: .from(server), cwd: cwd)) {
+                    useInProjectServer = nil
+                    Task { await store.load() }
+                }
+                .environmentObject(store)
+                .frame(minWidth: 560, minHeight: 600)
+            }
         }
         .enableInjection()
     }
@@ -183,6 +206,7 @@ struct V2McpPanel: View {
 
     private var configuredContent: some View {
         let servers = configuredServers
+        let groups = Self.grouped(servers) { self.serviceKey(configured: $0) }
         return ScrollView {
             VStack(alignment: .leading, spacing: 0) {
                 if servers.isEmpty {
@@ -192,7 +216,17 @@ struct V2McpPanel: View {
                         .padding(.horizontal, 18).padding(.vertical, 20)
                         .frame(maxWidth: .infinity, alignment: .leading)
                 } else {
-                    ForEach(servers, id: \.id) { configuredRow($0) }
+                    ForEach(Array(groups.enumerated()), id: \.offset) { _, group in
+                        if let label = group.label {
+                            serviceHeader(label, count: group.members.count)
+                            let labels = Self.memberLabels(group.members.map(\.name))
+                            ForEach(Array(group.members.enumerated()), id: \.element.id) { idx, server in
+                                configuredRow(server, memberLabel: labels[idx], indented: true)
+                            }
+                        } else {
+                            ForEach(group.members, id: \.id) { configuredRow($0) }
+                        }
+                    }
                 }
                 Text("From .mcp.json (project) and ~/.claude.json (local + user). Start a session to see live connection status.")
                     .font(.system(size: 10.5, design: .monospaced))
@@ -204,24 +238,43 @@ struct V2McpPanel: View {
         }
     }
 
-    private func configuredRow(_ server: MCPServer) -> some View {
+    private func configuredRow(_ server: MCPServer, memberLabel: String? = nil, indented: Bool = false) -> some View {
         let oauth = isOAuthCapable(server.transport)
         let needsAuth = oauth && store.mcpNeedsAuth.contains(server.name)
         let signedIn = oauth && !needsAuth   // OAuth-capable and NOT in needs-auth cache
         return HStack(spacing: 11) {
+            // Grouped members indent under their service header and show
+            // just the differentiating suffix ("garman", not
+            // "linear-garman") — the header already names the service.
+            if indented {
+                Spacer().frame(width: 16)
+            }
             // Brand glyph, dimmed when the server still needs sign-in.
             V2ServiceLogo(name: server.name,
                           host: V2ServiceLogo.host(of: server.transport),
-                          size: 17,
+                          size: indented ? 14 : 17,
                           tint: needsAuth ? v2.faint : v2.ink)
             VStack(alignment: .leading, spacing: 2) {
-                Text(server.name)
+                Text(memberLabel ?? server.name)
                     .font(.system(size: 13.5, weight: .medium)).kerning(-0.13)
                 Text("\(scopeLabel(server.source)) · \(transportLabel(server.transport))")
                     .font(.system(size: 10, design: .monospaced))
                     .foregroundColor(v2.faint)
             }
             Spacer()
+            // User-scope servers get a quiet "→ project" affordance: copy
+            // this entry down to the selected project's local scope (same
+            // name = per-project override via scope precedence). Only shown
+            // when a project is actually selected to copy into.
+            if case .global = server.source, projectCwd != nil {
+                Button { useInProjectServer = server } label: {
+                    Text("→ project")
+                        .font(.system(size: 10, design: .monospaced))
+                        .foregroundColor(v2.faint)
+                }
+                .buttonStyle(.plain)
+                .help("Use in this project — copy this server to project scope so you can point it at this project's resources (e.g. a Supabase project_ref)")
+            }
             // Only servers that ACTUALLY need auth (per claude's needs-auth
             // cache) get a Sign in button. Signed-in OAuth servers read "signed
             // in"; stdio servers (no auth) read "configured".
@@ -240,10 +293,101 @@ struct V2McpPanel: View {
         .padding(.horizontal, 18).padding(.vertical, 13)
         .frame(maxWidth: .infinity, alignment: .leading)
         .overlay(alignment: .bottom) { Rectangle().fill(v2.line).frame(height: 1) }
+        .contextMenu {
+            if case .global = server.source, projectCwd != nil {
+                Button("Use in this project…") { useInProjectServer = server }
+            }
+        }
     }
 
     private func isOAuthCapable(_ t: MCPServer.Transport) -> Bool {
         switch t { case .http, .sse: return true; default: return false }
+    }
+
+    // MARK: - Service grouping (same service × several accounts)
+
+    /// Multiple entries for one service — linear-garman / linear-hubflo /
+    /// linear-khayalo — are one service with several accounts, configured
+    /// as separate servers because that's the only mechanism the config
+    /// format has. Presentation-only grouping: config on disk is untouched.
+    /// Keyed by URL host for http/sse (the multi-account pattern is remote
+    /// auth'd services); stdio servers never group ("npx" as a key would
+    /// lump unrelated servers together).
+    private func serviceKey(configured server: MCPServer) -> String? {
+        V2ServiceLogo.host(of: server.transport).map(Self.serviceLabel(fromHost:))
+    }
+
+    /// Live rows only carry name + status; resolve the service through the
+    /// configured entry of the same name. claude.ai connectors (account-
+    /// side, no local config) group under their shared prefix.
+    private func serviceKey(live server: MCPServerInfo) -> String? {
+        if server.name.hasPrefix("claude.ai ") { return "claude.ai" }
+        guard let cfg = configuredServers.first(where: { $0.name == server.name }) else { return nil }
+        return serviceKey(configured: cfg)
+    }
+
+    /// "mcp.linear.app" → "linear"; "mcp.supabase.com" → "supabase".
+    private static func serviceLabel(fromHost host: String) -> String {
+        let parts = host.split(separator: ".")
+        guard parts.count >= 2 else { return host }
+        return String(parts[parts.count - 2])
+    }
+
+    /// Partition into display groups, preserving first-appearance order.
+    /// label == nil ⇒ a single ungrouped server; label != nil ⇒ a service
+    /// header + indented member rows.
+    private static func grouped<T>(_ items: [T], key: (T) -> String?) -> [(label: String?, members: [T])] {
+        let keyed = items.map { (key($0), $0) }
+        var counts: [String: Int] = [:]
+        for (k, _) in keyed { if let k { counts[k, default: 0] += 1 } }
+        var out: [(label: String?, members: [T])] = []
+        var emitted = Set<String>()
+        for (k, item) in keyed {
+            if let k, counts[k, default: 0] > 1 {
+                if emitted.insert(k).inserted {
+                    out.append((k, keyed.filter { $0.0 == k }.map { $0.1 }))
+                }
+            } else {
+                out.append((nil, [item]))
+            }
+        }
+        return out
+    }
+
+    /// Per-member short labels: strip the group's common name prefix down
+    /// to a separator boundary ("linear-garman" → "garman", "claude.ai
+    /// Gmail" → "Gmail"). Falls back to the full name if stripping would
+    /// leave nothing.
+    private static func memberLabels(_ names: [String]) -> [String] {
+        guard names.count > 1 else { return names }
+        var prefix = names[0]
+        for n in names.dropFirst() {
+            prefix = String(zip(prefix, n).prefix(while: { $0.0 == $0.1 }).map { $0.0 })
+        }
+        if let lastSep = prefix.lastIndex(where: { "-_:. ".contains($0) }) {
+            prefix = String(prefix[...lastSep])
+        } else {
+            prefix = ""
+        }
+        let separators = CharacterSet(charactersIn: "-_:. ")
+        return names.map { n in
+            let stripped = String(n.dropFirst(prefix.count)).trimmingCharacters(in: separators)
+            return stripped.isEmpty ? n : stripped
+        }
+    }
+
+    private func serviceHeader(_ label: String, count: Int) -> some View {
+        HStack(spacing: 11) {
+            V2ServiceLogo(name: label, size: 17, tint: v2.ink)
+            Text(label.capitalized)
+                .font(.system(size: 13.5, weight: .medium)).kerning(-0.13)
+            Text(count == 1 ? "1 account" : "\(count) accounts")
+                .font(.system(size: 10, design: .monospaced))
+                .foregroundColor(v2.faint)
+            Spacer()
+        }
+        .padding(.horizontal, 18).padding(.top, 13).padding(.bottom, 4)
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     // MARK: - Authenticate (claude mcp login)
@@ -401,10 +545,19 @@ struct V2McpPanel: View {
     }
 
     private func liveContent(for session: StreamSession) -> some View {
-        ScrollView {
+        let groups = Self.grouped(session.mcpServers) { self.serviceKey(live: $0) }
+        return ScrollView {
             VStack(alignment: .leading, spacing: 0) {
-                ForEach(session.mcpServers, id: \.name) { server in
-                    serverRow(server)
+                ForEach(Array(groups.enumerated()), id: \.offset) { _, group in
+                    if let label = group.label {
+                        serviceHeader(label, count: group.members.count)
+                        let labels = Self.memberLabels(group.members.map(\.name))
+                        ForEach(Array(group.members.enumerated()), id: \.element.name) { idx, server in
+                            serverRow(server, memberLabel: labels[idx], indented: true)
+                        }
+                    } else {
+                        ForEach(group.members, id: \.name) { serverRow($0) }
+                    }
                 }
                 if session.mcpServers.isEmpty {
                     Text("No MCP servers loaded for this session.")
@@ -415,7 +568,7 @@ struct V2McpPanel: View {
                         .frame(maxWidth: .infinity, alignment: .leading)
                 }
 
-                Text("Reported by the binary at session start. Open the Extensions tab in the v1 window to edit servers.")
+                Text("Live status, refreshed every few seconds while this panel is open.")
                     .font(.system(size: 10.5, design: .monospaced))
                     .lineSpacing(10.5 * 0.6)
                     .foregroundColor(v2.faint)
@@ -424,24 +577,40 @@ struct V2McpPanel: View {
             }
             .padding(.vertical, 8)
         }
+        // Live-status poll (#mcp_status): system/init's statuses are a
+        // one-time snapshot — a server that was still "pending" at spawn
+        // showed "starting" forever, even long after it connected or
+        // failed, because nothing ever asked again. Poll the mcp_status
+        // control request at 5s while the panel is visible; cancels with
+        // the view, re-arms on session swap via instanceId (never
+        // ObjectIdentifier — the address-reuse bug).
+        .task(id: session.instanceId) {
+            while !Task.isCancelled {
+                session.refreshMCPStatus()
+                try? await Task.sleep(nanoseconds: 5_000_000_000)
+            }
+        }
     }
 
     // MARK: - Row
 
-    private func serverRow(_ server: MCPServerInfo) -> some View {
+    private func serverRow(_ server: MCPServerInfo, memberLabel: String? = nil, indented: Bool = false) -> some View {
         let status = (server.status ?? "unknown").lowercased()
         let isConnected = status == "connected" || status == "ready"
         let needsAuth = status == "needs-auth"
         let isFailed = status == "failed" || status == "error"
 
         return HStack(spacing: 11) {
+            if indented {
+                Spacer().frame(width: 16)
+            }
             // Brand glyph tinted by live status: ink = connected, faint =
             // pending/needs-auth, red = failed.
-            V2ServiceLogo(name: server.name, size: 17,
+            V2ServiceLogo(name: server.name, size: indented ? 14 : 17,
                           tint: isConnected ? v2.ink : (isFailed ? v2.del : v2.faint))
 
             VStack(alignment: .leading, spacing: 2) {
-                Text(displayName(server.name))
+                Text(memberLabel ?? displayName(server.name))
                     .font(.system(size: 13.5, weight: .medium))
                     .kerning(-0.13)
                 Text(scopeHint(server.name))
