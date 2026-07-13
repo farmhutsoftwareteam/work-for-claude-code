@@ -6,6 +6,25 @@
         <description>Updates for Work</description>
         <language>en</language>
         <item>
+            <title>Version 2.9.6</title>
+            <pubDate>Tue, 14 Jul 2026 01:39:05 +0400</pubDate>
+            <sparkle:version>55</sparkle:version>
+            <sparkle:shortVersionString>2.9.6</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>15.0</sparkle:minimumSystemVersion>
+            <description><![CDATA[
+                <h3>Atelier 2.9.6 — no more silent model switches</h3>
+                <ul>
+                    <li><b>You now see when the API swaps your model.</b> When the model you picked is rate-limited or unavailable, the API can silently run a turn on a different model (e.g. Fable 5 → Opus 4.8). That used to render as a cryptic "[unknown block: fallback]" — one real conversation had seven of these invisible switches. It now shows a clear inline note naming both models, in live sessions and reopened history.</li>
+                    <li><b>Pasted images render as a proper chip</b> ("image · png") instead of "[unknown block: image]".</li>
+                </ul>
+            ]]></description>
+            <enclosure
+                url="https://work.munyamakosa.com/Work-2.9.6.dmg"
+                length="13308161"
+                type="application/octet-stream"
+                sparkle:edSignature="TuBMpdhgHUgQM75wnxo2VWdreuBWuVkSohjQAAj6YIVSvsV0K3ma0i+UXN91Kl8YYDKsDubEKS+vfm2VmXZeBQ==" />
+        </item>
+        <item>
             <title>Version 2.9.5</title>
             <pubDate>Mon, 13 Jul 2026 19:09:09 +0400</pubDate>
             <sparkle:version>54</sparkle:version>
