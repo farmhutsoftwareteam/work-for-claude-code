@@ -266,11 +266,21 @@ enum UsageAggregator {
         // (#2); the aggregator stores raw IDs so any version-suffix variants
         // round-trip through the cache untouched.
         let model = (message["model"] as? String) ?? ""
+        // Real per-message usage objects carry a `cache_creation` sub-object
+        // splitting the flat cache_creation_input_tokens count into 1h vs
+        // 5m TTL buckets — confirmed on live captured JSONL. A 1h cache
+        // write is billed at roughly 1.6x a 5m one; reading only the flat
+        // total (as this used to) silently priced every 1h write at the 5m
+        // rate downstream in CostCalculator, under-reporting real spend on
+        // any session using 1h caching.
+        let cacheCreation1h = (usage["cache_creation"] as? [String: Any])
+            .map { intFromJSON($0["ephemeral_1h_input_tokens"]) } ?? 0
         let lineFlat = TokenUsage(
             inputTokens: intFromJSON(usage["input_tokens"]),
             outputTokens: intFromJSON(usage["output_tokens"]),
             cacheCreationTokens: intFromJSON(usage["cache_creation_input_tokens"]),
-            cacheReadTokens: intFromJSON(usage["cache_read_input_tokens"])
+            cacheReadTokens: intFromJSON(usage["cache_read_input_tokens"]),
+            cacheCreation1hTokens: cacheCreation1h
         )
         // Wrap with byModel only when the model is known; an empty key would
         // create a spurious "" bucket that pollutes downstream cost views.
@@ -281,6 +291,7 @@ enum UsageAggregator {
                 outputTokens: lineFlat.outputTokens,
                 cacheCreationTokens: lineFlat.cacheCreationTokens,
                 cacheReadTokens: lineFlat.cacheReadTokens,
+                cacheCreation1hTokens: lineFlat.cacheCreation1hTokens,
                 byModel: [model: lineFlat]
             )
         total += lineUsage

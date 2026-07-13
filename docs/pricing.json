@@ -1,8 +1,16 @@
 {
-  "version": "2026-06-15",
+  "version": "2026-07-13",
   "currency": "USD",
   "unit": "per_million_tokens",
   "models": {
+    "claude-sonnet-5": {
+      "input": "2.00",
+      "output": "10.00",
+      "cacheWrite5m": "2.50",
+      "cacheWrite1h": "4.00",
+      "cacheRead": "0.20",
+      "_note": "Introductory pricing through 2026-08-31; becomes 3.00/15.00/3.75/6.00/0.30 (same as sonnet-4-6) on 2026-09-01."
+    },
     "claude-fable-5": {
       "input": "10.00",
       "output": "50.00",

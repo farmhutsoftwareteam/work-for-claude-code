@@ -840,7 +840,12 @@ struct V2LiveResultFooter: View {
 
     private var durationText: String {
         guard let ms = result.durationMs else { return "" }
-        let seconds = ms / 1000
+        // Rounded, not truncated: integer division here silently dropped up
+        // to 999ms off every turn's displayed duration (6535ms → "6s"
+        // instead of "7s") — a one-time computation from a fixed wire
+        // value, unlike a live ticking counter where truncation
+        // self-corrects on the next tick.
+        let seconds = Int((Double(ms) / 1000).rounded())
         return seconds >= 60 ? "\(seconds / 60)m \(seconds % 60)s" : "\(seconds)s"
     }
 }

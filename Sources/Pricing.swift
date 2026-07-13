@@ -67,6 +67,22 @@ enum Pricing {
             cacheWrite1hPerMTok: Decimal(string: "10.00")!,
             cacheReadPerMTok:    Decimal(string: "0.50")!
         ),
+        // Introductory pricing through Aug 31, 2026 ($2/$10) — confirmed live
+        // at platform.claude.com/docs/en/about-claude/pricing (fetched
+        // 2026-07-13). Standard pricing ($3/$15, same as sonnet-4-6 below)
+        // takes effect Sep 1, 2026 — update this entry then, or rely on
+        // PricingFetcher's remote table if pricing.json is kept current.
+        // This model was entirely ABSENT from both this embedded table and
+        // the live-fetched pricing.json until this fix — every dollar of
+        // Sonnet 5 usage was silently excluded from the Usage tab's total
+        // (unknown-model tokens contribute $0 "by convention").
+        "claude-sonnet-5": ModelPrice(
+            inputPerMTok:        Decimal(string: "2.00")!,
+            outputPerMTok:       Decimal(string: "10.00")!,
+            cacheWrite5mPerMTok: Decimal(string: "2.50")!,
+            cacheWrite1hPerMTok: Decimal(string: "4.00")!,
+            cacheReadPerMTok:    Decimal(string: "0.20")!
+        ),
         "claude-sonnet-4-6": ModelPrice(
             inputPerMTok:        Decimal(string: "3.00")!,
             outputPerMTok:       Decimal(string: "15.00")!,

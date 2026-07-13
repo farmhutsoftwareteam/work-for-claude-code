@@ -6,10 +6,13 @@ import Foundation
 // in Pricing.swift. No state. No I/O. No UI. All math is `Decimal` to avoid
 // floating-point drift across thousands of token rows.
 
-/// Which cache-write TTL price to apply. The JSONL doesn't tell us whether a
-/// cache_creation_input_tokens row was 5m or 1h — that's a request-time
-/// parameter, not stored — so callers default to `.fiveMin`, matching
-/// Claude Code's default request behaviour.
+/// Which cache-write TTL price to apply to a `TokenUsage` that has NO
+/// per-record 1h/5m split (`cacheCreation1hTokens == 0` because the data
+/// predates that field, not because every write was really 5-min). Real
+/// per-message usage DOES carry the split (TokenUsage.cacheCreation1hTokens)
+/// and is costed exactly via that instead — this is purely the fallback for
+/// old rows, kept so pre-existing cached/serialised data doesn't shift cost
+/// out from under itself on next load.
 enum CacheTTL { case fiveMin, oneHour }
 
 /// Dollar breakdown of a multi-model TokenUsage.
@@ -74,6 +77,16 @@ enum CostCalculator {
     }
 
     /// Internal helper: raw math given an already-resolved `ModelPrice`.
+    ///
+    /// Cache-write cost is split using the usage's ACTUAL 1h/5m breakdown
+    /// (TokenUsage.cacheCreation1hTokens, parsed from the real per-message
+    /// `cache_creation` object) rather than a single blanket rate for the
+    /// whole bucket — a 1h write costs ~1.6x a 5m one, and real sessions
+    /// mix both or lean entirely 1h depending on request parameters.
+    /// `cacheTTL` only decides the rate for the REMAINDER after subtracting
+    /// the known-1h portion, i.e. it's purely the fallback for rows that
+    /// predate per-record tracking (cacheCreation1hTokens == 0 there because
+    /// the field never existed, not because those writes were verified 5m).
     private static func cost(
         of usage: TokenUsage,
         price: ModelPrice,
@@ -82,10 +95,13 @@ enum CostCalculator {
         let perMillion = Decimal(1_000_000)
         let inputCost  = Decimal(usage.inputTokens)  * price.inputPerMTok  / perMillion
         let outputCost = Decimal(usage.outputTokens) * price.outputPerMTok / perMillion
-        let cacheWritePrice = (cacheTTL == .fiveMin)
-            ? price.cacheWrite5mPerMTok
-            : price.cacheWrite1hPerMTok
-        let cacheWriteCost = Decimal(usage.cacheCreationTokens) * cacheWritePrice / perMillion
+
+        let oneHourTokens = min(usage.cacheCreation1hTokens, usage.cacheCreationTokens)
+        let remainderTokens = usage.cacheCreationTokens - oneHourTokens
+        let remainderPrice = (cacheTTL == .fiveMin) ? price.cacheWrite5mPerMTok : price.cacheWrite1hPerMTok
+        let cacheWriteCost = Decimal(oneHourTokens) * price.cacheWrite1hPerMTok / perMillion
+            + Decimal(remainderTokens) * remainderPrice / perMillion
+
         let cacheReadCost  = Decimal(usage.cacheReadTokens)     * price.cacheReadPerMTok / perMillion
         return inputCost + outputCost + cacheWriteCost + cacheReadCost
     }

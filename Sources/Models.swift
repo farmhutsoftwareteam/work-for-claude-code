@@ -53,6 +53,15 @@ struct TokenUsage: Codable, Equatable, Sendable {
     var outputTokens: Int
     var cacheCreationTokens: Int
     var cacheReadTokens: Int
+    /// The portion of `cacheCreationTokens` written under the 1-hour cache
+    /// TTL specifically (Anthropic's `cache_creation.ephemeral_1h_input_
+    /// tokens`, confirmed present on real per-message usage objects — a
+    /// 1h cache write costs ~1.6x a 5-min one). The remainder
+    /// (cacheCreationTokens - cacheCreation1hTokens) is 5-min. Defaults to
+    /// 0 for JSONL rows/cached data written before this field existed,
+    /// which exactly preserves the old (implicit all-5-min) behavior for
+    /// anything that predates the fix rather than silently changing it.
+    var cacheCreation1hTokens: Int = 0
     /// Per-model breakdown of the four token counts above, keyed by the raw
     /// `message.model` string from JSONL (e.g. "claude-opus-4-8"). Empty when
     /// no model could be attributed to a row (older JSONL formats, partial
@@ -74,12 +83,14 @@ struct TokenUsage: Codable, Equatable, Sendable {
         outputTokens: Int = 0,
         cacheCreationTokens: Int = 0,
         cacheReadTokens: Int = 0,
+        cacheCreation1hTokens: Int = 0,
         byModel: [String: TokenUsage] = [:]
     ) {
         self.inputTokens = inputTokens
         self.outputTokens = outputTokens
         self.cacheCreationTokens = cacheCreationTokens
         self.cacheReadTokens = cacheReadTokens
+        self.cacheCreation1hTokens = cacheCreation1hTokens
         self.byModel = byModel
     }
 
@@ -87,7 +98,7 @@ struct TokenUsage: Codable, Equatable, Sendable {
     /// were written before this field existed — those caches are invalidated
     /// at load time, but this keeps the decode itself robust).
     private enum CodingKeys: String, CodingKey {
-        case inputTokens, outputTokens, cacheCreationTokens, cacheReadTokens, byModel
+        case inputTokens, outputTokens, cacheCreationTokens, cacheReadTokens, cacheCreation1hTokens, byModel
     }
 
     init(from decoder: Decoder) throws {
@@ -96,17 +107,22 @@ struct TokenUsage: Codable, Equatable, Sendable {
         outputTokens = try c.decode(Int.self, forKey: .outputTokens)
         cacheCreationTokens = try c.decode(Int.self, forKey: .cacheCreationTokens)
         cacheReadTokens = try c.decode(Int.self, forKey: .cacheReadTokens)
+        cacheCreation1hTokens = try c.decodeIfPresent(Int.self, forKey: .cacheCreation1hTokens) ?? 0
         byModel = try c.decodeIfPresent([String: TokenUsage].self, forKey: .byModel) ?? [:]
     }
 
-    /// Omit `byModel` from the encoded form when empty so cached/serialised
-    /// rows stay compact for stdio/pre-v2 sessions that never populate it.
+    /// Omit `byModel`/`cacheCreation1hTokens` from the encoded form when
+    /// empty/zero so cached/serialised rows stay compact for stdio/pre-v2
+    /// sessions that never populate them.
     func encode(to encoder: Encoder) throws {
         var c = encoder.container(keyedBy: CodingKeys.self)
         try c.encode(inputTokens, forKey: .inputTokens)
         try c.encode(outputTokens, forKey: .outputTokens)
         try c.encode(cacheCreationTokens, forKey: .cacheCreationTokens)
         try c.encode(cacheReadTokens, forKey: .cacheReadTokens)
+        if cacheCreation1hTokens != 0 {
+            try c.encode(cacheCreation1hTokens, forKey: .cacheCreation1hTokens)
+        }
         if !byModel.isEmpty {
             try c.encode(byModel, forKey: .byModel)
         }
@@ -122,6 +138,7 @@ struct TokenUsage: Codable, Equatable, Sendable {
             outputTokens: lhs.outputTokens + rhs.outputTokens,
             cacheCreationTokens: lhs.cacheCreationTokens + rhs.cacheCreationTokens,
             cacheReadTokens: lhs.cacheReadTokens + rhs.cacheReadTokens,
+            cacheCreation1hTokens: lhs.cacheCreation1hTokens + rhs.cacheCreation1hTokens,
             byModel: mergedByModel
         )
     }
