@@ -16,6 +16,16 @@ struct V2McpPanel: View {
     @EnvironmentObject private var appState: V2AppState
     @EnvironmentObject private var store: Store
     @State private var addingMCP = false
+    // Marketplace-driven add (#NN — "super easy" add flow): browsing is now
+    // the DEFAULT "+ add" action, not a hidden toolbar button only the v1
+    // window exposed. MCPMarketplaceView + MCPRegistry.makeDraft already
+    // existed, fully working, wired only into the legacy v1 ExtensionsView
+    // — a window that never auto-opens. Same two-sheet sequencing v1 uses
+    // (SwiftUI won't present two sheets at once): the marketplace's
+    // onInstall stashes a draft, then onDismiss opens the pre-filled editor.
+    @State private var showingMarketplace = false
+    @State private var pendingMarketplaceDraft: MCPDraft?
+    @State private var marketplaceInstallDraft: MCPDraft?
     @State private var authing: Set<String> = []   // servers mid sign-in
     @State private var authHandles: [String: V2AuthHandle] = [:]   // cancel handles
     @State private var authFailedServer: String?   // last server whose sign-in failed
@@ -35,7 +45,40 @@ struct V2McpPanel: View {
             .environmentObject(store)
             .frame(minWidth: 560, minHeight: 600)
         }
+        .sheet(
+            isPresented: $showingMarketplace,
+            onDismiss: {
+                if let draft = pendingMarketplaceDraft {
+                    pendingMarketplaceDraft = nil
+                    marketplaceInstallDraft = draft
+                }
+            }
+        ) {
+            MCPMarketplaceView { draft in
+                pendingMarketplaceDraft = draft
+            }
+        }
+        .sheet(item: Binding(
+            get: { marketplaceInstallDraft.map(MarketplaceInstall.init) },
+            set: { marketplaceInstallDraft = $0?.draft }
+        )) { install in
+            MCPEditor(mode: .addFromMarketplace(draft: install.draft, defaultScope: .user)) {
+                marketplaceInstallDraft = nil
+                Task { await store.load() }
+            }
+            .environmentObject(store)
+            .frame(minWidth: 560, minHeight: 600)
+        }
         .enableInjection()
+    }
+
+    /// `.sheet(item:)` needs Identifiable; MCPDraft doesn't conform (it's a
+    /// plain form-state struct reused by manual add and edit too), so this
+    /// wraps it rather than adding an identity concept it doesn't need
+    /// elsewhere.
+    private struct MarketplaceInstall: Identifiable {
+        let draft: MCPDraft
+        var id: String { draft.name }
     }
 
     // MARK: - Header
@@ -52,7 +95,18 @@ struct V2McpPanel: View {
                         .font(.system(size: 10.5, design: .monospaced))
                         .foregroundColor(v2.faint)
                 }
+                // Manual entry demoted to a small secondary link — the
+                // marketplace (search → one-click install, prefilled
+                // command/url/env) is the easy default now. Advanced/custom
+                // servers not in the registry still need the raw form.
                 Button { addingMCP = true } label: {
+                    Text("manual")
+                        .font(.system(size: 10, design: .monospaced))
+                        .foregroundColor(v2.faint)
+                }
+                .buttonStyle(.plain)
+                .help("Add a server by hand (command/URL you already know)")
+                Button { showingMarketplace = true } label: {
                     Text("+ add")
                         .font(.system(size: 10.5, design: .monospaced))
                         .foregroundColor(v2.ink)
@@ -62,7 +116,7 @@ struct V2McpPanel: View {
                         .overlay(Rectangle().stroke(v2.line2, lineWidth: 1))
                 }
                 .buttonStyle(.plain)
-                .help("Add a new MCP server")
+                .help("Browse the MCP marketplace — search and install")
             }
             Text("Tool providers claude loads on spawn — filesystem, github, etc.")
                 .font(.system(size: 10.5, design: .monospaced))
