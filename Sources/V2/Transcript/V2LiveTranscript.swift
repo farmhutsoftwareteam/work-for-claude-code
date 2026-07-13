@@ -105,8 +105,17 @@ struct V2LiveTranscript: View {
                     // the .onChange below still fixes up the @State itself
                     // so scroll position stays sane on the next interaction.
                     let windowStart = min(max(0, firstVisibleIndex), session.transcript.count)
+                    // Only the LAST row can be mutating in place (streaming
+                    // appends to / grows the tail item); every earlier row is
+                    // frozen. The flag routes the streaming row through the
+                    // per-block renderer (O(tail-paragraph) per flush) instead
+                    // of the merged-run renderer (O(whole-message) per flush —
+                    // the "sloppy scroll / content vanishing while replying"
+                    // regression #72 shipped with).
+                    let streamingIndex = session.state == .working ? session.transcript.count - 1 : -1
                     ForEach(windowStart..<session.transcript.count, id: \.self) { i in
-                        row(for: session.transcript[i], runs: runsById, sessionDir: sessionDir)
+                        row(for: session.transcript[i], runs: runsById, sessionDir: sessionDir,
+                            isStreaming: i == streamingIndex)
                     }
 
                     if session.isRetrying {
@@ -262,7 +271,8 @@ struct V2LiveTranscript: View {
     }
 
     @ViewBuilder
-    private func row(for item: TranscriptItem, runs: [String: V2SubagentRun], sessionDir: URL?) -> some View {
+    private func row(for item: TranscriptItem, runs: [String: V2SubagentRun], sessionDir: URL?,
+                     isStreaming: Bool = false) -> some View {
         switch item {
         case .userText(let text):
             V2UserTurn(text: text)
@@ -270,7 +280,8 @@ struct V2LiveTranscript: View {
             V2AssistantBlock(block: block, toolOutcomes: session.toolOutcomes,
                              baseDir: session.cwd ?? projectCwd,
                              subagentRuns: runs, sessionDir: sessionDir,
-                             toolStartTimes: session.toolStartTimes)
+                             toolStartTimes: session.toolStartTimes,
+                             isStreaming: isStreaming)
         case .compactBoundary:
             V2CompactBoundary()
         case .systemNote(let kind, let text):
@@ -389,6 +400,8 @@ struct V2AssistantBlock: View {
     var sessionDir: URL? = nil
     /// toolUseId → call start, for the in-flight elapsed readout.
     var toolStartTimes: [String: Date] = [:]
+    /// This row's text is still growing — see V2MarkdownText.isStreaming.
+    var isStreaming: Bool = false
     @State private var buttonHover = false
     @State private var copied = false
 
@@ -408,13 +421,11 @@ struct V2AssistantBlock: View {
             VStack(alignment: .leading, spacing: 6) {
                 content
                     .frame(maxWidth: .infinity, alignment: .leading)
-                    // Right-click → copy the WHOLE message. Drag-selection is
-                    // bounded to one NSTextView (each paragraph/bullet is its
-                    // own — that's what native link cursors cost us), so a
-                    // cross-paragraph select silently dies at the paragraph
-                    // edge. Until prose runs merge into a single text view
-                    // (its own renderer pass), this is the escape hatch that's
-                    // findable from the exact spot where selection frustrates.
+                    // Right-click → copy the WHOLE message. Finalized prose
+                    // selects across paragraphs (#72 merged runs), but code
+                    // fences/tables still bound selection to their own view,
+                    // and the actively-streaming message renders per-block —
+                    // this stays the universal escape hatch either way.
                     .contextMenu {
                         if let t = textForCopy {
                             Button("Copy message") { V2Clipboard.copy(t) }
@@ -462,7 +473,7 @@ struct V2AssistantBlock: View {
     private var content: some View {
         switch block {
         case .text(let s):
-            V2MarkdownText(text: s, baseDir: baseDir)
+            V2MarkdownText(text: s, baseDir: baseDir, isStreaming: isStreaming)
                 .foregroundColor(v2.ink)
         case .toolUse(let id, let name, let input):
             if V2SubagentParser.isAgentSpawn(toolName: name) {

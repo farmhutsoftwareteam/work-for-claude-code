@@ -15,28 +15,50 @@ struct V2MarkdownText: View {
     let text: String
     /// Project cwd for resolving relative file mentions into Quick Look links.
     var baseDir: String? = nil
+    /// True for the one message whose text is still growing (~30fps flushes).
+    /// Streaming renders per-BLOCK, not merged runs: a merged run's key
+    /// changes on every flush, so the whole message's prose — one giant
+    /// NSTextView by then — was rebuilt, re-set, and re-measured per flush.
+    /// That's O(message-length) work per delta (PERFORMANCE.md rule 1) and
+    /// its full-document height re-measure is what made streaming replies
+    /// visibly jump and blank ("things disappearing while it replies").
+    /// Per-block, only the tail paragraph's small view churns; everything
+    /// stable is a key-guarded no-op. The message flips to merged runs the
+    /// moment it stops being the streaming row — one rebuild, then
+    /// cross-paragraph selection (#72) works exactly as before.
+    var isStreaming: Bool = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 11) {
-            // Rows are RUNS, not individual blocks (#72): contiguous prose
-            // blocks (paragraphs, headings, bullets, ordered lists) merge
-            // into ONE NSTextView so drag-selection flows across them —
-            // per-block NSTextViews bounded every selection to a single
-            // paragraph ("the text highlighter can only select one line").
-            // Code fences and tables keep their own chrome (copy button,
-            // grid) and bound selection there, which matches expectation.
-            //
-            // Identity is the run's first block's SOURCE START LINE, same
-            // scheme as the per-block ids before it (bug-hunt M24) — a
-            // table materializing mid-stream splits a run without shifting
-            // the ids of anything whose source position didn't move.
-            ForEach(runs) { run in
-                switch run.kind {
-                case .prose(let blocks):
-                    V2ProseRunView(blocks: blocks, runKey: run.key, baseDir: baseDir)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                case .chrome(let block):
-                    blockView(block)
+            if isStreaming {
+                // Per-block path (pre-#72 layout, M24 source-line identity).
+                // Selection across paragraphs doesn't matter mid-stream —
+                // the text is moving; it matters the second the reply lands,
+                // which is when this switches to the merged-run path below.
+                ForEach(blocks) { item in
+                    blockView(item.block)
+                }
+            } else {
+                // Rows are RUNS, not individual blocks (#72): contiguous prose
+                // blocks (paragraphs, headings, bullets, ordered lists) merge
+                // into ONE NSTextView so drag-selection flows across them —
+                // per-block NSTextViews bounded every selection to a single
+                // paragraph ("the text highlighter can only select one line").
+                // Code fences and tables keep their own chrome (copy button,
+                // grid) and bound selection there, which matches expectation.
+                //
+                // Identity is the run's first block's SOURCE START LINE, same
+                // scheme as the per-block ids before it (bug-hunt M24) — a
+                // table materializing mid-stream splits a run without shifting
+                // the ids of anything whose source position didn't move.
+                ForEach(runs) { run in
+                    switch run.kind {
+                    case .prose(let blocks):
+                        V2ProseRunView(blocks: blocks, runKey: run.key, baseDir: baseDir)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                    case .chrome(let block):
+                        blockView(block)
+                    }
                 }
             }
         }
@@ -47,10 +69,10 @@ struct V2MarkdownText: View {
         Self.cachedRuns(text)
     }
 
-    /// Chrome blocks (code fences, tables) — the prose cases below are
-    /// unreachable in normal rendering now that prose renders via merged
-    /// runs (V2ProseRunView), but they're kept as a working fallback so a
-    /// prose block arriving through any other path still renders correctly.
+    /// Chrome blocks (code fences, tables) always render here; the prose
+    /// cases are the live path while a message STREAMS (isStreaming above)
+    /// and a fallback otherwise — finalized prose renders via merged runs
+    /// (V2ProseRunView).
     @ViewBuilder
     private func blockView(_ block: MDBlock) -> some View {
         switch block {
