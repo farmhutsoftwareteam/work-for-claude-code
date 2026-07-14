@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Changelog - Atelier</title>
-    <meta name="description" content="Every release of Atelier, dated and itemised. Latest: v2.9.7 (july 14, 2026).">
+    <meta name="description" content="Every release of Atelier, dated and itemised. Latest: v2.9.8 (july 14, 2026).">
     <link rel="canonical" href="https://work.munyamakosa.com/releases.html">
     <link rel="alternate" type="application/rss+xml" title="Atelier appcast" href="https://work.munyamakosa.com/appcast.xml">
 
@@ -184,13 +184,33 @@
         </div>
 
 
+    <article id="v2-9-8" class="release-article" style="display:grid;grid-template-columns:200px 1fr;gap:40px;padding:38px 0;border-bottom:1px solid var(--line);">
+      <div>
+        <div style="font-family:var(--helv);font-weight:500;font-size:22px;letter-spacing:-.01em;">
+          <a href="#v2-9-8" style="color:var(--ink);text-decoration:none;">v2.9.8</a>
+        </div>
+        <div style="font-family:var(--mono);font-size:11px;color:var(--mute);margin-top:6px;">2026 · jul 14</div>
+        <div style="display:inline-block;font-family:var(--mono);font-size:10px;letter-spacing:.08em;text-transform:uppercase;border:1px solid var(--line2);padding:3px 8px;margin-top:12px;">latest</div>
+        <div style="font-family:var(--mono);font-size:10px;color:var(--mute);margin-top:10px;">macOS 15.0+</div>
+      </div>
+      <div class="release-body" style="font-family:var(--helv);font-size:16px;line-height:1.6;color:rgba(27,28,30,.82);">
+        <h3>MCP buttons stop feeling broken</h3>
+        <ul>
+          <li><b>Buttons now acknowledge your click</b> — every chip button used to give zero visual feedback on tap, so a slow action read as unresponsive. They now dim instantly on press.</li>
+          <li><b>Installing an MCP server no longer has a dead gap</b> — the row flips to "installing…" the instant it registers, instead of sitting silently while two sheets swap behind the scenes.</li>
+          <li><b>Deleting a server shows real progress</b> — a "deleting…" state instead of the row just sitting there until it silently vanishes (or doesn't, if it failed).</li>
+          <li><b>Fixed: a malformed marketplace entry could get a row stuck on "installing…" forever</b> — it now shows a clear error instead.</li>
+          <li><b>Fixed: connecting Supabase without a resolved claude binary opened a blank sheet</b> — now shows an explanation instead.</li>
+        </ul>
+      </div>
+    </article>
+
     <article id="v2-9-7" class="release-article" style="display:grid;grid-template-columns:200px 1fr;gap:40px;padding:38px 0;border-bottom:1px solid var(--line);">
       <div>
         <div style="font-family:var(--helv);font-weight:500;font-size:22px;letter-spacing:-.01em;">
           <a href="#v2-9-7" style="color:var(--ink);text-decoration:none;">v2.9.7</a>
         </div>
         <div style="font-family:var(--mono);font-size:11px;color:var(--mute);margin-top:6px;">2026 · jul 14</div>
-        <div style="display:inline-block;font-family:var(--mono);font-size:10px;letter-spacing:.08em;text-transform:uppercase;border:1px solid var(--line2);padding:3px 8px;margin-top:12px;">latest</div>
         <div style="font-family:var(--mono);font-size:10px;color:var(--mute);margin-top:10px;">macOS 15.0+</div>
       </div>
       <div class="release-body" style="font-family:var(--helv);font-size:16px;line-height:1.6;color:rgba(27,28,30,.82);">

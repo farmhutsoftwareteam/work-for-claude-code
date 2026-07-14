@@ -6,6 +6,28 @@
         <description>Updates for Work</description>
         <language>en</language>
         <item>
+            <title>Version 2.9.8</title>
+            <pubDate>Tue, 14 Jul 2026 10:38:07 +0400</pubDate>
+            <sparkle:version>57</sparkle:version>
+            <sparkle:shortVersionString>2.9.8</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>15.0</sparkle:minimumSystemVersion>
+            <description><![CDATA[
+                <h3>Atelier 2.9.8 — MCP buttons stop feeling broken</h3>
+                <ul>
+                    <li><b>Buttons now acknowledge your click.</b> Every chip button used to give zero visual feedback on tap — on a slow action that reads as "did this even register?" Buttons now dim instantly on press.</li>
+                    <li><b>Installing an MCP server no longer has a dead gap.</b> Tapping "install" used to sit silently for half a second while two sheets swapped behind the scenes. The row now flips to "installing…" the instant it registers.</li>
+                    <li><b>Deleting a server shows real progress</b> — a "deleting…" state on the row instead of it just sitting there until it silently vanishes (or doesn't, if it failed).</li>
+                    <li><b>Fixed: a malformed marketplace entry could get a row stuck on "installing…" forever</b> — it now shows a clear error instead.</li>
+                    <li><b>Fixed: connecting Supabase without a resolved claude binary opened a blank sheet</b> — now shows an explanation instead.</li>
+                </ul>
+            ]]></description>
+            <enclosure
+                url="https://work.munyamakosa.com/Work-2.9.8.dmg"
+                length="13471668"
+                type="application/octet-stream"
+                sparkle:edSignature="YkHuQvV7NIIa3KpMNIDn3UAbz/8caunTbObAw3wS820hEIgEEf2C2Kd5UnhGvHuIojuKfX/+5UrbV2kTVlAbBg==" />
+        </item>
+        <item>
             <title>Version 2.9.7</title>
             <pubDate>Tue, 14 Jul 2026 10:09:06 +0400</pubDate>
             <sparkle:version>56</sparkle:version>
