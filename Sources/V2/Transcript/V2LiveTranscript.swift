@@ -707,7 +707,11 @@ struct V2LiveToolWidget: View {
         case "EnterPlanMode":
             Text("entering plan mode").foregroundColor(v2.mute)
         case "ExitWorktree":
-            Text("exit worktree").foregroundColor(v2.mute)
+            // Verified schema: {action: "keep"|"remove", discard_changes}. Not
+            // argless like it looked at first glance — which one happened is
+            // exactly the thing worth seeing here.
+            Text("exit worktree · \(input.dig("action")?.asString ?? "keep")")
+                .foregroundColor(v2.mute)
         case "ShareOnboardingGuide":
             Text("sharing onboarding guide").foregroundColor(v2.mute)
         case "TaskList":
@@ -764,17 +768,21 @@ struct V2LiveToolWidget: View {
     /// of a bespoke view. Anything not listed still gets a real (not
     /// keys-only) preview via JSONValue.preview's fixed object case.
     private static let primaryFieldsByTool: [String: [String]] = [
-        "Artifact": ["title", "type"],
+        // Verified against real tool schemas (ToolSearch) where reachable
+        // from this session — CronCreate, CronDelete, ListMcpResourcesTool,
+        // ReadMcpResourceTool, SendMessage, TaskGet, and the TaskOutput/
+        // TaskStop fix below all came from a live schema, not a guess.
+        "Artifact": ["title", "type"],   // unverified — not reachable from here (needs a claude.ai Pro/Max/Team/Enterprise login this session doesn't have)
         "CronCreate": ["prompt"],
         "CronDelete": ["id"],
-        "EnterWorktree": ["path"],
+        "EnterWorktree": ["path", "name"],   // "path" when entering an existing worktree, "name" when creating one
         "ExitPlanMode": ["plan"],
         "ListMcpResourcesTool": ["server"],
-        "LSP": ["command", "symbol", "file"],
+        "LSP": ["command", "symbol", "file"],   // unverified — needs a code-intelligence plugin this session doesn't have installed
         "Monitor": ["description", "command"],
-        "PushNotification": ["message", "title"],
+        "PushNotification": ["message"],
         "ReadMcpResourceTool": ["uri"],
-        "RemoteTrigger": ["action", "name"],
+        "RemoteTrigger": ["action"],
         // ReportFindings and WaitForMcpServers are NOT here — their real
         // fields aren't flat strings (findings[].summary is nested one
         // level deep; servers is an array, not a string), so a lookup in
@@ -782,13 +790,20 @@ struct V2LiveToolWidget: View {
         // above instead of a dead entry that looks like coverage but isn't.
         "ScheduleWakeup": ["reason"],
         "SendMessage": ["to", "message"],
-        "SendUserFile": ["path", "caption"],
+        "SendUserFile": ["path", "caption"],   // unverified — needs a Remote Control client or cloud environment this session doesn't have
         // TaskCreate/TaskUpdate are NOT here either — both are intercepted
         // upstream by the checklist routing in V2AssistantBlock.content,
         // before this switch ever sees them.
         "TaskGet": ["taskId"],
-        "TaskOutput": ["taskId"],
-        "TaskStop": ["taskId"],
+        // TaskOutput/TaskStop are a DIFFERENT tool family from TaskCreate/
+        // TaskGet/TaskUpdate (background-task management, not the todo
+        // checklist) despite the shared "Task" name — confirmed via their
+        // real schemas: task_id (snake_case), not taskId. This was a real
+        // bug, not just an unverified guess: the original ["taskId"] entry
+        // could never match, same class of dead lookup as ReportFindings'
+        // original "summary" guess.
+        "TaskOutput": ["task_id"],
+        "TaskStop": ["task_id"],
         "ToolSearch": ["query"],
         "WebSearch": ["query"],
         "Workflow": ["name"],
