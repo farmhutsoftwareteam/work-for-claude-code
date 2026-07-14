@@ -54,6 +54,11 @@ struct V2McpPanel: View {
     @State private var authHandles: [String: V2AuthHandle] = [:]   // cancel handles
     @State private var authFailedServer: String?   // last server whose sign-in failed
     @State private var authNote: String?
+    /// One well-designed modal replacing the split between a single inline
+    /// button (only ever one action visible at a time) and a right-click
+    /// context menu — tapping a configured row opens this with every real
+    /// action (sign in / use in project / edit / delete) in one place.
+    @State private var actionSheetServer: MCPServer?
 
     /// Split from `body` because a single modifier chain this long makes the
     /// type checker time out — two smaller expressions check independently.
@@ -152,6 +157,29 @@ struct V2McpPanel: View {
             Button("OK") { deleteError = nil }
         } message: {
             Text(deleteError ?? "")
+        }
+        .sheet(item: $actionSheetServer) { server in
+            let oauth = isOAuthCapable(server.transport)
+            let needsAuth = oauth && store.mcpNeedsAuth.contains(server.name)
+            V2McpServerActionSheet(
+                server: server,
+                scopeLabel: "\(scopeLabel(server.source)) · \(transportLabel(server.transport))",
+                isOAuth: oauth,
+                needsAuth: needsAuth,
+                isSupabasePlugin: isSupabasePluginServer(server) && projectCwd != nil,
+                canCopyToProject: canCopyToProject(server),
+                canEditOrDelete: scope(for: server) != nil,
+                isDeleting: deletingServers.contains(server.name),
+                onSignIn: { authenticate(server.name) },
+                onConnectSupabase: { connectSupabaseWithPicker() },
+                onUseInProject: { useInProjectServer = server },
+                onEdit: {
+                    if let scope = scope(for: server) { editingServer = (server, scope) }
+                },
+                onDelete: {
+                    if let scope = scope(for: server) { pendingDelete = (name: server.name, scope: scope) }
+                }
+            )
         }
     }
 
@@ -431,81 +459,61 @@ struct V2McpPanel: View {
         let needsAuth = oauth && store.mcpNeedsAuth.contains(server.name)
         let signedIn = oauth && !needsAuth   // OAuth-capable and NOT in needs-auth cache
         let isDeleting = deletingServers.contains(server.name)
-        return HStack(spacing: 11) {
-            // Grouped members indent under their service header and show
-            // just the differentiating suffix ("garman", not
-            // "linear-garman") — the header already names the service.
-            if indented {
-                Spacer().frame(width: 16)
-            }
-            // Brand glyph, dimmed when the server still needs sign-in.
-            V2ServiceLogo(name: server.name,
-                          host: V2ServiceLogo.host(of: server.transport),
-                          size: indented ? 14 : 17,
-                          tint: needsAuth ? v2.faint : v2.ink)
-            VStack(alignment: .leading, spacing: 2) {
-                Text(memberLabel ?? server.name)
-                    .font(.system(size: 13.5, weight: .medium)).kerning(-0.13)
-                Text("\(scopeLabel(server.source)) · \(transportLabel(server.transport))")
-                    .font(.system(size: 10, design: .monospaced))
-                    .foregroundColor(v2.faint)
-            }
-            Spacer()
-            if isDeleting {
-                HStack(spacing: 6) {
-                    V2PulseDot(size: 6, color: v2.mute)
-                    Text("deleting…")
+        // The whole row is one tap target now — opens V2McpServerActionSheet
+        // with every real action (sign in / use in project / edit / delete)
+        // in one well-designed modal, instead of a single inline button that
+        // could only ever show ONE action depending on state, plus a
+        // right-click menu most people never discover (user feedback,
+        // 2026-07-14: "why can't I just click and choose what I want to do
+        // with it"). Right-click kept as a power-user shortcut to the same
+        // actions — harmless overlap, not a second source of truth.
+        return Button {
+            actionSheetServer = server
+        } label: {
+            HStack(spacing: 11) {
+                // Grouped members indent under their service header and show
+                // just the differentiating suffix ("garman", not
+                // "linear-garman") — the header already names the service.
+                if indented {
+                    Spacer().frame(width: 16)
+                }
+                // Brand glyph, dimmed when the server still needs sign-in.
+                V2ServiceLogo(name: server.name,
+                              host: V2ServiceLogo.host(of: server.transport),
+                              size: indented ? 14 : 17,
+                              tint: needsAuth ? v2.faint : v2.ink)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(memberLabel ?? server.name)
+                        .font(.system(size: 13.5, weight: .medium)).kerning(-0.13)
+                    Text("\(scopeLabel(server.source)) · \(transportLabel(server.transport))")
                         .font(.system(size: 10, design: .monospaced))
-                        .foregroundColor(v2.mute)
-                }
-            } else {
-                // The Supabase plugin row gets its OWN headline action — sign
-                // in, then pick a real project from a list, instead of typing a
-                // project_ref by hand. Takes priority over the generic "→
-                // project" copy-down (which would otherwise ALSO show here,
-                // since a plugin row is copy-down-eligible too).
-                if isSupabasePluginServer(server), projectCwd != nil {
-                    Button { connectSupabaseWithPicker() } label: {
-                        Text("connect →")
-                            .font(.system(size: 10, design: .monospaced))
-                            .foregroundColor(v2.ink)
-                    }
-                    .buttonStyle(.plain)
-                    .help("Sign in and pick a real Supabase project — no project_ref to type or find")
-                } else if canCopyToProject(server) {
-                    // User-scope and plugin servers get a quiet "→ project"
-                    // affordance: copy this entry down to the selected
-                    // project's local scope (same name = per-project override
-                    // via scope precedence). Only shown when a project is
-                    // actually selected to copy into.
-                    Button { useInProjectServer = server } label: {
-                        Text("→ project")
-                            .font(.system(size: 10, design: .monospaced))
-                            .foregroundColor(v2.faint)
-                    }
-                    .buttonStyle(.plain)
-                    .help("Use in this project — copy this server to project scope so you can point it at this project's resources (e.g. a Supabase project_ref)")
-                }
-                // Only servers that ACTUALLY need auth (per claude's needs-auth
-                // cache) get a Sign in button. Signed-in OAuth servers read "signed
-                // in"; stdio servers (no auth) read "configured".
-                if needsAuth {
-                    authButton(server.name)
-                } else if signedIn {
-                    Text("signed in")
-                        .font(.system(size: 11, design: .monospaced))
-                        .foregroundColor(v2.mute)
-                } else {
-                    Text("configured")
-                        .font(.system(size: 11, design: .monospaced))
                         .foregroundColor(v2.faint)
                 }
+                Spacer()
+                if isDeleting {
+                    HStack(spacing: 6) {
+                        V2PulseDot(size: 6, color: v2.mute)
+                        Text("deleting…")
+                            .font(.system(size: 10, design: .monospaced))
+                            .foregroundColor(v2.mute)
+                    }
+                } else {
+                    // Passive status only now — every action that used to
+                    // live here (connect →, → project, sign in) moved into
+                    // the modal this row opens.
+                    Text(needsAuth ? "needs auth" : (signedIn ? "signed in" : "configured"))
+                        .font(.system(size: 11, design: .monospaced))
+                        .foregroundColor(needsAuth ? v2.del.opacity(0.75) : (signedIn ? v2.mute : v2.faint))
+                }
             }
+            .padding(.horizontal, 18).padding(.vertical, 13)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .opacity(isDeleting ? 0.5 : 1)
+            .overlay(alignment: .bottom) { Rectangle().fill(v2.line).frame(height: 1) }
+            .contentShape(Rectangle())
         }
-        .padding(.horizontal, 18).padding(.vertical, 13)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .opacity(isDeleting ? 0.5 : 1)
-        .overlay(alignment: .bottom) { Rectangle().fill(v2.line).frame(height: 1) }
+        .buttonStyle(.plain)
+        .disabled(isDeleting)
         .contextMenu {
             if !isDeleting {
                 if isSupabasePluginServer(server), projectCwd != nil {
