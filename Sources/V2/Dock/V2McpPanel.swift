@@ -31,6 +31,16 @@ struct V2McpPanel: View {
     /// Code's precedence (local > project > user) makes it a per-project
     /// override, e.g. supabase pointed at THIS project's project_ref.
     @State private var useInProjectServer: MCPServer?
+    /// Delete — existed all along (MCPConfigWriter.delete), same story as
+    /// the marketplace: wired only into the legacy v1 ExtensionsView, a
+    /// window that never auto-opens. The v2 panel had no way to remove a
+    /// server at all, which is exactly what stood between "this one's
+    /// broken" and "delete it and set it up properly."
+    @State private var pendingDelete: (name: String, scope: MCPConfigWriter.Scope)?
+    @State private var deleteError: String?
+    /// Edit an existing server in place — fixing a broken one (wrong/empty
+    /// credential) without losing its identity, vs. delete-then-recreate.
+    @State private var editingServer: (server: MCPServer, scope: MCPConfigWriter.Scope)?
     @State private var authing: Set<String> = []   // servers mid sign-in
     @State private var authHandles: [String: V2AuthHandle] = [:]   // cancel handles
     @State private var authFailedServer: String?   // last server whose sign-in failed
@@ -83,6 +93,48 @@ struct V2McpPanel: View {
             .environmentObject(store)
             .frame(minWidth: 560, minHeight: 600)
         }
+        .sheet(item: Binding(
+            get: { editingServer.map { EditTarget(server: $0.server, scope: $0.scope) } },
+            set: { editingServer = $0.map { ($0.server, $0.scope) } }
+        )) { target in
+            MCPEditor(mode: .edit(target.server, scope: target.scope),
+                      onSavedDraft: { draft, _ in maybeAutoSignIn(draft) }) {
+                editingServer = nil
+                Task { await store.load() }
+            }
+            .environmentObject(store)
+            .frame(minWidth: 560, minHeight: 600)
+        }
+        .confirmationDialog(
+            "Delete this MCP server?",
+            isPresented: Binding(get: { pendingDelete != nil }, set: { if !$0 { pendingDelete = nil } }),
+            titleVisibility: .visible
+        ) {
+            if let pending = pendingDelete {
+                Button("Delete \"\(pending.name)\"", role: .destructive) {
+                    let (name, scope) = pending
+                    pendingDelete = nil
+                    Task {
+                        do {
+                            try await Task.detached(priority: .userInitiated) {
+                                try MCPConfigWriter.delete(name: name, scope: scope)
+                            }.value
+                            await store.load()
+                        } catch {
+                            deleteError = "Couldn't delete \"\(name)\": \(error.localizedDescription)"
+                        }
+                    }
+                }
+            }
+            Button("Cancel", role: .cancel) { pendingDelete = nil }
+        } message: {
+            Text("Removed from your config — this can't be undone from the app.")
+        }
+        .alert("Delete failed", isPresented: Binding(get: { deleteError != nil }, set: { if !$0 { deleteError = nil } })) {
+            Button("OK") { deleteError = nil }
+        } message: {
+            Text(deleteError ?? "")
+        }
         .sheet(item: $useInProjectServer) { server in
             if let cwd = projectCwd {
                 MCPEditor(mode: .useInProject(draft: .from(server), cwd: cwd),
@@ -104,6 +156,12 @@ struct V2McpPanel: View {
     private struct MarketplaceInstall: Identifiable {
         let draft: MCPDraft
         var id: String { draft.name }
+    }
+
+    private struct EditTarget: Identifiable {
+        let server: MCPServer
+        let scope: MCPConfigWriter.Scope
+        var id: String { server.name }
     }
 
     // MARK: - Header
@@ -221,6 +279,22 @@ struct V2McpPanel: View {
         }
     }
 
+    /// The scope MCPConfigWriter needs to edit/delete this row. v1
+    /// (ExtensionsView) gets this for free by iterating already-bucketed
+    /// per-scope lists; v2's configuredServers flattens them, so it's
+    /// reconstructed from `.source` — safe because configuredServers only
+    /// ever draws .localUser/.project rows from THIS project's own
+    /// dictionaries. nil for plugin-provided servers: nothing to edit or
+    /// delete, they're baked into the plugin.
+    private func scope(for server: MCPServer) -> MCPConfigWriter.Scope? {
+        switch server.source {
+        case .global: return .user
+        case .localUser: return projectCwd.map { .local(cwd: $0) }
+        case .project: return projectCwd.map { .project(cwd: $0) }
+        case .plugin: return nil
+        }
+    }
+
     private var serverCount: Int {
         if let s = appState.activeSession, isRunning(s.state), !s.mcpServers.isEmpty { return s.mcpServers.count }
         return configuredServers.count
@@ -325,6 +399,13 @@ struct V2McpPanel: View {
             // "token expired but cache hasn't noticed" are real cases.
             if oauth {
                 Button("Sign in again…") { authenticate(server.name) }
+            }
+            if let scope = scope(for: server) {
+                Button("Edit…") { editingServer = (server, scope) }
+                Divider()
+                Button("Delete…", role: .destructive) {
+                    pendingDelete = (name: server.name, scope: scope)
+                }
             }
         }
     }
