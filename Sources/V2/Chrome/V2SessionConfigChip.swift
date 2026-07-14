@@ -74,13 +74,31 @@ struct V2SessionConfigChip: View {
                     // tightest breakpoint — a bare dot + chevron would carry
                     // no information at all (every other header control
                     // keeps at least a glyph or short label this small).
+                    // Fixed-width + truncating, NOT auto-sized to content:
+                    // an auto-sized label made the pill's own width (and so
+                    // its on-screen position, anchored by the header's
+                    // trailing controls group) shift every time you picked a
+                    // different model — "sonnet" vs "claude-opus-4-8" are
+                    // very different lengths. A constant-width truncating
+                    // label keeps the pill's footprint constant regardless
+                    // of what's selected (user report, 2026-07-14).
                     Text(chipModelLabel)
+                        .lineLimit(1)
+                        .truncationMode(.tail)
+                        .frame(width: isTight ? 50 : 64, alignment: .leading)
                 }
                 if !isCompact {
                     Rectangle().fill(v2.line2).frame(width: 1, height: 13)
                     Text(chipEffortLabel)
+                        .lineLimit(1)
+                        .truncationMode(.tail)
+                        .frame(width: 46, alignment: .leading)
                     Rectangle().fill(v2.line2).frame(width: 1, height: 13)
-                    Text(chipPermissionLabel).foregroundColor(v2.mute)
+                    Text(chipPermissionLabel)
+                        .lineLimit(1)
+                        .truncationMode(.tail)
+                        .frame(width: 84, alignment: .leading)
+                        .foregroundColor(v2.mute)
                 }
                 Image(systemName: "chevron.down")
                     .font(.system(size: 8, weight: .medium))
@@ -92,7 +110,6 @@ struct V2SessionConfigChip: View {
             .padding(.vertical, 7)
             .background(v2.card)
             .overlay(Rectangle().stroke(v2.ink, lineWidth: 1))
-            .fixedSize(horizontal: true, vertical: false)
         }
         .buttonStyle(.plain)
         // Usable without a session once a catalog is known — picking then

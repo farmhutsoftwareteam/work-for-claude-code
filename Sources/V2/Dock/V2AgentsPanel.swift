@@ -280,6 +280,7 @@ struct V2AgentsPanel: View {
                 Text(agent.name)
                     .font(.system(size: 14, weight: .medium))
                     .kerning(-0.14)
+                    .lineLimit(1).truncationMode(.tail)
                 Spacer()
                 HStack(spacing: 6) {
                     Text(agent.scope.label)

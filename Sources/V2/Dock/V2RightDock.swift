@@ -109,7 +109,17 @@ struct V2RightDock: View {
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
-        .frame(width: 360)
+        // A single-value .frame(width: 360) sets min == ideal == max, which
+        // refuses to negotiate smaller no matter what the window can
+        // actually offer — the exact "never shrinks" pattern that pinned
+        // the header pill's width once. dockCollapsed is @AppStorage (true
+        // across launches once ANY panel is opened, e.g. via /mcp), so this
+        // wasn't even conditional on screen size: opening the dock once
+        // permanently added ~320pt to the window's minimum width forever,
+        // with .windowResizability(.contentMinSize) enforcing it on every
+        // future launch. A flexible range lets it compress under real space
+        // pressure instead of being a hard, unshrinkable floor.
+        .frame(minWidth: 240, idealWidth: 360, maxWidth: 400)
         .frame(maxHeight: .infinity)
     }
 

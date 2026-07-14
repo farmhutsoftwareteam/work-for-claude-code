@@ -824,11 +824,19 @@ struct V2LiveComposer: View {
         let window = appState.contextWindow(for: session.model)
         return HStack(spacing: 8) {
             // Model name is the first thing the meter sheds when space is tight
-            // — the gauge + percentage matter more than the id.
+            // — the gauge + percentage matter more than the id. Capped with an
+            // explicit maxWidth, not just lineLimit+truncation alone: helperTight
+            // is driven by a GeometryReader/PreferenceKey @State that starts at
+            // 0 and may not have measured yet by the time SwiftUI's
+            // .windowResizability(.contentMinSize) probes this view's minimum
+            // size — so this text's WORST CASE needs its own hard ceiling,
+            // not just a conditional that depends on live measurement timing
+            // (same root pattern as the header pill's fixedSize bug).
             if !helperTight {
                 Text(session.model)
                     .foregroundColor(v2.faint)
                     .lineLimit(1).truncationMode(.middle)
+                    .frame(maxWidth: 90, alignment: .leading)
             }
             if used == 0 {
                 Text("context idle").foregroundColor(v2.faint).lineLimit(1)

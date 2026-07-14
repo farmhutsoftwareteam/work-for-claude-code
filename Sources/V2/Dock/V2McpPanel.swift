@@ -485,9 +485,11 @@ struct V2McpPanel: View {
                 VStack(alignment: .leading, spacing: 2) {
                     Text(memberLabel ?? server.name)
                         .font(.system(size: 13.5, weight: .medium)).kerning(-0.13)
+                        .lineLimit(1).truncationMode(.tail)
                     Text("\(scopeLabel(server.source)) · \(transportLabel(server.transport))")
                         .font(.system(size: 10, design: .monospaced))
                         .foregroundColor(v2.faint)
+                        .lineLimit(1).truncationMode(.tail)
                 }
                 Spacer()
                 if isDeleting {
@@ -922,9 +924,11 @@ struct V2McpPanel: View {
                 Text(memberLabel ?? displayName(server.name))
                     .font(.system(size: 13.5, weight: .medium))
                     .kerning(-0.13)
+                    .lineLimit(1).truncationMode(.tail)
                 Text(scopeHint(server.name))
                     .font(.system(size: 10, design: .monospaced))
                     .foregroundColor(v2.faint)
+                    .lineLimit(1).truncationMode(.tail)
             }
             Spacer()
             if needsAuth {
