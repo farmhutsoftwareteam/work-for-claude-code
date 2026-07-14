@@ -58,7 +58,8 @@ enum InteractiveCommandDetector {
         """
         This command is interactive — it will ask questions on a TTY, and Bash has no TTY, so it would hang. Do NOT retry it with Bash. \
         Run it with the mcp__atelier-terminal__terminal_run tool instead: {"command": \(jsonEscape(command))}. \
-        Then loop terminal_read (pass since_cursor) to watch output, answer routine prompts with terminal_write, and ask the user in chat for anything you can't answer yourself. \
+        Then call terminal_read with wait_seconds set (e.g. 15) to block until there's new output or a prompt, answer routine prompts with terminal_write, and ask the user in chat for anything you can't answer yourself. \
+        Check the running field each time — keep calling terminal_read with wait_seconds until it's false rather than assuming completion from one read. \
         If terminal_read reports secure_input=true, tell the user to type directly in the terminal pane — never attempt to enter secrets.
         """
     }

@@ -132,22 +132,26 @@ final class TerminalBridge: @unchecked Sendable {
                 return
             }
             let args = (params["arguments"] as? [String: Any]) ?? [:]
-            // Hop to the main actor for engine state; conn queue ≠ main, so
-            // sync is safe and keeps tool semantics simple (read-your-writes).
+            // Hop to the main actor for engine state. Async, not .sync:
+            // terminal_read/terminal_status can now block on wait_seconds
+            // (up to 30s) to let the model wait for a command to finish
+            // instead of guessing when to re-poll — a sync hop would freeze
+            // the whole app's main thread for that long. The read loop moves
+            // on to the next line immediately; replies are id-correlated, so
+            // a slower call finishing after a later one is fine for JSON-RPC.
             // Args cross the isolation boundary as Data ([String:Any] isn't
             // Sendable-provable) and are re-decoded inside.
             let argsData = (try? JSONSerialization.data(withJSONObject: args)) ?? Data("{}".utf8)
-            var payload = "{}"; var isError = false
             let scope = self.scope, cwd = self.defaultCwd
-            DispatchQueue.main.sync {
+            Task { @MainActor [weak self] in
                 let decoded = ((try? JSONSerialization.jsonObject(with: argsData)) as? [String: Any]) ?? [:]
-                (payload, isError) = CoTerminalManager.shared.handleTool(
+                let (payload, isError) = await CoTerminalManager.shared.handleTool(
                     name: name, args: decoded, scope: scope, defaultCwd: cwd)
+                self?.reply(fd, id: id, result: [
+                    "content": [["type": "text", "text": payload]],
+                    "isError": isError,
+                ])
             }
-            reply(fd, id: id, result: [
-                "content": [["type": "text", "text": payload]],
-                "isError": isError,
-            ])
         default:
             if method.hasPrefix("notifications/") { return }   // fire-and-forget
             if id != nil { replyError(fd, id: id, code: -32601, message: "method not found: \(method)") }
@@ -185,7 +189,7 @@ final class TerminalBridge: @unchecked Sendable {
     nonisolated(unsafe) private static let toolSchemas: [[String: Any]] = [
         [
             "name": "terminal_run",
-            "description": "Run a command in a VISIBLE terminal pane shared with the user (a real PTY — interactive CLIs work). Use this instead of Bash for commands that ask questions (logins, submissions, installers). Returns terminal_id. The user sees the same terminal and can type in it; secure prompts (passwords) are hidden from you — ask the user to type those directly. When the run has finished and you've read its output, close the pane with terminal_close.",
+            "description": "Run a command in a VISIBLE terminal pane shared with the user (a real PTY — interactive CLIs work). Use this instead of Bash for commands that ask questions (logins, submissions, installers). Returns terminal_id IMMEDIATELY — the command keeps running in the background, it is NOT done when this call returns. To find out when it finishes, call terminal_read or terminal_status with wait_seconds set (e.g. 15) and check the running field in the response: if running is still true, call again with wait_seconds until it's false. Never conclude a command finished from a single instant read. The user sees the same terminal and can type in it; secure prompts (passwords) are hidden from you — ask the user to type those directly. Once running is false and you've read the output, close the pane with terminal_close.",
             "inputSchema": [
                 "type": "object",
                 "properties": [
@@ -197,12 +201,13 @@ final class TerminalBridge: @unchecked Sendable {
         ],
         [
             "name": "terminal_read",
-            "description": "Read new output from a co-driven terminal. Pass since_cursor from the previous read to get only what's new; omit it for the recent tail. Output may lag a moment after a write — read again if it looks incomplete. When secure_input is true, output is withheld and the USER must type; tell them what's needed in chat.",
+            "description": "Read output from a co-driven terminal and check whether it has finished. Pass since_cursor from the previous read to get only what's new; omit it for the recent tail. ALWAYS check the running field in the response — if it's still true and you need to know when the command finishes, call this again with wait_seconds (e.g. 15): it blocks until the command exits or that many seconds pass, then returns with running:false and exit_code once it's actually done. Do not spin-poll without wait_seconds and do not assume completion from one read. When secure_input is true, output is withheld and the USER must type; tell them what's needed in chat.",
             "inputSchema": [
                 "type": "object",
                 "properties": [
                     "terminal_id": ["type": "string"],
                     "since_cursor": ["type": "integer", "description": "Cursor from the previous read"],
+                    "wait_seconds": ["type": "number", "description": "Block until the command exits or this many seconds pass (max 30), instead of returning immediately. Use this to wait for completion reliably instead of guessing when to poll again."],
                 ],
                 "required": ["terminal_id"],
             ],
@@ -222,10 +227,13 @@ final class TerminalBridge: @unchecked Sendable {
         ],
         [
             "name": "terminal_status",
-            "description": "Running state, exit code, elapsed seconds, and secure_input flag for a co-driven terminal.",
+            "description": "Running state, exit code, elapsed seconds, and secure_input flag for a co-driven terminal. Set wait_seconds (e.g. 15) to block until the command exits or that many seconds pass, instead of returning an instant (possibly still-running) snapshot — the reliable way to find out when a command is actually done.",
             "inputSchema": [
                 "type": "object",
-                "properties": ["terminal_id": ["type": "string"]],
+                "properties": [
+                    "terminal_id": ["type": "string"],
+                    "wait_seconds": ["type": "number", "description": "Block until the command exits or this many seconds pass (max 30), instead of returning immediately."],
+                ],
                 "required": ["terminal_id"],
             ],
         ],

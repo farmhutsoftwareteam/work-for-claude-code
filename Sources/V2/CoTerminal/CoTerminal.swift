@@ -18,6 +18,14 @@ import Combine
 import SwiftTerm
 import Darwin
 
+/// `AnyCancellable` isn't `Sendable` in this SDK, so it can't be captured
+/// directly by `AsyncStream`'s `@Sendable` `onTermination` closure — this
+/// box carries it across that boundary. `.cancel()` is thread-safe by
+/// Combine's own contract, so `@unchecked` is sound here.
+private final class CancellableBox: @unchecked Sendable {
+    var cancellable: AnyCancellable?
+}
+
 // MARK: - Ring storage (any-thread, locked)
 
 /// Append-only output ring with absolute byte cursors, so tool reads are
@@ -206,6 +214,40 @@ final class CoTerminal: NSObject, ObservableObject, Identifiable {
         guard isRunning else { return }
         process.terminate()
     }
+
+    /// Suspends until the process exits or `timeout` elapses, whichever
+    /// comes first — the primitive that makes "did it finish" a single tool
+    /// call instead of the model guessing how long to sleep between polls.
+    /// Awaits `$isRunning` rather than blocking; the main actor stays free
+    /// to service other terminals/UI work for the whole wait.
+    ///
+    /// Bridges the Combine publisher to a `Sendable` `AsyncStream` up front
+    /// (on the main actor, where `$isRunning` lives) so the racing
+    /// `TaskGroup` children never need to capture `self` — a MainActor,
+    /// non-Sendable reference — across the group's `sending` boundary.
+    func waitForExit(timeout: TimeInterval) async -> Bool {
+        if !isRunning { return true }
+        let stream = AsyncStream<Bool> { continuation in
+            let box = CancellableBox()
+            box.cancellable = $isRunning
+                .filter { !$0 }
+                .first()
+                .sink { _ in continuation.yield(false); continuation.finish() }
+            continuation.onTermination = { _ in box.cancellable?.cancel() }
+        }
+        return await withTaskGroup(of: Bool.self) { group in
+            group.addTask {
+                for await _ in stream { return true }
+                return true
+            }
+            group.addTask {
+                try? await Task.sleep(nanoseconds: UInt64(timeout * 1_000_000_000))
+                return false
+            }
+            defer { group.cancelAll() }
+            return await group.next() ?? false
+        }
+    }
 }
 
 // MARK: LocalProcessDelegate (called on ioQueue)
@@ -304,14 +346,39 @@ final class CoTerminalManager: ObservableObject {
         byScope[scope] = nil
     }
 
-    // MARK: Tool dispatch (bridge calls this via main.sync)
+    // MARK: Tool dispatch (bridge calls this from a MainActor Task)
 
-    /// Returns (JSON text payload, isError) for a tools/call.
-    func handleTool(name: String, args: [String: Any], scope: ObjectIdentifier, defaultCwd: String) -> (String, Bool) {
+    /// Longest a single tool call is allowed to block on `wait_seconds` —
+    /// bounded so a stray huge value from the model can't tie up the
+    /// connection indefinitely; the model just calls again to keep waiting.
+    private static let maxWaitSeconds: TimeInterval = 30
+
+    /// Returns (JSON text payload, isError) for a tools/call. `async` so
+    /// terminal_read/terminal_status can honor `wait_seconds` — suspending
+    /// here yields the main actor to other work (other terminals' tool
+    /// calls, UI) for the whole wait, never blocks it.
+    func handleTool(name: String, args: [String: Any], scope: ObjectIdentifier, defaultCwd: String) async -> (String, Bool) {
         func json(_ obj: [String: Any]) -> String {
             guard let d = try? JSONSerialization.data(withJSONObject: obj, options: [.sortedKeys]),
                   let s = String(data: d, encoding: .utf8) else { return "{}" }
             return s
+        }
+        /// Clamped wait_seconds from args, or nil if absent/zero/not running.
+        /// Coerces NSNumber (real JSON-decoded args, always this) and plain
+        /// Int/Double (direct Swift callers, e.g. tests) — `as? Double`
+        /// alone only catches the NSNumber case since Int has no bridging
+        /// cast to Double.
+        func waitSeconds(_ args: [String: Any], _ t: CoTerminal) -> TimeInterval? {
+            guard t.isRunning else { return nil }
+            let raw: Double?
+            switch args["wait_seconds"] {
+            case let n as NSNumber: raw = n.doubleValue
+            case let d as Double: raw = d
+            case let i as Int: raw = Double(i)
+            default: raw = nil
+            }
+            guard let raw, raw > 0 else { return nil }
+            return min(raw, Self.maxWaitSeconds)
         }
         switch name {
         case "terminal_run":
@@ -322,13 +389,14 @@ final class CoTerminalManager: ObservableObject {
             let t = run(command: command, cwd: cwd, scope: scope)
             return (json([
                 "terminal_id": t.id.uuidString,
-                "note": "Terminal opened in a visible pane the user shares. Use terminal_read to see output (poll after writes); ask the user in chat for anything you can't answer. Secure prompts (passwords) are hidden from you — tell the user to type directly."
+                "note": "Terminal opened in a visible pane the user shares. This call returns immediately; the command keeps running in the background. To find out when it finishes, call terminal_read or terminal_status with wait_seconds (e.g. 15) — it blocks until the command exits or that many seconds pass, then reports running:false with exit_code. Do not assume a command is done after one instant read; check the running field and wait again if it's still true."
             ]), false)
 
         case "terminal_read":
             guard let t = requireTerminal(args, scope: scope) else {
                 return (json(["error": "unknown terminal_id"]), true)
             }
+            if let wait = waitSeconds(args, t) { _ = await t.waitForExit(timeout: wait) }
             let since = args["since_cursor"] as? Int
             let r = t.toolRead(since: since)
             var out: [String: Any] = [
@@ -340,6 +408,9 @@ final class CoTerminalManager: ObservableObject {
             if t.secureInput { out["note"] = "[secure input in progress — output withheld; the user must type directly]" }
             if r.gapped { out["note_gap"] = "older output evicted; cursor restarted from available history" }
             if let code = t.exitCode { out["exit_code"] = Int(code) }
+            if t.isRunning && args["wait_seconds"] == nil {
+                out["note_running"] = "still running — call again with wait_seconds to block until it finishes instead of polling blind"
+            }
             return (json(out), false)
 
         case "terminal_write":
@@ -363,6 +434,7 @@ final class CoTerminalManager: ObservableObject {
             guard let t = requireTerminal(args, scope: scope) else {
                 return (json(["error": "unknown terminal_id"]), true)
             }
+            if let wait = waitSeconds(args, t) { _ = await t.waitForExit(timeout: wait) }
             var out: [String: Any] = [
                 "running": t.isRunning,
                 "secure_input": t.secureInput,

@@ -125,7 +125,7 @@ final class CoTerminalTests: XCTestCase {
         XCTAssertEqual(manager.terminal(id: tb.id.uuidString, scope: scopeB)?.id, tb.id, "closing scope A must not touch scope B's terminals")
     }
 
-    func test_manager_toolDispatch_terminalList_isScopeIsolated() {
+    func test_manager_toolDispatch_terminalList_isScopeIsolated() async {
         let manager = CoTerminalManager.shared
         let scopeA = ObjectIdentifier(NSObject())
         let scopeB = ObjectIdentifier(NSObject())
@@ -133,8 +133,38 @@ final class CoTerminalTests: XCTestCase {
 
         _ = manager.run(command: "sleep 5", cwd: NSTemporaryDirectory(), scope: scopeA)
 
-        let (payload, isError) = manager.handleTool(name: "terminal_list", args: [:], scope: scopeB, defaultCwd: NSTemporaryDirectory())
+        let (payload, isError) = await manager.handleTool(name: "terminal_list", args: [:], scope: scopeB, defaultCwd: NSTemporaryDirectory())
         XCTAssertFalse(isError)
         XCTAssertTrue(payload.contains("\"terminals\":[]"), "scope B must not see scope A's terminal via terminal_list: \(payload)")
+    }
+
+    func test_manager_toolDispatch_waitSeconds_blocksUntilExitOrTimeout() async {
+        let manager = CoTerminalManager.shared
+        let scope = ObjectIdentifier(NSObject())
+        defer { manager.closeAll(scope: scope) }
+
+        let t = manager.run(command: "sleep 0.3", cwd: NSTemporaryDirectory(), scope: scope)
+        let start = Date()
+        let (payload, isError) = await manager.handleTool(
+            name: "terminal_status", args: ["terminal_id": t.id.uuidString, "wait_seconds": 5], scope: scope, defaultCwd: NSTemporaryDirectory())
+        let elapsed = Date().timeIntervalSince(start)
+
+        XCTAssertFalse(isError)
+        XCTAssertTrue(payload.contains("\"running\":false"), "should report finished after waiting: \(payload)")
+        XCTAssertTrue(payload.contains("\"exit_code\":0"), "should report the exit code once finished: \(payload)")
+        XCTAssertLessThan(elapsed, 5, "must return as soon as the process exits, not wait the full timeout")
+    }
+
+    func test_manager_toolDispatch_waitSeconds_timesOutOnLongRunningCommand() async {
+        let manager = CoTerminalManager.shared
+        let scope = ObjectIdentifier(NSObject())
+        defer { manager.closeAll(scope: scope) }
+
+        let t = manager.run(command: "sleep 5", cwd: NSTemporaryDirectory(), scope: scope)
+        let (payload, isError) = await manager.handleTool(
+            name: "terminal_status", args: ["terminal_id": t.id.uuidString, "wait_seconds": 0.3], scope: scope, defaultCwd: NSTemporaryDirectory())
+
+        XCTAssertFalse(isError)
+        XCTAssertTrue(payload.contains("\"running\":true"), "still running after the wait elapses, must report true not hang forever: \(payload)")
     }
 }
