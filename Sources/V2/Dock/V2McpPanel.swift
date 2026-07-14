@@ -54,6 +54,10 @@ struct V2McpPanel: View {
     @State private var authHandles: [String: V2AuthHandle] = [:]   // cancel handles
     @State private var authFailedServer: String?   // last server whose sign-in failed
     @State private var authNote: String?
+    /// "Available everywhere" starts collapsed — project-scoped servers are
+    /// the ones actually in play for whatever you're looking at (user
+    /// feedback, 2026-07-14).
+    @State private var showEverywhere = false
     /// One well-designed modal replacing the split between a single inline
     /// button (only ever one action visible at a time) and a right-click
     /// context menu — tapping a configured row opens this with every real
@@ -394,19 +398,25 @@ struct V2McpPanel: View {
                         .padding(.horizontal, 18).padding(.vertical, 20)
                         .frame(maxWidth: .infinity, alignment: .leading)
                 } else {
-                    if !everywhere.isEmpty {
-                        scopeSectionHeader(
-                            title: "Available everywhere",
-                            subtitle: "Configured once, loads in every project you open."
-                        )
-                        serverGroupRows(everywhere)
-                    }
+                    // Project-scoped servers are the ones you actually reach
+                    // for — shown first, always expanded. "Available
+                    // everywhere" used to lead with the SAME weight, which
+                    // read as noise: every global server appeared whether or
+                    // not it had anything to do with the project you're
+                    // looking at (user feedback, 2026-07-14: "so so
+                    // confusing, i want mainly to see my project's scoped
+                    // mcps"). Collapsed by default now — one click away via
+                    // "→ project" activates one into this project's own
+                    // list, which is what actually promotes it here.
                     if !thisProjectOnly.isEmpty {
                         scopeSectionHeader(
-                            title: "This project only",
+                            title: "This project",
                             subtitle: "Scoped just to this project — private to you, or shared with your team."
                         )
                         serverGroupRows(thisProjectOnly)
+                    }
+                    if !everywhere.isEmpty {
+                        everywhereDisclosure(everywhere)
                     }
                 }
                 Text("From .mcp.json (project) and ~/.claude.json (local + user). Start a session to see live connection status.")
@@ -437,6 +447,43 @@ struct V2McpPanel: View {
         .padding(.top, 16)
         .padding(.bottom, 8)
         .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    /// "Available everywhere" — collapsed by default so it doesn't compete
+    /// with the project's own servers. A quiet, click-to-expand row rather
+    /// than a native DisclosureGroup, matching the chip/mono language the
+    /// rest of the panel uses.
+    private func everywhereDisclosure(_ servers: [MCPServer]) -> some View {
+        VStack(alignment: .leading, spacing: 0) {
+            Button { showEverywhere.toggle() } label: {
+                HStack(spacing: 6) {
+                    Image(systemName: showEverywhere ? "chevron.down" : "chevron.right")
+                        .font(.system(size: 8, weight: .medium))
+                        .foregroundColor(v2.faint)
+                    Text("AVAILABLE EVERYWHERE")
+                        .font(.system(size: 10, design: .monospaced))
+                        .kerning(1.2)
+                        .foregroundColor(v2.mute)
+                    Text("· \(servers.count)")
+                        .font(.system(size: 10, design: .monospaced))
+                        .foregroundColor(v2.faint)
+                }
+                .padding(.horizontal, 18)
+                .padding(.top, 16)
+                .padding(.bottom, showEverywhere ? 8 : 4)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            if showEverywhere {
+                Text("Configured once, loads in every project you open. \"→ project\" on any of these moves it up into This project.")
+                    .font(.system(size: 10, design: .monospaced))
+                    .foregroundColor(v2.faint)
+                    .padding(.horizontal, 18)
+                    .padding(.bottom, 8)
+                serverGroupRows(servers)
+            }
+        }
     }
 
     private func serverGroupRows(_ servers: [MCPServer]) -> some View {
