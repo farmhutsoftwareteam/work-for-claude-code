@@ -6,6 +6,24 @@
         <description>Updates for Work</description>
         <language>en</language>
         <item>
+            <title>Version 2.9.13</title>
+            <pubDate>Tue, 14 Jul 2026 22:17:23 +0400</pubDate>
+            <sparkle:version>62</sparkle:version>
+            <sparkle:shortVersionString>2.9.13</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>15.0</sparkle:minimumSystemVersion>
+            <description><![CDATA[
+                <h3>Atelier 2.9.13 — a quieter header</h3>
+                <ul>
+                    <li><b>Removed the chat/terminal toggle button and the running-state dropdown from the header.</b> Neither did anything most people ever used — the toggle switched to an embedded terminal mode nobody reaches for, and the dropdown's only real actions were restarting the session and that same terminal switch. One less thing competing for space up top.</li>
+                </ul>
+            ]]></description>
+            <enclosure
+                url="https://work.munyamakosa.com/Work-2.9.13.dmg"
+                length="13714768"
+                type="application/octet-stream"
+                sparkle:edSignature="eaJMktItH6w04AlkJvlpQRqx84WIWNv0JaEM23lwW0QxVkXVWybOYTfc8XkERnY/ahVqPNunSBJqnVxU556xDA==" />
+        </item>
+        <item>
             <title>Version 2.9.12</title>
             <pubDate>Tue, 14 Jul 2026 21:56:44 +0400</pubDate>
             <sparkle:version>61</sparkle:version>
