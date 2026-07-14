@@ -6,6 +6,24 @@
         <description>Updates for Work</description>
         <language>en</language>
         <item>
+            <title>Version 2.9.15</title>
+            <pubDate>Tue, 14 Jul 2026 23:12:26 +0400</pubDate>
+            <sparkle:version>64</sparkle:version>
+            <sparkle:shortVersionString>2.9.15</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>15.0</sparkle:minimumSystemVersion>
+            <description><![CDATA[
+                <h3>Atelier 2.9.15 — the MCP panel finally shows the right project</h3>
+                <ul>
+                    <li><b>Fixed: the MCP panel could show a completely different project's servers than the one you were actually looking at.</b> Clicking a project in the left rail set which project the panel "remembered" — but clicking between already-open tabs never updated that, so once you'd clicked a project in the rail, the panel kept showing that project's servers no matter which tab you switched to afterward. With a few tabs open across different projects, this made the panel actively lie about what was connected where. It now always reflects whichever tab is actually active.</li>
+                </ul>
+            ]]></description>
+            <enclosure
+                url="https://work.munyamakosa.com/Work-2.9.15.dmg"
+                length="13742691"
+                type="application/octet-stream"
+                sparkle:edSignature="37v53jNlqyHa/5aSFaT6+tozZ/4j4koWajflY340Fv5qNXR4g9GxM0k09eEFmEuanwgvGAsUCVKR2d08QJomBQ==" />
+        </item>
+        <item>
             <title>Version 2.9.14</title>
             <pubDate>Tue, 14 Jul 2026 22:39:41 +0400</pubDate>
             <sparkle:version>63</sparkle:version>
