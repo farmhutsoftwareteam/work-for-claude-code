@@ -46,16 +46,32 @@ enum JSONValue: Codable, Sendable, Equatable {
         }
     }
 
-    /// Pretty-print for inline display in tool widgets.
+    /// Pretty-print for inline display in tool widgets. Any tool NOT
+    /// explicitly modeled by V2LiveToolWidget's target switch falls back to
+    /// this — it used to show an object's KEY NAMES only ("{query}" for a
+    /// WebSearch call, the actual query invisible), which read as broken for
+    /// most of Claude Code's 40 built-in tools. Shows key:value pairs now,
+    /// each side truncated, so an unmapped or future tool still surfaces
+    /// something real instead of a shape with no content.
     var preview: String {
         switch self {
         case .null:            return "null"
         case .bool(let v):     return String(v)
         case .number(let v):   return v.truncatingRemainder(dividingBy: 1) == 0 ? String(Int(v)) : String(v)
-        case .string(let v):   return v
+        case .string(let v):   return Self.truncate(v, to: 80)
         case .array(let arr):  return "[\(arr.count) items]"
-        case .object(let obj): return "{\(obj.keys.sorted().joined(separator: ", "))}"
+        case .object(let obj):
+            if obj.isEmpty { return "{}" }
+            let pairs = obj.keys.sorted().map { key in
+                "\(key): \(Self.truncate(obj[key]!.preview, to: 40))"
+            }
+            return Self.truncate("{\(pairs.joined(separator: ", "))}", to: 140)
         }
+    }
+
+    private static func truncate(_ s: String, to limit: Int) -> String {
+        guard s.count > limit else { return s }
+        return String(s.prefix(limit)) + "…"
     }
 
     /// Walk into a nested field, e.g. `.dig("command")` for a Bash tool input.

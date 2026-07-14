@@ -19,6 +19,16 @@ import OSLog
 
 private let log = Logger(subsystem: "com.munyamakosa.work", category: "session")
 
+/// One row of the session task checklist, accumulated from TaskCreate /
+/// TaskUpdate calls — see StreamSession.taskItems. `status` matches the
+/// tool's own vocabulary: "pending" | "in_progress" | "completed" (and
+/// "deleted", which removes the item rather than being stored as a status).
+struct V2TaskItem: Identifiable, Equatable {
+    let id: String
+    var subject: String
+    var status: String
+}
+
 @MainActor
 final class StreamSession: ObservableObject {
 
@@ -130,6 +140,19 @@ final class StreamSession: ObservableObject {
     /// back to the real command it started. Small and short-lived — an
     /// entry is consumed the moment its matching tool_result arrives.
     private var pendingBashCommands: [String: String] = [:]
+
+    /// Session task checklist — TaskCreate/TaskUpdate replaced TodoWrite as
+    /// Claude Code's default task tool as of v2.1.142. Unlike TodoWrite
+    /// (which resent the WHOLE list every call, so a single call was always
+    /// self-sufficient to render), Task* is incremental: TaskCreate adds one
+    /// task, TaskUpdate mutates one by id — so this has to accumulate across
+    /// calls rather than being read straight off one call's input.
+    @Published private(set) var taskItems: [V2TaskItem] = []
+    /// toolUseId → subject, for a TaskCreate whose assigned numeric id
+    /// hasn't arrived yet — TaskCreate's INPUT has no id, only its RESULT
+    /// text does ("Task #23 created successfully: ..."), so the item can't
+    /// be appended until that result lands. Consumed the moment it does.
+    private var pendingTaskCreates: [String: String] = [:]
 
     /// The models THIS binary supports, reported in the `initialize` reply.
     /// This is the authoritative, always-current list (it's how new models
@@ -308,6 +331,7 @@ final class StreamSession: ObservableObject {
                         // forever (outcome nil = spinner), making an old
                         // conversation read as full of hung tools.
                         toolOutcomes[toolUseId] = (isError ?? false)
+                        recordTaskResult(toolUseId: toolUseId, content: content)
                         // Registry rebuild (#74): spawn acks and agent
                         // results in history repopulate the bg-task and
                         // subagent registries so a restored or OBSERVED
@@ -352,6 +376,7 @@ final class StreamSession: ObservableObject {
                         if name == "Bash" {
                             pendingBashCommands[id] = input.dig("command")?.asString ?? ""
                         }
+                        recordTaskToolUse(id: id, name: name, input: input)
                         if V2SubagentParser.isAgentSpawn(toolName: name),
                            !subagentRuns.contains(where: { $0.toolUseId == id }) {
                             subagentRuns.append(V2SubagentRun(
@@ -400,6 +425,54 @@ final class StreamSession: ObservableObject {
             subagentRuns[idx].finishedAt = Date()
             if let result = done.result { subagentRuns[idx].resultText = result }
         }
+    }
+
+    // MARK: - Task checklist (TaskCreate / TaskUpdate)
+
+    /// Called from BOTH the live and history-preload .toolUse handling for
+    /// TaskCreate/TaskUpdate — same split as everywhere else in this file:
+    /// TaskCreate can't be recorded yet (its id isn't known until the
+    /// result), TaskUpdate applies immediately since it already carries a
+    /// known taskId.
+    private func recordTaskToolUse(id: String, name: String, input: JSONValue) {
+        if name == "TaskCreate" {
+            pendingTaskCreates[id] = input.dig("subject")?.asString ?? "task"
+        } else if name == "TaskUpdate" {
+            applyTaskUpdate(input)
+        }
+    }
+
+    private func applyTaskUpdate(_ input: JSONValue) {
+        guard let taskId = input.dig("taskId")?.asString else { return }
+        // "deleted" removes the task from the checklist entirely rather
+        // than showing a fourth status state nobody asked to see.
+        if input.dig("status")?.asString == "deleted" {
+            taskItems.removeAll { $0.id == taskId }
+            return
+        }
+        guard let idx = taskItems.firstIndex(where: { $0.id == taskId }) else {
+            // Unknown id (e.g. a TaskCreate whose result we failed to
+            // correlate) — nothing to update. Fails closed: never
+            // fabricates a row with no real subject.
+            return
+        }
+        if let status = input.dig("status")?.asString { taskItems[idx].status = status }
+        if let subject = input.dig("subject")?.asString { taskItems[idx].subject = subject }
+    }
+
+    /// Called from BOTH the live and history-preload .toolResult handling —
+    /// resolves a pending TaskCreate now that its assigned id has arrived.
+    /// The id is prose ("Task #23 created successfully: ..."), not a
+    /// structured field, so this degrades gracefully: if the wording ever
+    /// changes and the id can't be parsed, the task just never appears
+    /// rather than guessing an id that could collide with a real one.
+    private func recordTaskResult(toolUseId: String, content: ToolResultContent) {
+        guard let subject = pendingTaskCreates.removeValue(forKey: toolUseId) else { return }
+        let text = content.asString
+        guard let range = text.range(of: #"Task #(\d+)"#, options: .regularExpression) else { return }
+        let taskId = String(text[range].drop(while: { $0 != "#" }).dropFirst())
+        guard !taskItems.contains(where: { $0.id == taskId }) else { return }
+        taskItems.append(V2TaskItem(id: taskId, subject: subject, status: "pending"))
     }
 
     /// Resume a session from history without freezing the UI. Reads + decodes
@@ -1298,6 +1371,7 @@ final class StreamSession: ObservableObject {
                     break
                 case .toolUse(let id, let name, let input):
                     toolStartTimes[id] = Date()
+                    recordTaskToolUse(id: id, name: name, input: input)
                     // Guard against a second .assistant snapshot for the same
                     // turn re-delivering an already-seen tool_use id (seen
                     // after resume/retry) — an unguarded append would leave
@@ -1365,6 +1439,7 @@ final class StreamSession: ObservableObject {
                     // Record the outcome so the originating tool-call row can
                     // show its ✓ / ✗ valence (agent vocabulary).
                     toolOutcomes[toolUseId] = (isError ?? false)
+                    recordTaskResult(toolUseId: toolUseId, content: content)
                     // A subagent spawn's tool_result is either the background
                     // launch ack (run keeps going, grab the agentId) or — for
                     // a synchronous agent — the final report itself. Either

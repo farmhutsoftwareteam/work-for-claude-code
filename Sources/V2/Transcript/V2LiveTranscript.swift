@@ -305,6 +305,7 @@ struct V2LiveTranscript: View {
                              baseDir: session.cwd ?? projectCwd,
                              subagentRuns: runs, sessionDir: sessionDir,
                              toolStartTimes: session.toolStartTimes,
+                             taskItems: session.taskItems,
                              isStreaming: isStreaming)
         case .compactBoundary:
             V2CompactBoundary()
@@ -424,6 +425,10 @@ struct V2AssistantBlock: View {
     var sessionDir: URL? = nil
     /// toolUseId → call start, for the in-flight elapsed readout.
     var toolStartTimes: [String: Date] = [:]
+    /// Session task checklist, current as of now — every TaskCreate/
+    /// TaskUpdate row shows the SAME live list rather than a per-call
+    /// historical snapshot (see V2LiveTaskChecklist's doc comment).
+    var taskItems: [V2TaskItem] = []
     /// This row's text is still growing — see V2MarkdownText.isStreaming.
     var isStreaming: Bool = false
     @State private var buttonHover = false
@@ -509,7 +514,13 @@ struct V2AssistantBlock: View {
                     sessionDir: sessionDir
                 )
             } else if name == "TodoWrite", let todos = input.dig("todos")?.asArray {
-                V2LiveTodoBlock(todos: todos)
+                V2LiveTaskChecklist(items: todos.map {
+                    V2TaskItem(id: $0.dig("content")?.asString ?? UUID().uuidString,
+                               subject: $0.dig("content")?.asString ?? "",
+                               status: $0.dig("status")?.asString ?? "pending")
+                })
+            } else if name == "TaskCreate" || name == "TaskUpdate" {
+                V2LiveTaskChecklist(items: taskItems)
             } else {
                 V2LiveToolWidget(name: name, input: input, outcome: toolOutcomes[id],
                                  startedAt: toolStartTimes[id])
@@ -660,7 +671,7 @@ struct V2LiveToolWidget: View {
     @ViewBuilder
     private var target: some View {
         switch name {
-        case "Bash":
+        case "Bash", "PowerShell":
             V2CommandChip(input.dig("command")?.asString ?? input.preview)
         case "Read", "Edit", "Write", "MultiEdit", "NotebookEdit":
             V2Token(input.dig("file_path")?.asString ?? input.preview)
@@ -675,10 +686,93 @@ struct V2LiveToolWidget: View {
                     V2Token(path)
                 }
             }
+        case "WebFetch":
+            V2Token(input.dig("url")?.asString ?? input.preview)
+        case "Skill":
+            V2Token(input.dig("skill")?.asString ?? input.preview)
+        case "AskUserQuestion":
+            Text(Self.firstQuestionSummary(input))
+                .foregroundColor(v2.ink).lineLimit(1).truncationMode(.middle)
+        case _ where name.hasPrefix("mcp__"):
+            mcpTarget
         default:
-            Text(input.preview)
+            Text(Self.primaryField(for: name, in: input) ?? input.preview)
                 .foregroundColor(v2.ink).lineLimit(1).truncationMode(.middle)
         }
+    }
+
+    /// "server · tool" instead of the raw `mcp__server__tool` name — MCP
+    /// calls used to fall to the exact same generic path as an unhandled
+    /// built-in, with no split between server and tool at all.
+    private var mcpTarget: some View {
+        // mcp__<server>__<tool> — server/tool can themselves contain
+        // underscores, so split only on the double-underscore delimiters,
+        // not every underscore.
+        let stripped = name.hasPrefix("mcp__") ? String(name.dropFirst(5)) : name
+        let components = stripped.components(separatedBy: "__")
+        let server = components.first ?? "mcp"
+        let tool = components.count > 1 ? components.dropFirst().joined(separator: "__") : ""
+        return HStack(spacing: 8) {
+            Text(server).foregroundColor(v2.mute)
+            if !tool.isEmpty {
+                Text("·").foregroundColor(v2.faint)
+                Text(tool).foregroundColor(v2.ink)
+            }
+        }
+        .lineLimit(1).truncationMode(.middle)
+    }
+
+    /// For tools without a fully custom target view, the primary field to
+    /// surface from their JSON input — checked in order, first non-empty
+    /// string wins. Keeps new tools cheap to support: one line here instead
+    /// of a bespoke view. Anything not listed still gets a real (not
+    /// keys-only) preview via JSONValue.preview's fixed object case.
+    private static let primaryFieldsByTool: [String: [String]] = [
+        "Artifact": ["title", "type"],
+        "CronCreate": ["prompt"],
+        "CronDelete": ["id"],
+        "EnterWorktree": ["path"],
+        "ExitPlanMode": ["plan"],
+        "ListMcpResourcesTool": ["server"],
+        "LSP": ["command", "symbol", "file"],
+        "Monitor": ["description", "command"],
+        "PushNotification": ["message", "title"],
+        "ReadMcpResourceTool": ["uri"],
+        "RemoteTrigger": ["action", "name"],
+        "ReportFindings": ["summary"],
+        "ScheduleWakeup": ["reason"],
+        "SendMessage": ["to", "message"],
+        "SendUserFile": ["path", "caption"],
+        "TaskCreate": ["subject"],
+        "TaskGet": ["taskId"],
+        "TaskOutput": ["taskId"],
+        "TaskStop": ["taskId"],
+        "TaskUpdate": ["taskId"],
+        "ToolSearch": ["query"],
+        "WaitForMcpServers": ["servers"],
+        "WebSearch": ["query"],
+        "Workflow": ["name"],
+    ]
+
+    private static func primaryField(for name: String, in input: JSONValue) -> String? {
+        for key in primaryFieldsByTool[name] ?? [] {
+            if let s = input.dig(key)?.asString, !s.isEmpty { return Self.truncate(s) }
+        }
+        return nil
+    }
+
+    private static func firstQuestionSummary(_ input: JSONValue) -> String {
+        guard let questions = input.dig("questions")?.asArray, let first = questions.first else {
+            return input.preview
+        }
+        let q = first.dig("question")?.asString ?? first.dig("header")?.asString ?? "question"
+        let suffix = questions.count > 1 ? " (+\(questions.count - 1) more)" : ""
+        return Self.truncate(q) + suffix
+    }
+
+    private static func truncate(_ s: String, to limit: Int = 90) -> String {
+        guard s.count > limit else { return s }
+        return String(s.prefix(limit)) + "…"
     }
 }
 
@@ -717,18 +811,17 @@ struct V2CommandChip: View {
 
 // MARK: - Todo state block (TodoWrite)
 
-/// The agent-vocabulary todo state block — a TodoWrite call rendered as a
-/// checklist: completed = sage fill + strikethrough, in-progress = pulsing dot,
-/// pending = empty box.
-struct V2LiveTodoBlock: View {
+/// The agent-vocabulary task checklist: completed = sage fill + strikethrough,
+/// in-progress = pulsing dot, pending = empty box. Shared by both TodoWrite
+/// (each call is a complete, self-contained list) and TaskCreate/TaskUpdate
+/// (StreamSession.taskItems accumulates the current state across calls,
+/// since Claude Code v2.1.142+ replaced TodoWrite's "resend everything"
+/// model with incremental create/update calls — see StreamSession's
+/// recordTaskToolUse/recordTaskResult).
+struct V2LiveTaskChecklist: View {
     @Environment(\.v2) private var v2
-    let todos: [JSONValue]
+    let items: [V2TaskItem]
 
-    private struct Todo { let content: String; let status: String }
-    private var items: [Todo] {
-        todos.map { Todo(content: $0.dig("content")?.asString ?? "",
-                         status: $0.dig("status")?.asString ?? "pending") }
-    }
     private var doneCount: Int { items.filter { $0.status == "completed" }.count }
 
     var body: some View {
@@ -740,7 +833,7 @@ struct V2LiveTodoBlock: View {
                 ForEach(Array(items.enumerated()), id: \.offset) { _, t in
                     HStack(alignment: .top, spacing: 10) {
                         box(t.status).padding(.top, 1)
-                        Text(t.content)
+                        Text(t.subject)
                             .font(.system(size: 12.5, design: .monospaced))
                             .strikethrough(t.status == "completed")
                             .foregroundColor(textColor(t.status))
