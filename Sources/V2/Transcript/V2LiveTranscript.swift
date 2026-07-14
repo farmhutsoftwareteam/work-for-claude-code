@@ -693,12 +693,48 @@ struct V2LiveToolWidget: View {
         case "AskUserQuestion":
             Text(Self.firstQuestionSummary(input))
                 .foregroundColor(v2.ink).lineLimit(1).truncationMode(.middle)
+        case "ReportFindings":
+            Text(Self.findingsSummary(input))
+                .foregroundColor(v2.ink).lineLimit(1).truncationMode(.middle)
+        case "WaitForMcpServers":
+            Text(Self.serverListSummary(input))
+                .foregroundColor(v2.ink).lineLimit(1).truncationMode(.middle)
+        // No meaningful arguments to summarise — these are bare "do the
+        // thing" calls, so a plain label beats a preview that would just
+        // show "{}" with no explanation of what's actually happening.
+        case "CronList":
+            Text("list scheduled tasks").foregroundColor(v2.mute)
+        case "EnterPlanMode":
+            Text("entering plan mode").foregroundColor(v2.mute)
+        case "ExitWorktree":
+            Text("exit worktree").foregroundColor(v2.mute)
+        case "ShareOnboardingGuide":
+            Text("sharing onboarding guide").foregroundColor(v2.mute)
+        case "TaskList":
+            Text("list tasks").foregroundColor(v2.mute)
         case _ where name.hasPrefix("mcp__"):
             mcpTarget
         default:
             Text(Self.primaryField(for: name, in: input) ?? input.preview)
                 .foregroundColor(v2.ink).lineLimit(1).truncationMode(.middle)
         }
+    }
+
+    /// ReportFindings' real shape is `findings: [{file, summary, ...}]` —
+    /// the summary text lives inside each array element, not at the top
+    /// level, so a primaryFieldsByTool lookup for "summary" can never match.
+    private static func findingsSummary(_ input: JSONValue) -> String {
+        guard let findings = input.dig("findings")?.asArray, !findings.isEmpty else { return input.preview }
+        let first = findings[0].dig("summary")?.asString ?? "finding"
+        let suffix = findings.count > 1 ? " (+\(findings.count - 1) more)" : ""
+        return Self.truncate(first) + suffix
+    }
+
+    /// `servers` is an array of names, not a string — a primaryFieldsByTool
+    /// lookup (which only unwraps .string) can never match it either.
+    private static func serverListSummary(_ input: JSONValue) -> String {
+        guard let servers = input.dig("servers")?.asArray, !servers.isEmpty else { return input.preview }
+        return servers.compactMap(\.asString).joined(separator: ", ")
     }
 
     /// "server · tool" instead of the raw `mcp__server__tool` name — MCP
@@ -739,17 +775,21 @@ struct V2LiveToolWidget: View {
         "PushNotification": ["message", "title"],
         "ReadMcpResourceTool": ["uri"],
         "RemoteTrigger": ["action", "name"],
-        "ReportFindings": ["summary"],
+        // ReportFindings and WaitForMcpServers are NOT here — their real
+        // fields aren't flat strings (findings[].summary is nested one
+        // level deep; servers is an array, not a string), so a lookup in
+        // this table could never match either. They get their own cases
+        // above instead of a dead entry that looks like coverage but isn't.
         "ScheduleWakeup": ["reason"],
         "SendMessage": ["to", "message"],
         "SendUserFile": ["path", "caption"],
-        "TaskCreate": ["subject"],
+        // TaskCreate/TaskUpdate are NOT here either — both are intercepted
+        // upstream by the checklist routing in V2AssistantBlock.content,
+        // before this switch ever sees them.
         "TaskGet": ["taskId"],
         "TaskOutput": ["taskId"],
         "TaskStop": ["taskId"],
-        "TaskUpdate": ["taskId"],
         "ToolSearch": ["query"],
-        "WaitForMcpServers": ["servers"],
         "WebSearch": ["query"],
         "Workflow": ["name"],
     ]
