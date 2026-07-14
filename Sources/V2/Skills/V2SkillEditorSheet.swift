@@ -129,7 +129,7 @@ struct V2SkillEditorSheet: View {
                 .font(.system(size: 15.5, weight: .medium))
                 .kerning(-0.15)
             if stage == .prompt || stage == .generating {
-                Text("describe it")
+                Text(isNew ? "describe it" : "describe the change")
                     .font(.system(size: 9.5, design: .monospaced))
                     .kerning(0.5)
                     .foregroundColor(v2.mute)
@@ -137,6 +137,22 @@ struct V2SkillEditorSheet: View {
                     .overlay(Rectangle().stroke(v2.line2, lineWidth: 1))
             }
             Spacer()
+            // Edit mode's equivalent of "+ new"'s AI-drafted path — describe
+            // what should change, skill-creator revises the real content
+            // (copied into a scratch dir first), the form comes back
+            // pre-filled with the draft for review. Manual typing in the
+            // form still works exactly as before; this is an alternative
+            // way to fill it in, not a replacement for it.
+            if !isNew && stage == .form {
+                Button { stage = .prompt } label: {
+                    Text("improve with Claude →")
+                        .font(.system(size: 10.5, design: .monospaced))
+                        .foregroundColor(v2.ink)
+                        .underline()
+                }
+                .buttonStyle(.plain)
+                .help("Describe a change in plain language — Claude revises this skill via skill-creator, you review before saving")
+            }
             Button { dismiss() } label: {
                 Image(systemName: "xmark")
                     .font(.system(size: 12, weight: .medium))
@@ -151,7 +167,9 @@ struct V2SkillEditorSheet: View {
     }
 
     private var sheetTitle: String {
-        if stage == .prompt || stage == .generating { return "New skill" }
+        if stage == .prompt || stage == .generating {
+            return isNew ? "New skill" : "Improve skill — \(name)"
+        }
         return isNew ? "New skill" : "Edit skill — \(name)"
     }
 
@@ -162,10 +180,12 @@ struct V2SkillEditorSheet: View {
             Spacer()
             VStack(spacing: 14) {
                 VStack(spacing: 6) {
-                    Text("What should this skill do?")
+                    Text(isNew ? "What should this skill do?" : "What should change?")
                         .font(.system(size: 18, weight: .medium))
                         .kerning(-0.15)
-                    Text("describe it in plain language — Claude drafts the SKILL.md, you review before it saves")
+                    Text(isNew
+                        ? "describe it in plain language — Claude drafts the SKILL.md, you review before it saves"
+                        : "describe the change in plain language — Claude revises the skill via skill-creator, you review before it saves")
                         .font(.system(size: 11.5, design: .monospaced))
                         .foregroundColor(v2.faint)
                 }
@@ -184,8 +204,8 @@ struct V2SkillEditorSheet: View {
                 }
 
                 HStack {
-                    Button("start from a blank template instead") {
-                        isAiGenerated = false
+                    Button(isNew ? "start from a blank template instead" : "cancel") {
+                        if isNew { isAiGenerated = false }
                         stage = .form
                     }
                     .buttonStyle(.plain)
@@ -193,7 +213,7 @@ struct V2SkillEditorSheet: View {
                     .foregroundColor(v2.mute)
                     .underline()
                     Spacer()
-                    Button("generate →") { generate() }
+                    Button(isNew ? "generate →" : "revise →") { generate() }
                         .buttonStyle(.plain)
                         .font(.system(size: 12, design: .monospaced))
                         .foregroundColor(v2.paper)
@@ -215,7 +235,7 @@ struct V2SkillEditorSheet: View {
         VStack(alignment: .leading, spacing: 16) {
             HStack(spacing: 9) {
                 V2PulseDot(size: 7, color: v2.ink)
-                Text("writing SKILL.md from your description…")
+                Text(isNew ? "writing SKILL.md from your description…" : "revising the skill via skill-creator…")
                     .font(.system(size: 11, design: .monospaced))
                     .foregroundColor(v2.mute)
             }
@@ -234,11 +254,13 @@ struct V2SkillEditorSheet: View {
         VStack(spacing: 0) {
             if isAiGenerated {
                 HStack(spacing: 10) {
-                    Text("drafted by Claude from your description — review before saving, nothing is written yet")
+                    Text(isNew
+                        ? "drafted by Claude from your description — review before saving, nothing is written yet"
+                        : "revised by Claude from your description — review before saving, nothing is written yet")
                         .font(.system(size: 11, design: .monospaced))
                         .foregroundColor(v2.add)
                     Spacer()
-                    Button("regenerate") { stage = .prompt }
+                    Button(isNew ? "regenerate" : "revise again") { stage = .prompt }
                         .buttonStyle(.plain)
                         .font(.system(size: 10.5, design: .monospaced))
                         .underline()
@@ -412,8 +434,18 @@ struct V2SkillEditorSheet: View {
         stage = .generating
         generateTask = Task {
             do {
-                let draft = try await V2SkillGenerator.generate(description: aiPromptText, claudeBinary: binary)
-                name = draft.name
+                let draft: V2GeneratedSkill
+                if let editingSkill {
+                    // Edit path: skill-creator revises the REAL current
+                    // content (copied into a scratch dir first, never the
+                    // live file) — name stays whatever it already was,
+                    // editing a skill's name isn't part of this flow.
+                    draft = try await V2SkillGenerator.reviseExisting(
+                        skill: editingSkill, instruction: aiPromptText, claudeBinary: binary)
+                } else {
+                    draft = try await V2SkillGenerator.generate(description: aiPromptText, claudeBinary: binary)
+                    name = draft.name
+                }
                 desc = draft.description
                 whenToUse = draft.whenToUse ?? ""
                 // No forced default — if Claude's draft didn't set a model,
@@ -421,6 +453,7 @@ struct V2SkillEditorSheet: View {
                 model = draft.model
                 bodyText = draft.body
                 isAiGenerated = true
+                aiPromptText = ""   // clear so a second "improve with Claude" round starts fresh
                 stage = .form
             } catch {
                 generationError = error.localizedDescription

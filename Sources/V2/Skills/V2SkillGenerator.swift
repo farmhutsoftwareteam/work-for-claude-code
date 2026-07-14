@@ -93,6 +93,69 @@ enum V2SkillGenerator {
     /// Polls session.state on the run loop until `matches` is true or the
     /// timeout elapses. StreamSession's state is @Published/@MainActor —
     /// this stays off any Combine plumbing and just checks between spawns.
+    /// Same contract as `generate`, but for revising a skill that already
+    /// exists: copies the skill's REAL files (SKILL.md + any references/
+    /// scripts/assets) into the scratch dir so Claude reads the actual
+    /// current content before editing — not just a description of it — then
+    /// asks skill-creator to update it in place per `instruction`. Only
+    /// SKILL.md is harvested back out; the prompt tells Claude to make the
+    /// change there rather than across reference files, so this stays a
+    /// single-file round trip like `generate`'s.
+    static func reviseExisting(
+        skill: ClaudeSkill,
+        instruction: String,
+        claudeBinary: URL,
+        model: String? = nil,
+        timeout: TimeInterval = 90
+    ) async throws -> V2GeneratedSkill {
+        let scratch = FileManager.default.temporaryDirectory
+            .appendingPathComponent("atelier-skill-revise-\(UUID().uuidString.prefix(8))")
+        try FileManager.default.createDirectory(at: scratch, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: scratch) }
+
+        let items = (try? FileManager.default.contentsOfDirectory(
+            at: skill.path, includingPropertiesForKeys: nil
+        )) ?? []
+        for item in items {
+            try? FileManager.default.copyItem(at: item, to: scratch.appendingPathComponent(item.lastPathComponent))
+        }
+
+        let session = StreamSession()
+        defer { session.stop() }
+
+        session.start(cwd: scratch, claudeURL: claudeBinary, model: model, permissionMode: "bypassPermissions")
+        try await waitFor(session: session, state: { $0.isReadyOrLater }, timeout: 20)
+
+        let prompt = """
+        Use the skill-creator skill to update the existing Claude Code skill in this directory. \
+        Its current SKILL.md is already here — read it first, then edit ./SKILL.md in place to \
+        make this change:
+
+        \(instruction)
+
+        Preserve everything that still applies; this is an edit, not a rewrite from scratch. Make \
+        the change within SKILL.md itself — don't edit other files even if present. Keep the same \
+        YAML frontmatter shape (name, description, when_to_use, etc.) unless the change specifically \
+        calls for updating one of those fields. Keep the body under 500 lines. Reply with a short \
+        confirmation once written — no need to show me the content in chat.
+        """
+        session.send(text: prompt)
+        try await waitFor(session: session, state: { $0.isReady }, timeout: timeout)
+
+        if case .terminated(let reason) = session.state {
+            throw V2SkillGeneratorError.sessionFailed(reason)
+        }
+
+        let skillMd = scratch.appendingPathComponent("SKILL.md")
+        guard let content = try? String(contentsOf: skillMd, encoding: .utf8) else {
+            throw V2SkillGeneratorError.noFileWritten
+        }
+        guard let parsed = parse(content) else {
+            throw V2SkillGeneratorError.noFileWritten
+        }
+        return parsed
+    }
+
     private static func waitFor(
         session: StreamSession,
         state matches: (StreamSession.LifecycleState) -> Bool,
