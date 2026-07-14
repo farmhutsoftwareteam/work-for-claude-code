@@ -6,6 +6,27 @@
         <description>Updates for Work</description>
         <language>en</language>
         <item>
+            <title>Version 2.9.10</title>
+            <pubDate>Tue, 14 Jul 2026 20:54:13 +0400</pubDate>
+            <sparkle:version>59</sparkle:version>
+            <sparkle:shortVersionString>2.9.10</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>15.0</sparkle:minimumSystemVersion>
+            <description><![CDATA[
+                <h3>Atelier 2.9.10 — model, effort &amp; permissions, unified</h3>
+                <ul>
+                    <li><b>One control for model, effort, and permissions.</b> The model switcher used to be an inert little chip buried in a faint subline, and effort had no control at all. Both now live in a single bordered pill in the header — click it to see and change all three in one popover. Model and permission changes still take effect on your next message; changing effort restarts the session (a real limit of the CLI, not a shortcut — the app is upfront about it with a red "restarts session" tag).</li>
+                    <li><b>The slash-command palette now shows the real thing.</b> It used to cap out at 10 hand-picked commands. It now reads the session's actual live command list — skills, project commands, everything the binary itself reports — instead of a hardcoded subset.</li>
+                    <li><b>Monitor calls are live now, not a frozen preview.</b> Watching a log, a CI run, or any other background stream via the Monitor tool used to show a static one-line description that never changed. It now shows a real live strip — how long it's been watching, the latest event, and how it ended.</li>
+                    <li><b>MCP servers: click a row, get everything you can do with it.</b> Sign in, edit, and delete used to be split across a single button that only ever showed one option at a time, plus a right-click menu most people never found. Clicking a server now opens one clear menu with every real action in it.</li>
+                </ul>
+            ]]></description>
+            <enclosure
+                url="https://work.munyamakosa.com/Work-2.9.10.dmg"
+                length="13766226"
+                type="application/octet-stream"
+                sparkle:edSignature="KHReYG4WlVHkHd7vwe/kI6PAjfD0SG3HXiPWZaZMz4F8DgNe+YswdlgGkAnIw5iimVj9/GlRWLHLXv4VAu9SAg==" />
+        </item>
+        <item>
             <title>Version 2.9.9</title>
             <pubDate>Tue, 14 Jul 2026 17:32:21 +0400</pubDate>
             <sparkle:version>58</sparkle:version>
