@@ -316,9 +316,19 @@ struct V2McpPanel: View {
     /// already project-bound.
     private func canCopyToProject(_ server: MCPServer) -> Bool {
         guard projectCwd != nil else { return false }
-        switch server.source {
+        return isEverywhereScope(server.source)
+    }
+
+    /// The split the "AVAILABLE EVERYWHERE" / "THIS PROJECT ONLY" section
+    /// headers are built on — the same boundary `canCopyToProject` already
+    /// draws (global + plugin live "above" any one project; local + project
+    /// are bound to just this one), just surfaced as a visible grouping
+    /// instead of small print in each row (user request — the scope words
+    /// alone weren't legible: "global what what stuff lol").
+    private func isEverywhereScope(_ s: MCPServer.Source) -> Bool {
+        switch s {
         case .global, .plugin: return true
-        default: return false
+        case .localUser, .project: return false
         }
     }
 
@@ -345,7 +355,8 @@ struct V2McpPanel: View {
 
     private var configuredContent: some View {
         let servers = configuredServers
-        let groups = Self.grouped(servers) { self.serviceKey(configured: $0) }
+        let everywhere = servers.filter { isEverywhereScope($0.source) }
+        let thisProjectOnly = servers.filter { !isEverywhereScope($0.source) }
         return ScrollView {
             VStack(alignment: .leading, spacing: 0) {
                 if servers.isEmpty {
@@ -355,16 +366,19 @@ struct V2McpPanel: View {
                         .padding(.horizontal, 18).padding(.vertical, 20)
                         .frame(maxWidth: .infinity, alignment: .leading)
                 } else {
-                    ForEach(Array(groups.enumerated()), id: \.offset) { _, group in
-                        if let label = group.label {
-                            serviceHeader(label, count: group.members.count)
-                            let labels = Self.memberLabels(group.members.map(\.name))
-                            ForEach(Array(group.members.enumerated()), id: \.element.id) { idx, server in
-                                configuredRow(server, memberLabel: labels[idx], indented: true)
-                            }
-                        } else {
-                            ForEach(group.members, id: \.id) { configuredRow($0) }
-                        }
+                    if !everywhere.isEmpty {
+                        scopeSectionHeader(
+                            title: "Available everywhere",
+                            subtitle: "Configured once, loads in every project you open."
+                        )
+                        serverGroupRows(everywhere)
+                    }
+                    if !thisProjectOnly.isEmpty {
+                        scopeSectionHeader(
+                            title: "This project only",
+                            subtitle: "Scoped just to this project — private to you, or shared with your team."
+                        )
+                        serverGroupRows(thisProjectOnly)
                     }
                 }
                 Text("From .mcp.json (project) and ~/.claude.json (local + user). Start a session to see live connection status.")
@@ -374,6 +388,41 @@ struct V2McpPanel: View {
                     .padding(.horizontal, 18).padding(.vertical, 14)
             }
             .padding(.vertical, 8)
+        }
+    }
+
+    /// The outer "which world does this belong to" division — the service
+    /// grouping (linear-garman/hubflo/khayalo as one "linear" header) nests
+    /// INSIDE each of these, so the hierarchy reads scope → service →
+    /// account, biggest distinction first.
+    private func scopeSectionHeader(title: String, subtitle: String) -> some View {
+        VStack(alignment: .leading, spacing: 3) {
+            Text(title.uppercased())
+                .font(.system(size: 10, design: .monospaced))
+                .kerning(1.2)
+                .foregroundColor(v2.mute)
+            Text(subtitle)
+                .font(.system(size: 10, design: .monospaced))
+                .foregroundColor(v2.faint)
+        }
+        .padding(.horizontal, 18)
+        .padding(.top, 16)
+        .padding(.bottom, 8)
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private func serverGroupRows(_ servers: [MCPServer]) -> some View {
+        let groups = Self.grouped(servers) { self.serviceKey(configured: $0) }
+        return ForEach(Array(groups.enumerated()), id: \.offset) { _, group in
+            if let label = group.label {
+                serviceHeader(label, count: group.members.count)
+                let labels = Self.memberLabels(group.members.map(\.name))
+                ForEach(Array(group.members.enumerated()), id: \.element.id) { idx, server in
+                    configuredRow(server, memberLabel: labels[idx], indented: true)
+                }
+            } else {
+                ForEach(group.members, id: \.id) { configuredRow($0) }
+            }
         }
     }
 
@@ -760,12 +809,16 @@ struct V2McpPanel: View {
         }
     }
 
+    /// Plain-language row subtext — no "user"/"local"/"project" internals.
+    /// The section header already carries the everywhere-vs-this-project
+    /// split; this distinguishes WHY within that (private vs shared, or
+    /// which plugin it came from).
     private func scopeLabel(_ s: MCPServer.Source) -> String {
         switch s {
-        case .global:        return "user"
-        case .localUser:     return "local"
-        case .project:       return "project"
-        case .plugin(let n): return "plugin · \(n)"
+        case .global:        return "all projects"
+        case .localUser:     return "private to you"
+        case .project:       return "shared with team"
+        case .plugin(let n): return "plugin: \(n)"
         }
     }
 
@@ -913,14 +966,14 @@ struct V2McpPanel: View {
     private func scopeHint(_ name: String) -> String {
         if name.hasPrefix("plugin:") {
             let parts = name.split(separator: ":")
-            if parts.count >= 2 { return "plugin · \(parts[1])" }
+            if parts.count >= 2 { return "plugin: \(parts[1])" }
             return "plugin"
         }
         if name.contains(":") {
             let parts = name.split(separator: ":")
             return parts.dropLast().joined(separator: " · ")
         }
-        return "user scope"
+        return "all projects"
     }
 }
 
