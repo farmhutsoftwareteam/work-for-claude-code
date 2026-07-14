@@ -155,6 +155,19 @@ struct V2ChipButton: View {
                 .overlay(Rectangle().stroke(prominent ? v2.ink : v2.line2, lineWidth: 1))
                 .contentShape(Rectangle())
         }
-        .buttonStyle(.plain)
+        .buttonStyle(V2ChipButtonStyle())
+    }
+}
+
+/// `.plain` gives zero visual feedback on macOS — a tap that kicks off async
+/// work (sheet transitions, subprocess spawns) then reads as unresponsive
+/// until that work finishes. This dims + settles instantly on mouse-down so
+/// every chip button acknowledges the click before anything else happens.
+private struct V2ChipButtonStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .opacity(configuration.isPressed ? 0.5 : 1)
+            .scaleEffect(configuration.isPressed ? 0.96 : 1)
+            .animation(.easeOut(duration: 0.08), value: configuration.isPressed)
     }
 }

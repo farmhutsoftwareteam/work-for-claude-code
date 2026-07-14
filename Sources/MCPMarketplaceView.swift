@@ -12,6 +12,15 @@ struct MCPMarketplaceView: View {
     @State private var errorMessage: String?
     @State private var expanded: Set<String> = []
     @State private var searchTask: Task<Void, Never>?
+    /// The identifier just tapped — flips its row to "installing…" so the
+    /// click reads as acknowledged through the two back-to-back sheet
+    /// transitions (this sheet dismissing, then the editor sheet presenting
+    /// from the parent's onDismiss) before the editor actually appears. Only
+    /// ever set on the guaranteed-success path (right before `dismiss()`),
+    /// so it can never get stuck — a `makeDraft` failure leaves the row as a
+    /// tappable "install" and surfaces `installError` instead.
+    @State private var installingIdentifier: String?
+    @State private var installError: String?
 
     var body: some View {
         VStack(spacing: 0) {
@@ -85,6 +94,14 @@ struct MCPMarketplaceView: View {
         .onDisappear {
             searchTask?.cancel()
             searchTask = nil
+        }
+        .alert("Couldn't install", isPresented: Binding(
+            get: { installError != nil },
+            set: { if !$0 { installError = nil } }
+        )) {
+            Button("OK") { installError = nil }
+        } message: {
+            Text(installError ?? "")
         }
     }
 
@@ -173,11 +190,15 @@ struct MCPMarketplaceView: View {
                     label: pkg.registryType.uppercased(),
                     labelColor: .orange,
                     identifier: pkg.identifier,
-                    envRequirements: pkg.environmentVariables.map { ($0.name, $0.isRequired) }
+                    envRequirements: pkg.environmentVariables.map { ($0.name, $0.isRequired) },
+                    isInstalling: installingIdentifier == pkg.identifier
                 ) {
                     if let draft = MCPRegistry.makeDraft(from: mcp, package: pkg) {
+                        installingIdentifier = pkg.identifier
                         onInstall(draft)
                         dismiss()
+                    } else {
+                        installError = "Couldn't install \"\(pkg.identifier)\" — the registry entry looks malformed."
                     }
                 }
             }
@@ -189,11 +210,15 @@ struct MCPMarketplaceView: View {
                     label: rem.type == "sse" ? "SSE" : "HTTP",
                     labelColor: rem.type == "sse" ? .cyan : .blue,
                     identifier: rem.url,
-                    envRequirements: rem.headers.map { ($0.name, $0.isRequired) }
+                    envRequirements: rem.headers.map { ($0.name, $0.isRequired) },
+                    isInstalling: installingIdentifier == rem.url
                 ) {
                     if let draft = MCPRegistry.makeDraft(from: mcp, remote: rem) {
+                        installingIdentifier = rem.url
                         onInstall(draft)
                         dismiss()
+                    } else {
+                        installError = "Couldn't install \"\(rem.url)\" — the registry entry looks malformed."
                     }
                 }
             }
@@ -220,6 +245,7 @@ struct MCPMarketplaceView: View {
         labelColor: Color,
         identifier: String,
         envRequirements: [(String, Bool)],
+        isInstalling: Bool = false,
         onInstall: @escaping () -> Void
     ) -> some View {
         HStack(spacing: 10) {
@@ -259,7 +285,15 @@ struct MCPMarketplaceView: View {
 
             Spacer()
 
-            V2ChipButton(label: "install", prominent: true, action: onInstall)
+            if isInstalling {
+                Text("installing…")
+                    .font(.system(size: 11, design: .monospaced))
+                    .foregroundStyle(.secondary)
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 5)
+            } else {
+                V2ChipButton(label: "install", prominent: true, action: onInstall)
+            }
         }
         .padding(10)
         .background(Color.primary.opacity(0.03), in: RoundedRectangle(cornerRadius: 6))

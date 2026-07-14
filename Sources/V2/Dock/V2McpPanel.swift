@@ -38,6 +38,10 @@ struct V2McpPanel: View {
     /// broken" and "delete it and set it up properly."
     @State private var pendingDelete: (name: String, scope: MCPConfigWriter.Scope)?
     @State private var deleteError: String?
+    /// Names currently mid-delete — drives the row's "deleting…" indicator.
+    /// Cleared in a `defer` so it resets on both success (row then vanishes
+    /// on the next `store.load()`) and failure (row reverts, alert explains).
+    @State private var deletingServers: Set<String> = []
     /// Edit an existing server in place — fixing a broken one (wrong/empty
     /// credential) without losing its identity, vs. delete-then-recreate.
     @State private var editingServer: (server: MCPServer, scope: MCPConfigWriter.Scope)?
@@ -126,7 +130,9 @@ struct V2McpPanel: View {
                 Button("Delete \"\(pending.name)\"", role: .destructive) {
                     let (name, scope) = pending
                     pendingDelete = nil
+                    deletingServers.insert(name)
                     Task {
+                        defer { deletingServers.remove(name) }
                         do {
                             try await Task.detached(priority: .userInitiated) {
                                 try MCPConfigWriter.delete(name: name, scope: scope)
@@ -375,6 +381,7 @@ struct V2McpPanel: View {
         let oauth = isOAuthCapable(server.transport)
         let needsAuth = oauth && store.mcpNeedsAuth.contains(server.name)
         let signedIn = oauth && !needsAuth   // OAuth-capable and NOT in needs-auth cache
+        let isDeleting = deletingServers.contains(server.name)
         return HStack(spacing: 11) {
             // Grouped members indent under their service header and show
             // just the differentiating suffix ("garman", not
@@ -395,68 +402,80 @@ struct V2McpPanel: View {
                     .foregroundColor(v2.faint)
             }
             Spacer()
-            // The Supabase plugin row gets its OWN headline action — sign
-            // in, then pick a real project from a list, instead of typing a
-            // project_ref by hand. Takes priority over the generic "→
-            // project" copy-down (which would otherwise ALSO show here,
-            // since a plugin row is copy-down-eligible too).
-            if isSupabasePluginServer(server), projectCwd != nil {
-                Button { connectSupabaseWithPicker() } label: {
-                    Text("connect →")
+            if isDeleting {
+                HStack(spacing: 6) {
+                    V2PulseDot(size: 6, color: v2.mute)
+                    Text("deleting…")
                         .font(.system(size: 10, design: .monospaced))
-                        .foregroundColor(v2.ink)
+                        .foregroundColor(v2.mute)
                 }
-                .buttonStyle(.plain)
-                .help("Sign in and pick a real Supabase project — no project_ref to type or find")
-            } else if canCopyToProject(server) {
-                // User-scope and plugin servers get a quiet "→ project"
-                // affordance: copy this entry down to the selected
-                // project's local scope (same name = per-project override
-                // via scope precedence). Only shown when a project is
-                // actually selected to copy into.
-                Button { useInProjectServer = server } label: {
-                    Text("→ project")
-                        .font(.system(size: 10, design: .monospaced))
+            } else {
+                // The Supabase plugin row gets its OWN headline action — sign
+                // in, then pick a real project from a list, instead of typing a
+                // project_ref by hand. Takes priority over the generic "→
+                // project" copy-down (which would otherwise ALSO show here,
+                // since a plugin row is copy-down-eligible too).
+                if isSupabasePluginServer(server), projectCwd != nil {
+                    Button { connectSupabaseWithPicker() } label: {
+                        Text("connect →")
+                            .font(.system(size: 10, design: .monospaced))
+                            .foregroundColor(v2.ink)
+                    }
+                    .buttonStyle(.plain)
+                    .help("Sign in and pick a real Supabase project — no project_ref to type or find")
+                } else if canCopyToProject(server) {
+                    // User-scope and plugin servers get a quiet "→ project"
+                    // affordance: copy this entry down to the selected
+                    // project's local scope (same name = per-project override
+                    // via scope precedence). Only shown when a project is
+                    // actually selected to copy into.
+                    Button { useInProjectServer = server } label: {
+                        Text("→ project")
+                            .font(.system(size: 10, design: .monospaced))
+                            .foregroundColor(v2.faint)
+                    }
+                    .buttonStyle(.plain)
+                    .help("Use in this project — copy this server to project scope so you can point it at this project's resources (e.g. a Supabase project_ref)")
+                }
+                // Only servers that ACTUALLY need auth (per claude's needs-auth
+                // cache) get a Sign in button. Signed-in OAuth servers read "signed
+                // in"; stdio servers (no auth) read "configured".
+                if needsAuth {
+                    authButton(server.name)
+                } else if signedIn {
+                    Text("signed in")
+                        .font(.system(size: 11, design: .monospaced))
+                        .foregroundColor(v2.mute)
+                } else {
+                    Text("configured")
+                        .font(.system(size: 11, design: .monospaced))
                         .foregroundColor(v2.faint)
                 }
-                .buttonStyle(.plain)
-                .help("Use in this project — copy this server to project scope so you can point it at this project's resources (e.g. a Supabase project_ref)")
-            }
-            // Only servers that ACTUALLY need auth (per claude's needs-auth
-            // cache) get a Sign in button. Signed-in OAuth servers read "signed
-            // in"; stdio servers (no auth) read "configured".
-            if needsAuth {
-                authButton(server.name)
-            } else if signedIn {
-                Text("signed in")
-                    .font(.system(size: 11, design: .monospaced))
-                    .foregroundColor(v2.mute)
-            } else {
-                Text("configured")
-                    .font(.system(size: 11, design: .monospaced))
-                    .foregroundColor(v2.faint)
             }
         }
         .padding(.horizontal, 18).padding(.vertical, 13)
         .frame(maxWidth: .infinity, alignment: .leading)
+        .opacity(isDeleting ? 0.5 : 1)
         .overlay(alignment: .bottom) { Rectangle().fill(v2.line).frame(height: 1) }
         .contextMenu {
-            if isSupabasePluginServer(server), projectCwd != nil {
-                Button("Connect & choose project…") { connectSupabaseWithPicker() }
-            } else if canCopyToProject(server) {
-                Button("Use in this project…") { useInProjectServer = server }
-            }
-            // Re-auth escape hatch: the inline button only exists while the
-            // needs-auth cache flags the server, but "switch account" /
-            // "token expired but cache hasn't noticed" are real cases.
-            if oauth {
-                Button("Sign in again…") { authenticate(server.name) }
-            }
-            if let scope = scope(for: server) {
-                Button("Edit…") { editingServer = (server, scope) }
-                Divider()
-                Button("Delete…", role: .destructive) {
-                    pendingDelete = (name: server.name, scope: scope)
+            if !isDeleting {
+                if isSupabasePluginServer(server), projectCwd != nil {
+                    Button("Connect & choose project…") { connectSupabaseWithPicker() }
+                } else if canCopyToProject(server) {
+                    Button("Use in this project…") { useInProjectServer = server }
+                }
+                // Re-auth escape hatch: the inline button only exists while the
+                // needs-auth cache flags the server, but "switch account" /
+                // "token expired but cache hasn't noticed" are real cases.
+                if oauth {
+                    Button("Sign in again…") { authenticate(server.name) }
+                }
+                if let scope = scope(for: server) {
+                    Button("Edit…") { editingServer = (server, scope) }
+                    Divider()
+                    Button("Delete…", role: .destructive) {
+                        pendingDelete = (name: server.name, scope: scope)
+                    }
                 }
             }
         }
@@ -630,6 +649,13 @@ struct V2McpPanel: View {
     /// (browser, banner, cancel, stale-registration self-heal) rather than
     /// duplicating it.
     private func connectSupabaseWithPicker() {
+        // Checked up front — the picker sheet has no "binary missing" body
+        // of its own, so without this guard a nil binary here would present
+        // a blank sheet instead of an explanation.
+        guard appState.claudeBinary != nil else {
+            supabasePickerError = "Can't find the claude binary."
+            return
+        }
         guard store.mcpNeedsAuth.contains("plugin:supabase:supabase") else {
             showingSupabasePicker = true
             return
