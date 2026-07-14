@@ -41,12 +41,24 @@ struct V2McpPanel: View {
     /// Edit an existing server in place — fixing a broken one (wrong/empty
     /// credential) without losing its identity, vs. delete-then-recreate.
     @State private var editingServer: (server: MCPServer, scope: MCPConfigWriter.Scope)?
+    /// Supabase project picker: sign in first (reuses authenticate(_:)),
+    /// then list_projects, then hand the pick straight into the SAME
+    /// prefilled-editor flow the marketplace already uses.
+    @State private var showingSupabasePicker = false
+    @State private var supabasePickerError: String?
     @State private var authing: Set<String> = []   // servers mid sign-in
     @State private var authHandles: [String: V2AuthHandle] = [:]   // cancel handles
     @State private var authFailedServer: String?   // last server whose sign-in failed
     @State private var authNote: String?
 
+    /// Split from `body` because a single modifier chain this long makes the
+    /// type checker time out — two smaller expressions check independently.
     var body: some View {
+        withPickerSheets(baseBody)
+            .enableInjection()
+    }
+
+    private var baseBody: some View {
         VStack(spacing: 0) {
             header
             if let note = authNote { authBanner(note) }
@@ -135,18 +147,43 @@ struct V2McpPanel: View {
         } message: {
             Text(deleteError ?? "")
         }
-        .sheet(item: $useInProjectServer) { server in
-            if let cwd = projectCwd {
-                MCPEditor(mode: .useInProject(draft: .from(server), cwd: cwd),
-                          onSavedDraft: { draft, _ in maybeAutoSignIn(draft) }) {
-                    useInProjectServer = nil
-                    Task { await store.load() }
+    }
+
+    @ViewBuilder
+    private func withPickerSheets<Content: View>(_ content: Content) -> some View {
+        content
+            .sheet(isPresented: $showingSupabasePicker) {
+                if let binary = appState.claudeBinary {
+                    V2SupabaseProjectPicker(claudeBinary: binary) { project, readOnly in
+                        var url = "https://mcp.supabase.com/mcp?project_ref=\(project.id)"
+                        if readOnly { url += "&read_only=true" }
+                        let slug = project.name
+                            .lowercased()
+                            .map { $0.isLetter || $0.isNumber ? $0 : "-" }
+                            .reduce(into: "") { $0.append($1) }
+                        marketplaceInstallDraft = MCPDraft(name: "supabase-\(slug)", transport: .http(url: url))
+                    }
                 }
-                .environmentObject(store)
-                .frame(minWidth: 560, minHeight: 600)
             }
-        }
-        .enableInjection()
+            .alert("Couldn't list your Supabase projects", isPresented: Binding(
+                get: { supabasePickerError != nil },
+                set: { if !$0 { supabasePickerError = nil } }
+            )) {
+                Button("OK") { supabasePickerError = nil }
+            } message: {
+                Text(supabasePickerError ?? "")
+            }
+            .sheet(item: $useInProjectServer) { server in
+                if let cwd = projectCwd {
+                    MCPEditor(mode: .useInProject(draft: .from(server), cwd: cwd),
+                              onSavedDraft: { draft, _ in maybeAutoSignIn(draft) }) {
+                        useInProjectServer = nil
+                        Task { await store.load() }
+                    }
+                    .environmentObject(store)
+                    .frame(minWidth: 560, minHeight: 600)
+                }
+            }
     }
 
     /// `.sheet(item:)` needs Identifiable; MCPDraft doesn't conform (it's a
@@ -358,12 +395,25 @@ struct V2McpPanel: View {
                     .foregroundColor(v2.faint)
             }
             Spacer()
-            // User-scope and plugin servers get a quiet "→ project"
-            // affordance: copy this entry down to the selected project's
-            // local scope (same name = per-project override via scope
-            // precedence). Only shown when a project is selected to copy
-            // into.
-            if canCopyToProject(server) {
+            // The Supabase plugin row gets its OWN headline action — sign
+            // in, then pick a real project from a list, instead of typing a
+            // project_ref by hand. Takes priority over the generic "→
+            // project" copy-down (which would otherwise ALSO show here,
+            // since a plugin row is copy-down-eligible too).
+            if isSupabasePluginServer(server), projectCwd != nil {
+                Button { connectSupabaseWithPicker() } label: {
+                    Text("connect →")
+                        .font(.system(size: 10, design: .monospaced))
+                        .foregroundColor(v2.ink)
+                }
+                .buttonStyle(.plain)
+                .help("Sign in and pick a real Supabase project — no project_ref to type or find")
+            } else if canCopyToProject(server) {
+                // User-scope and plugin servers get a quiet "→ project"
+                // affordance: copy this entry down to the selected
+                // project's local scope (same name = per-project override
+                // via scope precedence). Only shown when a project is
+                // actually selected to copy into.
                 Button { useInProjectServer = server } label: {
                     Text("→ project")
                         .font(.system(size: 10, design: .monospaced))
@@ -391,7 +441,9 @@ struct V2McpPanel: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .overlay(alignment: .bottom) { Rectangle().fill(v2.line).frame(height: 1) }
         .contextMenu {
-            if canCopyToProject(server) {
+            if isSupabasePluginServer(server), projectCwd != nil {
+                Button("Connect & choose project…") { connectSupabaseWithPicker() }
+            } else if canCopyToProject(server) {
                 Button("Use in this project…") { useInProjectServer = server }
             }
             // Re-auth escape hatch: the inline button only exists while the
@@ -562,6 +614,38 @@ struct V2McpPanel: View {
         authHandles[name]?.cancel()
     }
 
+    /// The official Supabase plugin's OWN row — the one whose real name is
+    /// exactly what SupabaseProjectDiscovery reuses for credential sharing.
+    /// "Connect & choose project…" only makes sense here, not on a
+    /// hand-typed http server that merely happens to point at the same host
+    /// (its name won't match, so the discovery call's sign-in bet doesn't
+    /// apply to it).
+    private func isSupabasePluginServer(_ server: MCPServer) -> Bool {
+        if case .plugin = server.source { return server.name == "plugin:supabase:supabase" }
+        return false
+    }
+
+    /// Sign in to the account-wide connection first (list_projects needs
+    /// it), THEN open the picker — reuses authenticate(_:)'s whole flow
+    /// (browser, banner, cancel, stale-registration self-heal) rather than
+    /// duplicating it.
+    private func connectSupabaseWithPicker() {
+        guard store.mcpNeedsAuth.contains("plugin:supabase:supabase") else {
+            showingSupabasePicker = true
+            return
+        }
+        authenticate("plugin:supabase:supabase") { result in
+            switch result {
+            case .ok, .connectorPending:
+                showingSupabasePicker = true
+            case .cancelled:
+                break   // authNote already explains it; no extra alert
+            case .timedOut, .failed:
+                supabasePickerError = "Sign-in didn't complete, so there's no account to list projects from yet. Try \"sign in\" again, then re-open the picker."
+            }
+        }
+    }
+
     /// Auto-start OAuth sign-in right after a remote server is saved —
     /// adding is the intent to use, and without this the sign-in button
     /// doesn't even EXIST yet (it's gated on claude's needs-auth cache,
@@ -582,8 +666,15 @@ struct V2McpPanel: View {
         authenticate(draft.name)
     }
 
-    private func authenticate(_ name: String) {
-        guard let binary = appState.claudeBinary else { authNote = "Can't find the claude binary."; return }
+    /// `onComplete` lets a caller wait for the OUTCOME (not just fire-and-
+    /// forget the UI banner) — the Supabase project picker needs to know
+    /// sign-in actually succeeded before it's safe to call list_projects.
+    private func authenticate(_ name: String, onComplete: ((V2MCPAuthResult) -> Void)? = nil) {
+        guard let binary = appState.claudeBinary else {
+            authNote = "Can't find the claude binary."
+            onComplete?(.failed(output: "claude binary not found"))
+            return
+        }
         let cwd = projectCwd ?? NSHomeDirectory()
         // ALWAYS reset the CLI's cached OAuth state (`claude mcp logout`)
         // before signing in. Providers expire the DYNAMIC CLIENT REGISTRATION
@@ -606,6 +697,7 @@ struct V2McpPanel: View {
             let result = await V2MCPAuth.login(claudeBinary: binary, name: name, cwd: cwd, handle: handle)
             authing.remove(name)
             authHandles[name] = nil
+            onComplete?(result)
             switch result {
             case .ok:
                 // Refresh auth state from claude's own cache FIRST (cheap, sync,
