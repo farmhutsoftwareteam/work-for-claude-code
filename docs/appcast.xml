@@ -6,6 +6,24 @@
         <description>Updates for Work</description>
         <language>en</language>
         <item>
+            <title>Version 2.9.16</title>
+            <pubDate>Wed, 15 Jul 2026 00:44:30 +0400</pubDate>
+            <sparkle:version>65</sparkle:version>
+            <sparkle:shortVersionString>2.9.16</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>15.0</sparkle:minimumSystemVersion>
+            <description><![CDATA[
+                <h3>Atelier 2.9.16 — MCP install/delete stop hanging</h3>
+                <ul>
+                    <li><b>Fixed: installing or deleting an MCP server could leave the button stuck on "saving…"/"deleting…" long after it actually finished.</b> Both were waiting on a full reload of every project's config before clearing their loading state, instead of on the actual save/delete — which had already completed. The server would show up correctly if you backed out and checked, but the button itself looked hung the whole time. Both now clear the instant the real write finishes.</li>
+                </ul>
+            ]]></description>
+            <enclosure
+                url="https://work.munyamakosa.com/Work-2.9.16.dmg"
+                length="13742975"
+                type="application/octet-stream"
+                sparkle:edSignature="JCxJKF6sEaP85p9PGqbZKApLTTEiMmeFcoTHRJRI9WOyEGkMlbe90CThDN/MMMcwcnDoS1TSagvPKBzA8G5vDQ==" />
+        </item>
+        <item>
             <title>Version 2.9.15</title>
             <pubDate>Tue, 14 Jul 2026 23:12:26 +0400</pubDate>
             <sparkle:version>64</sparkle:version>
