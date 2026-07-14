@@ -20,6 +20,15 @@ struct V2ComposerTextView: NSViewRepresentable {
 
     @Binding var text: String
     @Binding var focused: Bool
+    /// Caret position, AppKit → SwiftUI only — updated on every real
+    /// selection change so trigger detection can read "what's around the
+    /// cursor" instead of assuming it's always at the end of the draft.
+    @Binding var cursorPosition: Int
+    /// SwiftUI → AppKit one-shot: set alongside a programmatic `text` edit
+    /// (a splice) to land the caret at a specific spot instead of the
+    /// default "clamp the old selection into the new bounds" behavior.
+    /// Consumed and reset to nil the next time `updateNSView` sees it.
+    @Binding var pendingCursorTarget: Int?
     let placeholder: String
     let isEnabled: Bool
     let foregroundColor: NSColor
@@ -116,7 +125,19 @@ struct V2ComposerTextView: NSViewRepresentable {
         if tv.string != text {
             let selected = tv.selectedRange()
             tv.string = text
-            tv.setSelectedRange(NSRange(location: min(selected.location, text.count), length: 0))
+            // NSRange/selectedRange are UTF-16 offsets — text.count (grapheme
+            // clusters) undercounts for any multi-UTF16-unit character
+            // (emoji, some CJK), which would clamp the caret short and throw
+            // off the pendingCursorTarget math splice/dismiss now rely on.
+            let length = (text as NSString).length
+            // A pending target (set alongside a programmatic splice) wins
+            // over "clamp the old selection" — that default is only right
+            // when the text changed for some OTHER external reason.
+            let target = pendingCursorTarget ?? min(selected.location, length)
+            tv.setSelectedRange(NSRange(location: min(max(0, target), length), length: 0))
+            if pendingCursorTarget != nil {
+                DispatchQueue.main.async { pendingCursorTarget = nil }
+            }
         }
         if tv.textColor != foregroundColor { tv.textColor = foregroundColor }
         if tv.placeholderColor != placeholderColor { tv.placeholderColor = placeholderColor }
@@ -139,7 +160,7 @@ struct V2ComposerTextView: NSViewRepresentable {
     }
 
     func makeCoordinator() -> Coordinator {
-        Coordinator(text: $text, focused: $focused)
+        Coordinator(text: $text, focused: $focused, cursor: $cursorPosition)
     }
 
     // MARK: - Coordinator
@@ -147,6 +168,7 @@ struct V2ComposerTextView: NSViewRepresentable {
     final class Coordinator: NSObject, NSTextViewDelegate {
         var textBinding: Binding<String>
         var focusedBinding: Binding<Bool>
+        var cursorBinding: Binding<Int>
         weak var textView: NSTextView?
         var submitCallback: () -> Void = {}
         var imageCallback: (NSImage) -> Void = { _ in }
@@ -160,9 +182,24 @@ struct V2ComposerTextView: NSViewRepresentable {
         /// only when this flips false→true (rising edge).
         var lastFocusRequest = false
 
-        init(text: Binding<String>, focused: Binding<Bool>) {
+        init(text: Binding<String>, focused: Binding<Bool>, cursor: Binding<Int>) {
             self.textBinding = text
             self.focusedBinding = focused
+            self.cursorBinding = cursor
+        }
+
+        /// Fires on every selection change, including as a side effect of
+        /// typing — the live source of truth for "where's the caret right
+        /// now," which trigger detection reads. Deferred: this can fire
+        /// synchronously from `setSelectedRange` called inside
+        /// `updateNSView` (the pendingCursorTarget consumption above), and
+        /// mutating a binding synchronously from within a view update
+        /// triggers a SwiftUI "modified during update" warning.
+        func textViewDidChangeSelection(_ notification: Notification) {
+            guard let tv = notification.object as? NSTextView else { return }
+            let loc = tv.selectedRange().location
+            guard cursorBinding.wrappedValue != loc else { return }
+            DispatchQueue.main.async { [cursorBinding] in cursorBinding.wrappedValue = loc }
         }
 
         func textDidChange(_ notification: Notification) {

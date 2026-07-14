@@ -79,13 +79,45 @@ struct V2SlashCommand: Identifiable, Equatable {
     var id: String { name }
     var takesArguments: Bool { argumentHint != nil }
 
+    /// Declared explicitly — adding the `agentReported` initializer below
+    /// suppresses Swift's synthesized memberwise init, which `builtins`'
+    /// `.init(name:desc:category:kind:argumentHint:)` array literal needs.
+    init(name: String, desc: String, category: V2SlashCategory, kind: V2SlashKind, argumentHint: String?) {
+        self.name = name
+        self.desc = desc
+        self.category = category
+        self.kind = kind
+        self.argumentHint = argumentHint
+    }
+
     /// A tiny right-aligned tag describing where this runs, so the palette
-    /// teaches the client/agent split at a glance.
+    /// teaches the client/agent split at a glance. "built-in" and "agent"
+    /// both read as "→ agent" — Atelier's own curated prompt commands and
+    /// ones the live agent process reported are the same KIND of thing to
+    /// the user (something the agent runs), just from different sources.
     var runTag: String {
         switch kind {
         case .client:           return "app"
-        case .prompt(_, let s): return s == "built-in" ? "→ agent" : s
+        case .prompt(_, let s): return (s == "built-in" || s == "agent") ? "→ agent" : s
         }
+    }
+
+    /// Adapts a command the real agent process reported (ACP's
+    /// `available_commands_update`) into the same model the popover already
+    /// renders. Running it sends the literal "/name args" text straight
+    /// through — the agent already knows what its own command means, there's
+    /// no local template to expand. `argumentHint` defaults to a generic
+    /// placeholder since ACP doesn't expose a per-command argument schema —
+    /// safer than guessing "no arguments" and firing a command immediately
+    /// with nothing typed.
+    init(agentReported cmd: ACPCommand) {
+        self.init(
+            name: cmd.name,
+            desc: cmd.description,
+            category: .project,
+            kind: .prompt(body: "/\(cmd.name) $ARGUMENTS", source: "agent"),
+            argumentHint: "[args]"
+        )
     }
 }
 
@@ -158,18 +190,76 @@ enum V2SlashCatalog {
               argumentHint: nil),
     ]
 
-    /// Prefix-match against `query` (the text after the leading "/", before
-    /// any space), sorted by category then name, capped at `limit`.
-    static func filtered(_ query: String, in commands: [V2SlashCommand], limit: Int = 8) -> [V2SlashCommand] {
-        let q = query.lowercased()
-        return commands
-            .filter { q.isEmpty || $0.name.lowercased().hasPrefix(q) }
-            .sorted { lhs, rhs in
-                lhs.category.rank != rhs.category.rank
-                    ? lhs.category.rank < rhs.category.rank
-                    : lhs.name < rhs.name
-            }
-            .prefix(limit)
-            .map { $0 }
+    /// Merges agent-reported commands (from ACP's `available_commands_update`
+    /// — see `ACPClient.swift`/`ACPSession.commands`) after Atelier's own
+    /// curated list. Appended, never replacing an existing entry — even a
+    /// name collision (Atelier's own `/checkup` vs. the agent's own) shows
+    /// as two separate rows, distinguished by run-tag, rather than one
+    /// silently overwriting the other's wording. `agentReported` is simply
+    /// `[]` for any session still on the pre-ACP `StreamSession` path —
+    /// that's the documented fallback, not a placeholder: the merged list
+    /// is just the curated baseline, unchanged from before.
+    static func merged(builtins: [V2SlashCommand], agentReported: [ACPCommand]) -> [V2SlashCommand] {
+        builtins + agentReported.map(V2SlashCommand.init(agentReported:))
     }
+
+    /// Case-insensitive fuzzy match: an exact substring scores highest, an
+    /// in-order (non-contiguous) subsequence scores lower, no match at all
+    /// returns nil. An empty query matches everything at score 0 — "show
+    /// the whole catalog" stays exactly today's behavior. Mirrors
+    /// Slack/Notion/Discord's own "/" search feel — abbreviated or slightly
+    /// misspelled typing ("chkup") still finds the right command.
+    private static func fuzzyScore(_ query: String, in text: String) -> Int? {
+        guard !query.isEmpty else { return 0 }
+        let q = query.lowercased()
+        let t = text.lowercased()
+        if t.contains(q) { return 2 }
+        var searchFrom = t.startIndex
+        for ch in q {
+            guard let found = t[searchFrom...].firstIndex(of: ch) else { return nil }
+            searchFrom = t.index(after: found)
+        }
+        return 1
+    }
+
+    /// Matches against both `name` and `desc` — real search, not just a name
+    /// prefix, so typing what a command DOES ("check up") finds it even
+    /// when the name itself doesn't start with those letters. Sorted by
+    /// match quality first, falling back to today's category-then-name
+    /// order for ties (keeps the empty-query / full-catalog view stable).
+    static func matched(_ query: String, in commands: [V2SlashCommand], limit: Int = 8) -> [V2SlashMatch] {
+        let q = query.trimmingCharacters(in: .whitespaces)
+        let scored: [(command: V2SlashCommand, score: Int, field: V2SlashMatch.MatchedField)] = commands.compactMap { cmd in
+            let nameScore = fuzzyScore(q, in: cmd.name)
+            let descScore = fuzzyScore(q, in: cmd.desc)
+            guard let best = [nameScore, descScore].compactMap({ $0 }).max() else { return nil }
+            let field: V2SlashMatch.MatchedField = (nameScore ?? -1) >= (descScore ?? -1) ? .name : .desc
+            return (cmd, best, field)
+        }
+        let sorted = scored.sorted { lhs, rhs in
+            if lhs.score != rhs.score { return lhs.score > rhs.score }
+            if lhs.command.category.rank != rhs.command.category.rank {
+                return lhs.command.category.rank < rhs.command.category.rank
+            }
+            return lhs.command.name < rhs.command.name
+        }
+        return sorted.prefix(limit).map { V2SlashMatch(command: $0.command, matchedOn: q.isEmpty ? nil : $0.field) }
+    }
+
+    /// Convenience for callers that only need the commands, not which field
+    /// matched (e.g. `/help`'s full listing).
+    static func filtered(_ query: String, in commands: [V2SlashCommand], limit: Int = 8) -> [V2SlashCommand] {
+        matched(query, in: commands, limit: limit).map(\.command)
+    }
+}
+
+/// A search result plus which field it matched on — the popover shows a
+/// "matched: desc" tag when a result isn't an obvious name match, so a
+/// fuzzy hit doesn't feel arbitrary. `matchedOn` is nil for an empty query
+/// (nothing to explain — it's just the full catalog).
+struct V2SlashMatch: Identifiable {
+    let command: V2SlashCommand
+    let matchedOn: MatchedField?
+    enum MatchedField { case name, desc }
+    var id: String { command.id }
 }

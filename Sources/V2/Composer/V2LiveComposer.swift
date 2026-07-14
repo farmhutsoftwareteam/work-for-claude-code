@@ -24,9 +24,29 @@ struct V2LiveComposer: View {
     /// — read O(1) in body, which re-runs per streamed token. 27 = one line.
     @State private var cachedHeight: CGFloat = 27
     @State private var inputFocused: Bool = false
+    /// Caret position (NSString/UTF-16 offset, matching NSTextView's own
+    /// selectedRange) — the live source of truth trigger detection reads.
+    @State private var cursorPosition: Int = 0
+    /// Set alongside a programmatic draft edit (a splice) to land the caret
+    /// at a specific spot instead of the text view's default "clamp the old
+    /// selection" behavior. Consumed once by V2ComposerTextView.
+    @State private var pendingCursorTarget: Int?
+    /// Cursor position when the "/" icon or ⌘/ was pressed — non-nil means
+    /// the palette is force-open independent of any "/" the user typed.
+    /// Typing after opening this way narrows the query, same as a real
+    /// slash trigger (see `paletteQuery`).
+    @State private var forcedOpenAnchor: Int?
     @State private var slashActive: Int = 0   // highlighted row in the popover
     /// User-authored commands loaded from .claude/commands + ~/.claude/commands.
     @State private var customCommands: [V2SlashCommand] = []
+    /// Commands the real agent process reported (ACP's
+    /// `available_commands_update` → `ACPSession.commands`) — always empty
+    /// today, since this composer is still on the pre-migration
+    /// `StreamSession` path with no ACP session to source them from. Real
+    /// state, not a stub: this IS the documented fallback (baseline only,
+    /// unchanged from before). Wiring it up once the composer moves to
+    /// ACPSession is a one-line change to whatever sets this.
+    @State private var agentReportedCommands: [ACPCommand] = []
     /// `allCommands`, cached — rebuilt only when `customCommands` changes (see
     /// `rebuildAllCommands`), not on every access. This view @ObservedObjects
     /// `session` and re-renders per streamed token, so a live computed
@@ -36,8 +56,8 @@ struct V2LiveComposer: View {
     /// Slash-filter results, cached alongside `allCommandsCache` — recomputed
     /// only on a real draft edit or command-set reload (`recomputeSlashResults`),
     /// not as a live computed property re-filtered/re-sorted on every render.
-    @State private var cachedSlashResults: [V2SlashCommand] = []
-    @State private var cachedGroupedResults: [(V2SlashCategory, [V2SlashCommand])] = []
+    @State private var cachedSlashResults: [V2SlashMatch] = []
+    @State private var cachedGroupedResults: [(V2SlashCategory, [V2SlashMatch])] = []
     /// The command picked for an arguments-taking command. While set, the
     /// composer is in "command mode": a locked chip shows the command and the
     /// text field holds only its arguments.
@@ -58,7 +78,7 @@ struct V2LiveComposer: View {
             // starts with "/" and no space has been typed yet.
             ZStack(alignment: .bottomLeading) {
                 composerBox
-                if slashOpen {
+                if paletteOpen {
                     slashPopover
                         .offset(y: -(cachedHeight + 36))
                 }
@@ -102,6 +122,20 @@ struct V2LiveComposer: View {
 
     private var composerBox: some View {
         HStack(alignment: .top, spacing: 12) {
+            // Always-visible entry point — not conditional on the box being
+            // empty, unlike the old "/ for commands" helper-row hint. Opens
+            // the palette at the cursor regardless of what's already typed.
+            Button(action: openPaletteAtCursor) {
+                Text("/")
+                    .font(.system(size: 13, design: .monospaced))
+                    .foregroundColor(v2.mute)
+            }
+            .buttonStyle(.plain)
+            .keyboardShortcut("/", modifiers: .command)
+            .disabled(!canType || activeCommand != nil)
+            .padding(.top, 6)
+            .help("Command palette (⌘/)")
+
             Text("›")
                 .font(.system(size: 14, design: .monospaced))
                 .foregroundColor(v2.mute)
@@ -114,6 +148,8 @@ struct V2LiveComposer: View {
             V2ComposerTextView(
                 text: $draft,
                 focused: $inputFocused,
+                cursorPosition: $cursorPosition,
+                pendingCursorTarget: $pendingCursorTarget,
                 placeholder: composerPlaceholder,
                 isEnabled: canType,
                 foregroundColor: NSColor(v2.ink),
@@ -121,7 +157,7 @@ struct V2LiveComposer: View {
                 onSubmit: sendCurrent,
                 onImagePasted: { image in attachments.addImage(image) },
                 onFilesDropped: { urls in attachments.addFiles(urls) },
-                popoverOpen: slashOpen,
+                popoverOpen: paletteOpen,
                 onPopoverMove: moveSlashSelection,
                 onPopoverPick: pickSlashCommand,
                 onPopoverDismiss: dismissSlash,
@@ -140,6 +176,13 @@ struct V2LiveComposer: View {
                 // streamed token, and re-scanning a big pasted draft 30×/s
                 // was part of the long-paste glitch.
                 cachedHeight = Self.height(for: draft)
+            }
+            .onChange(of: cursorPosition) { _, _ in
+                // The trigger span and query are cursor-relative — moving
+                // the caret (arrow keys, click) without typing can still
+                // change which command, if any, is being searched for.
+                recomputeSlashResults()
+                if slashActive >= cachedSlashResults.count { slashActive = 0 }
             }
             .onAppear {
                 cachedHeight = Self.height(for: draft)
@@ -195,48 +238,97 @@ struct V2LiveComposer: View {
     /// `allCommandsCache` — see `rebuildAllCommands`.
     private var allCommands: [V2SlashCommand] { allCommandsCache }
 
-    /// Open when the draft is a bare "/query" (no space yet — once a command
-    /// is completed to "/name " we close so it doesn't show "no matches").
-    private var slashOpen: Bool {
-        activeCommand == nil && draft.hasPrefix("/") && !draft.contains(" ") && canType
+    private struct SlashTrigger {
+        let sliceStart: Int   // NSString offset of the "/" itself
+        let query: String     // text between the "/" and the cursor
+    }
+
+    /// Scans back from the cursor for a "/" that's a valid trigger position
+    /// — the very start of the draft, or right after whitespace/newline —
+    /// never mid-word, so a literal "/" inside a URL or path doesn't hijack
+    /// the composer. Matches Slack/Discord/Notion/Linear's own convention.
+    /// Stops (no trigger) the moment it crosses a word boundary without
+    /// finding "/" first — cursor-relative, not "does the WHOLE draft start
+    /// with /" like the old check.
+    private var slashTrigger: SlashTrigger? {
+        let ns = draft as NSString
+        let cursor = min(max(0, cursorPosition), ns.length)
+        var i = cursor
+        while i > 0 {
+            let ch = ns.character(at: i - 1)
+            if ch == 0x2F {   // "/"
+                let atBoundary = (i - 1 == 0) || Self.isBoundary(ns.character(at: i - 2))
+                guard atBoundary else { return nil }
+                return SlashTrigger(sliceStart: i - 1, query: ns.substring(with: NSRange(location: i, length: cursor - i)))
+            }
+            if Self.isBoundary(ch) { return nil }   // crossed a completed word — no trigger here
+            i -= 1
+        }
+        return nil
+    }
+
+    private static func isBoundary(_ ch: unichar) -> Bool {
+        ch == 0x20 || ch == 0x09 || ch == 0x0A || ch == 0x0D   // space, tab, \n, \r
+    }
+
+    /// Open via a typed "/" in a valid trigger position, OR forced open by
+    /// the icon/⌘/ regardless of what's typed. Either way, opening never
+    /// touches `draft` — see `openPaletteAtCursor` and `slashTrigger`.
+    private var paletteOpen: Bool {
+        guard activeCommand == nil, canType else { return false }
+        return slashTrigger != nil || forcedOpenAnchor != nil
+    }
+
+    /// The filter query: the typed trigger's span if there is one, else
+    /// whatever's been typed since a forced-open anchor (so search narrows
+    /// as you type after clicking the icon, same as after typing "/").
+    private var paletteQuery: String {
+        if let trigger = slashTrigger { return trigger.query }
+        guard let anchor = forcedOpenAnchor else { return "" }
+        let ns = draft as NSString
+        let cursor = min(max(0, cursorPosition), ns.length)
+        guard cursor >= anchor, anchor <= ns.length else { return "" }
+        return ns.substring(with: NSRange(location: anchor, length: cursor - anchor))
     }
 
     /// Filtered, category-then-name ordered results. The flat order here
     /// matches the grouped render order, so `slashActive` indexes both.
     /// Backed by `cachedSlashResults` — see `recomputeSlashResults`.
-    private var slashResults: [V2SlashCommand] { cachedSlashResults }
+    private var slashResults: [V2SlashMatch] { cachedSlashResults }
 
-    private var groupedResults: [(V2SlashCategory, [V2SlashCommand])] { cachedGroupedResults }
+    private var groupedResults: [(V2SlashCategory, [V2SlashMatch])] { cachedGroupedResults }
 
     /// Rebuild the name→command dictionary — only called when
     /// `customCommands` actually changes (after a load), not on every access.
+    /// Builtins and custom commands still override by name (project beats
+    /// personal beats built-in, unchanged); agent-reported commands layer on
+    /// top via `V2SlashCatalog.merged` — append-only, never overriding.
     private func rebuildAllCommands() {
         var byName: [String: V2SlashCommand] = [:]
         for c in V2SlashCatalog.builtins { byName[c.name] = c }
         for c in customCommands { byName[c.name] = c }
-        allCommandsCache = Array(byName.values)
+        allCommandsCache = V2SlashCatalog.merged(builtins: Array(byName.values), agentReported: agentReportedCommands)
         // The command set changed, so the current filter/sort is stale too.
         recomputeSlashResults()
     }
 
     /// Re-filter + re-sort into `cachedSlashResults`/`cachedGroupedResults`.
-    /// Called on a real draft edit (`onChange(of: draft)`) or command-set
-    /// reload (`rebuildAllCommands`) — never as a live computed property, so
-    /// streamed-token re-renders while the popover is open don't re-run the
-    /// filter + double-sort on every delta.
+    /// Called on a real draft/cursor edit or command-set reload — never as a
+    /// live computed property, so streamed-token re-renders while the
+    /// popover is open don't re-run the filter + double-sort on every delta.
     private func recomputeSlashResults() {
-        let results = V2SlashCatalog.filtered(String(draft.dropFirst()), in: allCommandsCache)
+        let results = V2SlashCatalog.matched(paletteQuery, in: allCommandsCache)
         cachedSlashResults = results
         cachedGroupedResults = V2SlashCategory.allCases
             .sorted { $0.rank < $1.rank }
             .compactMap { cat in
-                let items = results.filter { $0.category == cat }
+                let items = results.filter { $0.command.category == cat }
                 return items.isEmpty ? nil : (cat, items)
             }
     }
 
     private var highlightedCommand: V2SlashCommand? {
-        slashResults.indices.contains(slashActive) ? slashResults[slashActive] : nil
+        slashResults.indices.contains(slashActive) ? slashResults[slashActive].command : nil
     }
 
     private var slashPopover: some View {
@@ -266,8 +358,8 @@ struct V2LiveComposer: View {
                         .foregroundColor(v2.faint)
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .padding(.horizontal, 14).padding(.top, 8).padding(.bottom, 3)
-                    ForEach(items) { cmd in
-                        commandRow(cmd)
+                    ForEach(items) { match in
+                        commandRow(match)
                     }
                 }
             }
@@ -278,7 +370,8 @@ struct V2LiveComposer: View {
         .frame(maxWidth: .infinity)
     }
 
-    private func commandRow(_ cmd: V2SlashCommand) -> some View {
+    private func commandRow(_ match: V2SlashMatch) -> some View {
+        let cmd = match.command
         let active = cmd.id == highlightedCommand?.id
         return Button { activate(cmd) } label: {
             HStack(spacing: 12) {
@@ -298,6 +391,14 @@ struct V2LiveComposer: View {
                     .foregroundColor(v2.mute)
                     .lineLimit(1).truncationMode(.tail)
                     .frame(maxWidth: .infinity, alignment: .leading)
+                // Only shown for a fuzzy hit NOT on the name — an unexplained
+                // result (matched only because the description mentions it)
+                // would otherwise read as arbitrary.
+                if match.matchedOn == .desc {
+                    Text("matched: desc")
+                        .font(.system(size: 9.5, design: .monospaced))
+                        .foregroundColor(v2.faint)
+                }
                 Text(cmd.runTag)
                     .font(.system(size: 10, design: .monospaced))
                     .foregroundColor(v2.faint)
@@ -331,10 +432,33 @@ struct V2LiveComposer: View {
         activate(cmd)
     }
 
-    /// Selecting a command: an arg-less one fires immediately; one that takes
-    /// arguments enters "command mode" — the name locks into a chip and the
-    /// field clears to hold only the arguments.
+    /// True when the current trigger (typed "/" or the icon/⌘/ anchor) spans
+    /// the WHOLE meaningful draft — nothing but whitespace before it or after
+    /// the cursor. Only then does the classic "locked chip, args-only field"
+    /// command mode make sense; a command picked out of the middle of a
+    /// longer message has no business taking over the whole composer.
+    private func isWholeDraftTrigger() -> Bool {
+        let ns = draft as NSString
+        let cursor = min(max(0, cursorPosition), ns.length)
+        guard let start = slashTrigger?.sliceStart ?? forcedOpenAnchor, start <= cursor, start <= ns.length else {
+            return false
+        }
+        let before = ns.substring(to: start).trimmingCharacters(in: .whitespacesAndNewlines)
+        let after = ns.substring(from: cursor).trimmingCharacters(in: .whitespacesAndNewlines)
+        return before.isEmpty && after.isEmpty
+    }
+
+    /// Selecting a command. Whole-draft trigger: unchanged classic flow — an
+    /// arg-less command fires immediately, one that takes arguments enters
+    /// "command mode". Mid-draft or icon-opened-with-surrounding-text: never
+    /// auto-runs (that would silently execute or send mid-sentence) and never
+    /// locks the composer — just completes the name inline and leaves the
+    /// rest of the draft exactly as it was.
     private func activate(_ cmd: V2SlashCommand) {
+        guard isWholeDraftTrigger() else {
+            spliceCommandName(cmd)
+            return
+        }
         if cmd.takesArguments {
             beginCommand(cmd)
         } else {
@@ -345,7 +469,33 @@ struct V2LiveComposer: View {
     private func beginCommand(_ cmd: V2SlashCommand) {
         activeCommand = cmd
         draft = ""
+        forcedOpenAnchor = nil
         slashActive = 0
+        inputFocused = true
+    }
+
+    /// Replaces the trigger span (typed "/query", or nothing if opened via
+    /// icon/⌘/ with no query yet) with "/name ", leaving every other
+    /// character in the draft untouched, and lands the caret right after it.
+    private func spliceCommandName(_ cmd: V2SlashCommand) {
+        let ns = draft as NSString
+        let cursor = min(max(0, cursorPosition), ns.length)
+        let start = min(max(0, slashTrigger?.sliceStart ?? forcedOpenAnchor ?? cursor), cursor)
+        let replacement = "/\(cmd.name) "
+        draft = ns.replacingCharacters(in: NSRange(location: start, length: cursor - start), with: replacement)
+        pendingCursorTarget = start + (replacement as NSString).length
+        forcedOpenAnchor = nil
+        slashActive = 0
+        inputFocused = true
+    }
+
+    /// Open the palette at the current cursor regardless of what's typed —
+    /// the "/" icon and ⌘/ entry point. Never touches `draft`.
+    private func openPaletteAtCursor() {
+        guard activeCommand == nil, canType else { return }
+        forcedOpenAnchor = cursorPosition
+        slashActive = 0
+        recomputeSlashResults()
         inputFocused = true
     }
 
@@ -363,9 +513,22 @@ struct V2LiveComposer: View {
         return true
     }
 
+    /// Closes the popover without touching anything outside the trigger
+    /// span — deletes just the "/" (and whatever was typed after it) that
+    /// opened it, same as backspacing it out yourself, never the rest of a
+    /// longer draft. A forced-open (icon/⌘/) with nothing typed yet just
+    /// closes with no draft change at all.
     private func dismissSlash() {
-        // Clear the leading "/" so the popover closes but keep nothing stale.
-        if draft.hasPrefix("/") { draft = "" }
+        let ns = draft as NSString
+        let cursor = min(max(0, cursorPosition), ns.length)
+        if let trigger = slashTrigger {
+            draft = ns.replacingCharacters(in: NSRange(location: trigger.sliceStart, length: cursor - trigger.sliceStart), with: "")
+            pendingCursorTarget = trigger.sliceStart
+        } else if let anchor = forcedOpenAnchor, cursor > anchor {
+            draft = ns.replacingCharacters(in: NSRange(location: anchor, length: cursor - anchor), with: "")
+            pendingCursorTarget = anchor
+        }
+        forcedOpenAnchor = nil
         slashActive = 0
     }
 
@@ -608,7 +771,7 @@ struct V2LiveComposer: View {
                 Button { session.cyclePermissionMode() } label: {
                     Text(helperTight
                          ? "/ · \(permissionLabel)"
-                         : "/ for commands · \(permissionLabel) · shift+tab to cycle")
+                         : "⌘/ opens commands · \(permissionLabel) · shift+tab to cycle")
                         .foregroundColor(v2.faint)
                         .lineLimit(1).truncationMode(.tail)
                 }
