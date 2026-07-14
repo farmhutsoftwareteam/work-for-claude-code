@@ -898,17 +898,6 @@ final class V2AppState: ObservableObject {
     }
 
     /// Flip the active tab between Mode A and Mode B.
-    func flipActiveMode() {
-        guard let id = activeTabId else { return }
-        terminals?.flipSurface(tabId: id)
-
-        // Re-subscribe to the new StreamSession's state (B→A creates one,
-        // A→B nils it). Keyed by tab id, so the flip replaces the prior sub.
-        if let session = terminals?.tabs.first(where: { $0.id == id })?.streamSession {
-            observeSessionState(session, tabId: id)
-        }
-    }
-
     func flipMode(tabId: UUID) {
         terminals?.flipSurface(tabId: tabId)
         if let session = terminals?.tabs.first(where: { $0.id == tabId })?.streamSession {

@@ -1,8 +1,11 @@
 // Session header — bound to V2AppState's active tab (a TerminalTab from
 // TerminalsController). Shows the project path subline, the unified
-// session-config pill (model/effort/permissions), dock switcher, mode
-// toggle pill, and the live Running pill. Session name and live state
-// live on the tab strip now, not duplicated here.
+// session-config pill (model/effort/permissions), and the dock switcher.
+// Session name + live state live on the tab strip now, not duplicated here.
+// The mode-toggle button and the running-state dropdown (state label +
+// "Restart session" + "Switch to terminal") were removed — never used
+// (user feedback, 2026-07-14: "very useless, we will never move to the
+// terminal"). flipActiveMode()/Mode A has no UI entry point after this.
 
 import SwiftUI
 import Inject
@@ -56,9 +59,7 @@ struct V2SessionHeader: View {
 
             HStack(spacing: 10) {
                 V2SessionConfigChip(isCompact: isCompact, isTight: isTight)
-                modePill
                 dockSwitcher
-                runningPill
             }
             .layoutPriority(2)       // controls keep their (compact) size
         }
@@ -94,38 +95,6 @@ struct V2SessionHeader: View {
         appState.activeTab?.projectCwd
             ?? appState.selectedProjectCwd?.path
             ?? "—"
-    }
-
-    private var modePill: some View {
-        let isModeA = appState.activeTab?.surface == .modeA
-        let label = isModeA ? "terminal" : "chat"
-        let help = isModeA
-            ? "Switch to native chat (Mode B)"
-            : "Switch to embedded terminal (Mode A)"
-
-        return Button {
-            appState.flipActiveMode()
-        } label: {
-            HStack(spacing: 6) {
-                Image(systemName: isModeA ? "terminal" : "text.bubble")
-                    .font(.system(size: 10, weight: .medium))
-                if !isCompact {
-                    Text(label)
-                        .font(.system(size: 11, design: .monospaced))
-                        .kerning(0.22)
-                }
-            }
-            .foregroundColor(v2.ink)
-            .fixedSize(horizontal: true, vertical: false)
-            .padding(.horizontal, isCompact ? 8 : 11)
-            .padding(.vertical, 7)
-            .background(v2.card)
-            .overlay(Rectangle().stroke(v2.line2, lineWidth: 1))
-        }
-        .buttonStyle(.plain)
-        .help(help)
-        .disabled(appState.activeTab == nil)
-        .keyboardShortcut("y", modifiers: [.command, .shift])
     }
 
     @ViewBuilder
@@ -200,124 +169,6 @@ struct V2SessionHeader: View {
         }
     }
 
-    private var runningPill: some View {
-        Menu {
-            // Model + permission mode both moved out of this menu — they
-            // live in the unified V2SessionConfigChip now (Session
-            // config.dc.html consolidates model/effort/permissions into one
-            // popover instead of three separate patterns).
-            Button("Restart session") { restartActiveSession() }
-                .disabled(appState.activeSession == nil)
-            Button("Switch to terminal (Mode A)") { appState.flipActiveMode() }
-                .disabled(appState.activeTab == nil)
-        } label: {
-            HStack(spacing: 7) {
-                stateDot
-                if !isTight {
-                    Text(stateLabel)
-                        .font(.system(size: 11.5, design: .monospaced))
-                        .fixedSize(horizontal: true, vertical: false)
-                }
-                Image(systemName: "chevron.down")
-                    .font(.system(size: 8, weight: .medium))
-                    .padding(.leading, isTight ? 0 : 2)
-            }
-            .foregroundColor(v2.ink)
-            .fixedSize(horizontal: true, vertical: false)
-            .padding(.horizontal, isTight ? 9 : 12)
-            .padding(.vertical, 7)
-            .background(v2.card)
-            .overlay(Rectangle().stroke(v2.line2, lineWidth: 1))
-        }
-        .menuStyle(.borderlessButton)
-        .menuIndicator(.hidden)
-        .fixedSize(horizontal: true, vertical: false)
-        .help(stateLabel)
-    }
-
-    private func restartActiveSession() {
-        guard let tab = appState.activeTab,
-              let session = tab.streamSession,
-              let binary = appState.claudeBinary else { return }
-        // Polls for teardown to actually finish instead of guessing a fixed
-        // delay — a bare asyncAfter here could fire start() before stop()'s
-        // async cleanup finished (silent no-op) or after the tab closed
-        // (orphaned process). See V2AppState.restartAfterStop.
-        let cwd = URL(fileURLWithPath: tab.projectCwd)
-        appState.restartAfterStop(tabId: tab.id, session: session) {
-            session.start(cwd: cwd, claudeURL: binary)
-        }
-    }
-
-    @ViewBuilder
-    private var stateDot: some View {
-        if let tab = appState.activeTab {
-            switch tab.surface {
-            case .modeA:
-                if tab.isLive {
-                    V2PulseDot(size: 7, color: v2.ink)
-                } else {
-                    Circle().fill(v2.del).frame(width: 7, height: 7)
-                }
-            case .modeB:
-                if let s = tab.streamSession {
-                    switch s.state {
-                    case .working, .awaitingPermission:
-                        V2PulseDot(size: 7, color: v2.ink)
-                    case .terminated:
-                        Circle().fill(v2.del).frame(width: 7, height: 7)
-                    case .idle, .hibernated:
-                        // Resting reads as quiet, not dead — hollow like idle.
-                        Circle().stroke(v2.line2, lineWidth: 1).frame(width: 7, height: 7)
-                    case .ready where appState.tabStatus(tab) == .workingBackground:
-                        // The FOREGROUND turn is done, but a delegated
-                        // subagent or a `run_in_background` shell command
-                        // it started is still going. This is the header —
-                        // the one indicator that's always on screen
-                        // regardless of scroll position — so it used to go
-                        // straight to a flat "Ready" the instant the reply
-                        // landed, even while real work continued off-screen
-                        // (the tab strip's own calmer ring was the only
-                        // surviving cue, and it's easy to miss). Same slow
-                        // ring language as the tab chip, not the vivid
-                        // working pulse — still present, not urgent.
-                        ZStack {
-                            Circle().fill(v2.ink).frame(width: 7, height: 7)
-                            V2RadarRing(color: v2.ink, slow: true)
-                        }
-                    default:
-                        Circle().fill(v2.ink).frame(width: 7, height: 7)
-                    }
-                } else {
-                    Circle().stroke(v2.line2, lineWidth: 1).frame(width: 7, height: 7)
-                }
-            }
-        } else {
-            Circle().stroke(v2.line2, lineWidth: 1).frame(width: 7, height: 7)
-        }
-    }
-
-    private var stateLabel: String {
-        guard let tab = appState.activeTab else { return "No session" }
-        switch tab.surface {
-        case .modeA:
-            return tab.isLive ? "Terminal" : "Ended"
-        case .modeB:
-            guard let s = tab.streamSession else { return "Idle" }
-            switch s.state {
-            case .idle: return "Idle"
-            case .ready:
-                return appState.tabStatus(tab) == .workingBackground ? "Working in background" : "Ready"
-            case .hibernated: return "Resting"
-            case .spawning: return "Spawning"
-            case .initializing: return "Initializing"
-            case .working: return s.isRetrying ? "Retrying" : "Running"
-            case .awaitingPermission: return "Awaiting permission"
-            case .closing: return "Closing"
-            case .terminated: return "Ended"
-            }
-        }
-    }
 }
 
 // MARK: - Width measurement
