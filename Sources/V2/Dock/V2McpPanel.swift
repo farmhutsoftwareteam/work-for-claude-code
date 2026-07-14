@@ -141,13 +141,22 @@ struct V2McpPanel: View {
                     pendingDelete = nil
                     deletingServers.insert(name)
                     Task {
-                        defer { deletingServers.remove(name) }
                         do {
                             try await Task.detached(priority: .userInitiated) {
                                 try MCPConfigWriter.delete(name: name, scope: scope)
                             }.value
+                            // Clear "deleting…" the instant the write
+                            // succeeds — the old `defer` kept the row stuck
+                            // until store.load() (a full re-parse of every
+                            // known project's config) ALSO finished, so the
+                            // row's stuck duration was however long that
+                            // reload happened to take — "very very flaky"
+                            // (user report, 2026-07-14). Same fix as
+                            // MCPEditor.performSave's save button.
+                            deletingServers.remove(name)
                             await store.load()
                         } catch {
+                            deletingServers.remove(name)
                             deleteError = "Couldn't delete \"\(name)\": \(error.localizedDescription)"
                         }
                     }

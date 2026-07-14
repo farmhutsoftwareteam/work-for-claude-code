@@ -625,10 +625,23 @@ struct MCPEditor: View {
                     try MCPConfigWriter.save(currentDraft, scope: currentScope, originalName: original)
                 }.value
 
-                await store.reloadMCPs()
+                // Dismiss the instant the write succeeds — don't gate the
+                // button's "saving…" state on a full store reload first.
+                // reloadMCPs() re-parses EVERY known project's config from
+                // disk, which can take long enough (many projects, a slow
+                // volume) to read as a permanently stuck button — even
+                // though the actual save already succeeded and is sitting
+                // on disk (user report, 2026-07-14: "the install button
+                // sticks... when you click cancel you see that it has been
+                // installed" — exactly this: write done, UI never caught
+                // up). onSaved()'s own caller already reloads the store
+                // after the sheet closes (see V2McpPanel's sheet
+                // completions), so this call is now belt-and-suspenders,
+                // not on the critical path.
                 onSavedDraft?(currentDraft, currentScope)
                 onSaved()
                 dismiss()
+                await store.reloadMCPs()
             } catch {
                 isSaving = false
                 errorMessage = error.localizedDescription
