@@ -6,6 +6,26 @@
         <description>Updates for Work</description>
         <language>en</language>
         <item>
+            <title>Version 2.9.12</title>
+            <pubDate>Tue, 14 Jul 2026 21:56:44 +0400</pubDate>
+            <sparkle:version>61</sparkle:version>
+            <sparkle:shortVersionString>2.9.12</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>15.0</sparkle:minimumSystemVersion>
+            <description><![CDATA[
+                <h3>Atelier 2.9.12 — window fits your screen, for real this time</h3>
+                <ul>
+                    <li><b>The model/effort/permissions pill no longer jumps position when you click it.</b> Each value used to size the pill to its own text, so picking a different model or permission mode ("sonnet" vs "claude-opus-4-8", "Plan" vs "Bypass permissions") visibly shifted it. It now holds a constant width no matter what's selected.</li>
+                    <li><b>The real main cause: the right-side dock panel had a hard, fixed width with no way to shrink</b> — and it silently stuck in its "expanded" state across every future launch the first time you ever opened any panel (MCP, agents, skills, etc.), permanently pushing up the window's minimum size regardless of your screen. It's flexible now, and MCP/agent rows that used to wrap instead of truncate are fixed too.</li>
+                    <li><b>The composer's context meter</b> had a smaller version of the same issue and is capped now as well.</li>
+                </ul>
+            ]]></description>
+            <enclosure
+                url="https://work.munyamakosa.com/Work-2.9.12.dmg"
+                length="13779763"
+                type="application/octet-stream"
+                sparkle:edSignature="JAPNmfPKQzEgmHkswey/WqwPwRVCzPveQn2TNKi4pL6ysfmiJTYKl0pUmcGP7RMiPawU61XGfDFqC7OUhuLMAg==" />
+        </item>
+        <item>
             <title>Version 2.9.11</title>
             <pubDate>Tue, 14 Jul 2026 21:25:39 +0400</pubDate>
             <sparkle:version>60</sparkle:version>
