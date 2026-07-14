@@ -6,6 +6,25 @@
         <description>Updates for Work</description>
         <language>en</language>
         <item>
+            <title>Version 2.9.11</title>
+            <pubDate>Tue, 14 Jul 2026 21:25:39 +0400</pubDate>
+            <sparkle:version>60</sparkle:version>
+            <sparkle:shortVersionString>2.9.11</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>15.0</sparkle:minimumSystemVersion>
+            <description><![CDATA[
+                <h3>Atelier 2.9.11 — window fits your screen again</h3>
+                <ul>
+                    <li><b>Fixed: the window couldn't shrink small enough to fit on some laptop screens.</b> The new model/effort/permissions pill shipped yesterday always rendered at full width, unlike every other header control — that alone was pinning the whole window's minimum size. It now shrinks the same way the rest of the header does as the window narrows.</li>
+                    <li><b>Removed duplicate session info from the header</b> — the session name and its live/working indicator are already on the tab, so the header no longer repeats them.</li>
+                </ul>
+            ]]></description>
+            <enclosure
+                url="https://work.munyamakosa.com/Work-2.9.11.dmg"
+                length="13764809"
+                type="application/octet-stream"
+                sparkle:edSignature="rJMCSoeF5EzUvlSu7HFg8NcnTNxNI2SomQJ8I8r9mZt5XwWCHOCGDR/tZfhJAa74SQfPKqP+f+PsHZ5ikpByCg==" />
+        </item>
+        <item>
             <title>Version 2.9.10</title>
             <pubDate>Tue, 14 Jul 2026 20:54:13 +0400</pubDate>
             <sparkle:version>59</sparkle:version>
