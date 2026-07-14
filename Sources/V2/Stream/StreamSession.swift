@@ -111,6 +111,12 @@ final class StreamSession: ObservableObject {
     /// Project cwd reported by `system/init`. Useful for UI breadcrumbs.
     @Published private(set) var cwd: String?
 
+    /// This session's real slash-command list, straight off `system/init` —
+    /// skills, project commands, everything the binary itself supports.
+    /// Feeds the composer's palette on top of Atelier's own hand-implemented
+    /// 10 (see V2SlashCatalog.merged); does NOT require the ACP migration.
+    @Published private(set) var reportedSlashCommands: [String] = []
+
     /// Ordered, append-only transcript. Each item is a separate UI row.
     @Published private(set) var transcript: [TranscriptItem] = []
 
@@ -1580,6 +1586,7 @@ final class StreamSession: ObservableObject {
             if let servers = sys.mcpServers { mcpServers = servers }
             if let t = sys.tools { tools = t }
             if let c = sys.cwd { cwd = c }
+            if let sc = sys.slashCommands { reportedSlashCommands = sc }
             // Semantic correctness: after init, claude is idle waiting for
             // the first user message — that's .ready. Only promote from the
             // startup states. Crucially do NOT touch .working: the composer

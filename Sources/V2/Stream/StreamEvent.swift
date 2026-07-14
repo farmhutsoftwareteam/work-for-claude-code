@@ -81,6 +81,12 @@ struct SystemEvent: Decodable, Sendable {
     let mcpServers: [MCPServerInfo]?
     let permissionMode: String?
     let apiKeySource: String?
+    /// The session's real, live slash-command list — every skill, project
+    /// command, and Claude Code built-in this exact binary/session actually
+    /// supports. Confirmed via live capture: present on every `init` event,
+    /// dozens of entries deep, nothing to do with ACP — the composer's
+    /// hardcoded 10-command catalog was simply never reading this field.
+    let slashCommands: [String]?
 
     // api_retry fields. retryDelayMs and errorStatus are confirmed-real wire
     // types (captured live off a 429): {"attempt":1,"max_retries":10,
@@ -153,6 +159,7 @@ struct SystemEvent: Decodable, Sendable {
         case mcpServers = "mcp_servers"
         case permissionMode
         case apiKeySource = "apiKeySource"
+        case slashCommands = "slash_commands"
         case attempt
         case maxRetries = "max_retries"
         case retryDelayMs = "retry_delay_ms"

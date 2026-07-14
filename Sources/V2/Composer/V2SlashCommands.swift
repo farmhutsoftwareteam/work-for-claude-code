@@ -98,7 +98,7 @@ struct V2SlashCommand: Identifiable, Equatable {
     var runTag: String {
         switch kind {
         case .client:           return "app"
-        case .prompt(_, let s): return (s == "built-in" || s == "agent") ? "→ agent" : s
+        case .prompt(_, let s): return (s == "built-in" || s == "agent" || s == "session") ? "→ agent" : s
         }
     }
 
@@ -116,6 +116,26 @@ struct V2SlashCommand: Identifiable, Equatable {
             desc: cmd.description,
             category: .project,
             kind: .prompt(body: "/\(cmd.name) $ARGUMENTS", source: "agent"),
+            argumentHint: "[args]"
+        )
+    }
+
+    /// Adapts a bare name straight off `system/init`'s `slash_commands` array
+    /// — the live, real catalog this exact session/binary supports (skills,
+    /// project commands, and Claude Code's own built-ins Atelier hasn't
+    /// modeled client-side). No description or argument schema comes with
+    /// it, unlike ACP's richer `available_commands_update` — same honest
+    /// generic-hint fallback as the agent-reported case above. Running it
+    /// sends "/name args" straight through; the CLI's own preprocessing
+    /// decides what that means (a skill, a project command) or replies that
+    /// it isn't available headless (confirmed live for a couple of
+    /// interactive-only built-ins, e.g. /help).
+    init(sessionReported name: String) {
+        self.init(
+            name: name,
+            desc: "Reported by this session",
+            category: .project,
+            kind: .prompt(body: "/\(name) $ARGUMENTS", source: "session"),
             argumentHint: "[args]"
         )
     }
@@ -199,8 +219,24 @@ enum V2SlashCatalog {
     /// `[]` for any session still on the pre-ACP `StreamSession` path —
     /// that's the documented fallback, not a placeholder: the merged list
     /// is just the curated baseline, unchanged from before.
-    static func merged(builtins: [V2SlashCommand], agentReported: [ACPCommand]) -> [V2SlashCommand] {
-        builtins + agentReported.map(V2SlashCommand.init(agentReported:))
+    /// `sessionReported` is deduped against `builtins` (by name) — a name
+    /// Atelier already implements client-side (clear, model, …) is strictly
+    /// better than the generic pass-through this constructs, so the curated
+    /// version wins rather than showing both. `agentReported` keeps its
+    /// original undeduped behavior — collisions there stay two distinct
+    /// rows, as documented above.
+    static func merged(
+        builtins: [V2SlashCommand],
+        agentReported: [ACPCommand],
+        sessionReported: [String] = []
+    ) -> [V2SlashCommand] {
+        var seen = Set(builtins.map(\.name))
+        var result = builtins + agentReported.map(V2SlashCommand.init(agentReported:))
+        for name in sessionReported where !seen.contains(name) {
+            seen.insert(name)
+            result.append(V2SlashCommand(sessionReported: name))
+        }
+        return result
     }
 
     /// Case-insensitive fuzzy match: an exact substring scores highest, an

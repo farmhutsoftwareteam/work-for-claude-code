@@ -98,6 +98,10 @@ struct V2LiveComposer: View {
             if draft.isEmpty { draft = session.composerDraft }
         }
         .task(id: session.cwd) { await loadCustomCommands() }
+        // system/init lands asynchronously after this view appears — rebuild
+        // once the session's real command list actually arrives, not just
+        // on the cwd-driven custom-command reload above.
+        .onChange(of: session.reportedSlashCommands) { _, _ in rebuildAllCommands() }
         // Focus once on appear, then leave the user alone. The previous
         // onChange(of: session.state) yanked focus back on every transition
         // — when you clicked a rail/tab to switch projects, the new
@@ -307,7 +311,11 @@ struct V2LiveComposer: View {
         var byName: [String: V2SlashCommand] = [:]
         for c in V2SlashCatalog.builtins { byName[c.name] = c }
         for c in customCommands { byName[c.name] = c }
-        allCommandsCache = V2SlashCatalog.merged(builtins: Array(byName.values), agentReported: agentReportedCommands)
+        allCommandsCache = V2SlashCatalog.merged(
+            builtins: Array(byName.values),
+            agentReported: agentReportedCommands,
+            sessionReported: session.reportedSlashCommands
+        )
         // The command set changed, so the current filter/sort is stale too.
         recomputeSlashResults()
     }
