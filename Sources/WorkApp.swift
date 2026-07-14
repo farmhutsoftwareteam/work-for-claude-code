@@ -249,6 +249,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // Policy: the newest build wins; the other instance is asked to quit.
         enforceSingleInstance()
 
+        // A full main-thread freeze (rainbow cursor over the whole app)
+        // leaves nothing behind on its own — no crash report, since nothing
+        // crashed. This gives the next one a real stack sample instead of
+        // silence. See HangWatchdog.swift for the full story.
+        HangWatchdog.shared.start()
+
         // Offer to self-relocate into /Applications if we're running from a
         // DMG / Downloads / elsewhere. Sparkle refuses to update from those
         // locations, so catching it at first launch saves users the
