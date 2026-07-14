@@ -6,6 +6,25 @@
         <description>Updates for Work</description>
         <language>en</language>
         <item>
+            <title>Version 2.9.7</title>
+            <pubDate>Tue, 14 Jul 2026 10:09:06 +0400</pubDate>
+            <sparkle:version>56</sparkle:version>
+            <sparkle:shortVersionString>2.9.7</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>15.0</sparkle:minimumSystemVersion>
+            <description><![CDATA[
+                <h3>Atelier 2.9.7 — connect Supabase without typing a project ref</h3>
+                <ul>
+                    <li><b>Supabase now has a real "connect & choose project" flow.</b> Sign in once, then pick your project from an actual list instead of hunting down and typing a `project_ref` by hand. Atelier writes a properly scoped, token-free config entry for you, with a read-only toggle for the cautious.</li>
+                    <li><b>MCP servers can now be deleted and edited in place</b> from the v2 panel — no more delete-and-recreate just to fix a wrong credential.</li>
+                </ul>
+            ]]></description>
+            <enclosure
+                url="https://work.munyamakosa.com/Work-2.9.7.dmg"
+                length="13453160"
+                type="application/octet-stream"
+                sparkle:edSignature="AS+TIE5EnjAKo5gDj5M6ovbvmwkQtP2u8Xf/RRXowGSyNZAiWJ/jzAfhcle79GBaqyeJjvBWdvwb+PtPqdlDDA==" />
+        </item>
+        <item>
             <title>Version 2.9.6</title>
             <pubDate>Tue, 14 Jul 2026 01:39:05 +0400</pubDate>
             <sparkle:version>55</sparkle:version>
