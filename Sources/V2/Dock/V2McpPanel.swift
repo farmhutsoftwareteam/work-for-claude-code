@@ -385,6 +385,23 @@ struct V2McpPanel: View {
         }
     }
 
+    /// Same everywhere-vs-this-project split as configuredContent, applied
+    /// to a LIVE session row. Resolves scope via the matching configured
+    /// entry by name (same lookup serviceKey(live:) already does) — falls
+    /// back to "everywhere" when there's no local config match at all
+    /// (e.g. a claude.ai connector, which is account-wide by nature, never
+    /// project-scoped). A running session reports every server it actually
+    /// resolved — project AND global — which is correct and complete, but
+    /// showing all of it flat once a session starts undid the same
+    /// decluttering configuredContent already got: sending a first message
+    /// flipped the panel from "this project's servers" to "everything,
+    /// unsorted" (user report, 2026-07-14: "the right tab had a lot of
+    /// other mcps... show up").
+    private func isEverywhereScope(live server: MCPServerInfo) -> Bool {
+        guard let cfg = configuredServers.first(where: { $0.name == server.name }) else { return true }
+        return isEverywhereScope(cfg.source)
+    }
+
     /// The scope MCPConfigWriter needs to edit/delete this row. v1
     /// (ExtensionsView) gets this for free by iterating already-bucketed
     /// per-scope lists; v2's configuredServers flattens them, so it's
@@ -924,19 +941,20 @@ struct V2McpPanel: View {
     }
 
     private func liveContent(for session: StreamSession) -> some View {
-        let groups = Self.grouped(session.mcpServers) { self.serviceKey(live: $0) }
+        let servers = session.mcpServers
+        let thisProjectOnly = servers.filter { !isEverywhereScope(live: $0) }
+        let everywhere = servers.filter { isEverywhereScope(live: $0) }
         return ScrollView {
             VStack(alignment: .leading, spacing: 0) {
-                ForEach(Array(groups.enumerated()), id: \.offset) { _, group in
-                    if let label = group.label {
-                        serviceHeader(label, count: group.members.count)
-                        let labels = Self.memberLabels(group.members.map(\.name))
-                        ForEach(Array(group.members.enumerated()), id: \.element.name) { idx, server in
-                            serverRow(server, memberLabel: labels[idx], indented: true)
-                        }
-                    } else {
-                        ForEach(group.members, id: \.name) { serverRow($0) }
-                    }
+                if !thisProjectOnly.isEmpty {
+                    scopeSectionHeader(
+                        title: "This project",
+                        subtitle: "Scoped just to this project — private to you, or shared with your team."
+                    )
+                    liveServerGroupRows(thisProjectOnly)
+                }
+                if !everywhere.isEmpty {
+                    liveEverywhereDisclosure(everywhere)
                 }
                 if session.mcpServers.isEmpty {
                     Text("No MCP servers loaded for this session.")
@@ -1013,6 +1031,59 @@ struct V2McpPanel: View {
         .opacity(isFailed ? 0.55 : 1.0)
         .overlay(alignment: .bottom) {
             Rectangle().fill(v2.line).frame(height: 1)
+        }
+    }
+
+    /// Live-row equivalent of serverGroupRows — same service grouping,
+    /// MCPServerInfo instead of MCPServer.
+    private func liveServerGroupRows(_ servers: [MCPServerInfo]) -> some View {
+        let groups = Self.grouped(servers) { self.serviceKey(live: $0) }
+        return ForEach(Array(groups.enumerated()), id: \.offset) { _, group in
+            if let label = group.label {
+                serviceHeader(label, count: group.members.count)
+                let labels = Self.memberLabels(group.members.map(\.name))
+                ForEach(Array(group.members.enumerated()), id: \.element.name) { idx, server in
+                    serverRow(server, memberLabel: labels[idx], indented: true)
+                }
+            } else {
+                ForEach(group.members, id: \.name) { serverRow($0) }
+            }
+        }
+    }
+
+    /// Live-row equivalent of everywhereDisclosure — same collapsed-by-
+    /// default treatment, shares showEverywhere so expand/collapse feels
+    /// consistent whichever view (static or live) you land on.
+    private func liveEverywhereDisclosure(_ servers: [MCPServerInfo]) -> some View {
+        VStack(alignment: .leading, spacing: 0) {
+            Button { showEverywhere.toggle() } label: {
+                HStack(spacing: 6) {
+                    Image(systemName: showEverywhere ? "chevron.down" : "chevron.right")
+                        .font(.system(size: 8, weight: .medium))
+                        .foregroundColor(v2.faint)
+                    Text("AVAILABLE EVERYWHERE")
+                        .font(.system(size: 10, design: .monospaced))
+                        .kerning(1.2)
+                        .foregroundColor(v2.mute)
+                    Text("· \(servers.count)")
+                        .font(.system(size: 10, design: .monospaced))
+                        .foregroundColor(v2.faint)
+                }
+                .padding(.horizontal, 18)
+                .padding(.top, 16)
+                .padding(.bottom, showEverywhere ? 8 : 4)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            if showEverywhere {
+                Text("Loaded in every project, live in this session too.")
+                    .font(.system(size: 10, design: .monospaced))
+                    .foregroundColor(v2.faint)
+                    .padding(.horizontal, 18)
+                    .padding(.bottom, 8)
+                liveServerGroupRows(servers)
+            }
         }
     }
 
