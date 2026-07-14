@@ -88,6 +88,18 @@ struct SystemEvent: Decodable, Sendable {
     /// hardcoded 10-command catalog was simply never reading this field.
     let slashCommands: [String]?
 
+    // task_started / task_updated / task_notification fields (Monitor and,
+    // more generally, any background task tracked by this task_id/
+    // tool_use_id system — confirmed via live capture, see V2MonitorTask.swift).
+    let taskId: String?
+    let toolUseId: String?
+    let taskDescription: String?
+    let taskType: String?
+    let patch: [String: JSONValue]?
+    let taskStatus: String?
+    let outputFile: String?
+    let summary: String?
+
     // api_retry fields. retryDelayMs and errorStatus are confirmed-real wire
     // types (captured live off a 429): {"attempt":1,"max_retries":10,
     // "retry_delay_ms":594.128…,"error_status":429,"error":"rate_limit"} —
@@ -160,6 +172,14 @@ struct SystemEvent: Decodable, Sendable {
         case permissionMode
         case apiKeySource = "apiKeySource"
         case slashCommands = "slash_commands"
+        case taskId = "task_id"
+        case toolUseId = "tool_use_id"
+        case taskDescription = "description"
+        case taskType = "task_type"
+        case patch
+        case taskStatus = "status"
+        case outputFile = "output_file"
+        case summary
         case attempt
         case maxRetries = "max_retries"
         case retryDelayMs = "retry_delay_ms"

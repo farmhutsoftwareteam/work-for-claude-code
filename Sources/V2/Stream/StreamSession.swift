@@ -146,6 +146,15 @@ final class StreamSession: ObservableObject {
     /// back to the real command it started. Small and short-lived — an
     /// entry is consumed the moment its matching tool_result arrives.
     private var pendingBashCommands: [String: String] = [:]
+    /// Monitor watchers (#95-ish) — background event streams started by the
+    /// Monitor tool. See V2MonitorTask.swift for the (structured, NOT
+    /// text-parsed) wire format this reads.
+    @Published private(set) var monitorTasks: [V2MonitorTask] = []
+    /// toolUseId → (description, command), populated when a Monitor tool_use
+    /// is seen. `task_started`'s task_type doesn't distinguish Monitor from a
+    /// plain background Bash task (both report "local_bash" — confirmed live)
+    /// — this map is what scopes monitorTasks to real Monitor calls only.
+    private var pendingMonitorCommands: [String: (description: String, command: String?)] = [:]
 
     /// Session task checklist — TaskCreate/TaskUpdate replaced TodoWrite as
     /// Claude Code's default task tool as of v2.1.142. Unlike TodoWrite
@@ -1169,6 +1178,8 @@ final class StreamSession: ObservableObject {
         backgroundTasks.removeAll()
         subagentRuns.removeAll()
         pendingBashCommands.removeAll()
+        monitorTasks.removeAll()
+        pendingMonitorCommands.removeAll()
     }
 
     /// Where this session's on-disk artifacts live —
@@ -1205,6 +1216,10 @@ final class StreamSession: ObservableObject {
         for i in subagentRuns.indices where subagentRuns[i].state == .running {
             subagentRuns[i].state = .orphaned
             subagentRuns[i].finishedAt = Date()
+        }
+        for i in monitorTasks.indices where monitorTasks[i].state == .watching {
+            monitorTasks[i].state = .orphaned
+            monitorTasks[i].finishedAt = Date()
         }
     }
 
@@ -1411,6 +1426,12 @@ final class StreamSession: ObservableObject {
                             ))
                         }
                     }
+                    if name == "Monitor" {
+                        pendingMonitorCommands[id] = (
+                            input.dig("description")?.asString ?? "watch",
+                            input.dig("command")?.asString
+                        )
+                    }
                     transcript.append(.assistantBlock(block))
                 case .thinking(let text, let signature):
                     // The snapshot's own `text` is always empty (see
@@ -1577,6 +1598,18 @@ final class StreamSession: ObservableObject {
         }
     }
 
+    /// Maps a task_updated/task_notification status string to a terminal
+    /// V2MonitorTask.State, or nil for anything that isn't actually terminal
+    /// (e.g. an intermediate "watching" patch on a persistent monitor) —
+    /// callers leave state untouched on nil, never guessing at a transition.
+    private static func monitorTerminalState(for status: String) -> V2MonitorTask.State? {
+        switch status {
+        case "completed": return .completed
+        case "failed", "error", "timeout", "cancelled": return .failed
+        default: return nil
+        }
+    }
+
     private func handleSystem(_ sys: SystemEvent) {
         switch sys.subtype {
         case "init":
@@ -1626,6 +1659,35 @@ final class StreamSession: ObservableObject {
             // Output from the user's Stop hooks — previously invisible.
             if let body = sys.noteText, !body.isEmpty {
                 transcript.append(.systemNote(kind: .hook, text: body))
+            }
+        case "task_started":
+            // Only tracked when the tool_use_id matches a real Monitor call
+            // (task_type alone doesn't distinguish Monitor from a plain
+            // background Bash task — both report "local_bash", confirmed live).
+            if let tid = sys.taskId, let toolId = sys.toolUseId,
+               let pending = pendingMonitorCommands.removeValue(forKey: toolId) {
+                monitorTasks.append(V2MonitorTask(
+                    id: tid, toolUseId: toolId,
+                    description: sys.taskDescription ?? pending.description,
+                    command: pending.command,
+                    startedAt: Date()
+                ))
+            }
+        case "task_updated":
+            if let tid = sys.taskId, let idx = monitorTasks.firstIndex(where: { $0.id == tid }),
+               let status = sys.patch?["status"]?.asString,
+               let terminal = Self.monitorTerminalState(for: status) {
+                monitorTasks[idx].state = terminal
+                monitorTasks[idx].finishedAt = Date()
+            }
+        case "task_notification":
+            if let tid = sys.taskId, let idx = monitorTasks.firstIndex(where: { $0.id == tid }) {
+                if let status = sys.taskStatus, let terminal = Self.monitorTerminalState(for: status) {
+                    monitorTasks[idx].state = terminal
+                }
+                monitorTasks[idx].finishedAt = monitorTasks[idx].finishedAt ?? Date()
+                monitorTasks[idx].lastEvent = sys.summary
+                monitorTasks[idx].outputFile = sys.outputFile
             }
         case "informational", "bridge_status", "local_command",
              "scheduled_task_fire", "away_summary":

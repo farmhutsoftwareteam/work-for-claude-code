@@ -206,6 +206,9 @@ struct V2RootView: View {
                         // run_in_background shell command, live; empty ⇒
                         // renders nothing.
                         V2BackgroundTasksStrip(session: session)
+                        // Monitor watches, live off task_started/task_updated/
+                        // task_notification — empty ⇒ renders nothing.
+                        V2MonitorTasksStrip(session: session)
                         // Co-driven terminal panes (#56) — shared PTYs Claude
                         // and the user drive together; empty ⇒ renders nothing.
                         CoTerminalStrip(session: session)
