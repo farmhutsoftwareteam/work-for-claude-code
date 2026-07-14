@@ -62,6 +62,7 @@ struct V2SessionHeader: View {
             Spacer(minLength: 12)
 
             HStack(spacing: 10) {
+                V2SessionConfigChip()
                 modePill
                 dockSwitcher
                 runningPill
@@ -88,21 +89,16 @@ struct V2SessionHeader: View {
     }
 
     private var pathSublineView: some View {
-        HStack(spacing: 6) {
-            Text(pathText)
-                .font(.system(size: 11, design: .monospaced))
-                .foregroundColor(v2.faint)
-                .lineLimit(1)
-                .truncationMode(.middle)
-            Text("·")
-                .font(.system(size: 11, design: .monospaced))
-                .foregroundColor(v2.faint)
-            // Inline chip — the design-spec'd model switcher (Atelier
-            // app.dc.html → SWITCH MODEL popover). Always rendered; the
-            // chip disables itself when there's no active session.
-            V2ModelChip()
-        }
-        .fixedSize(horizontal: false, vertical: true)
+        // The model chip that used to live here (V2ModelChip) moved into
+        // V2SessionConfigChip in the top-right controls — one unified
+        // model/effort/permissions pill instead of an inert subline chip
+        // (Session config.dc.html).
+        Text(pathText)
+            .font(.system(size: 11, design: .monospaced))
+            .foregroundColor(v2.faint)
+            .lineLimit(1)
+            .truncationMode(.middle)
+            .fixedSize(horizontal: false, vertical: true)
     }
 
     private var pathText: String {
@@ -243,11 +239,10 @@ struct V2SessionHeader: View {
 
     private var runningPill: some View {
         Menu {
-            // Model selection moved out of this menu — it now lives as an
-            // inline chip in the path subline (V2ModelChip), per
-            // Atelier app.dc.html spec.
-            permissionMenuSection
-            Divider()
+            // Model + permission mode both moved out of this menu — they
+            // live in the unified V2SessionConfigChip now (Session
+            // config.dc.html consolidates model/effort/permissions into one
+            // popover instead of three separate patterns).
             Button("Restart session") { restartActiveSession() }
                 .disabled(appState.activeSession == nil)
             Button("Switch to terminal (Mode A)") { appState.flipActiveMode() }
@@ -275,27 +270,6 @@ struct V2SessionHeader: View {
         .menuIndicator(.hidden)
         .fixedSize(horizontal: true, vertical: false)
         .help(stateLabel)
-    }
-
-    @ViewBuilder
-    private var permissionMenuSection: some View {
-        Section("Permission mode") {
-            ForEach(V2PermissionMode.allCases) { mode in
-                Button {
-                    // Routes through V2AppState so bypass (launch-only) gets a
-                    // seamless --resume restart instead of silently reverting.
-                    appState.changePermissionMode(mode.rawValue)
-                } label: {
-                    HStack {
-                        Text(mode.label)
-                        if appState.activeSession?.permissionMode == mode.rawValue {
-                            Image(systemName: "checkmark")
-                        }
-                    }
-                }
-                .disabled(appState.activeSession == nil)
-            }
-        }
     }
 
     private func restartActiveSession() {
@@ -430,12 +404,14 @@ enum V2PermissionMode: String, CaseIterable, Identifiable {
     case acceptEdits
     case bypassPermissions
     var id: String { rawValue }
-    var label: String {
+    /// Row/chip label for V2SessionConfigChip — no dash-suffixed description,
+    /// that's carried by the row's own warn line (bypassPermissions) instead.
+    var shortLabel: String {
         switch self {
-        case .plan:              return "plan — read-only, no changes"
-        case .default:           return "default — ask for each tool"
-        case .acceptEdits:       return "accept edits — auto-allow file edits"
-        case .bypassPermissions: return "bypass — allow everything"
+        case .plan:              return "Plan"
+        case .default:           return "Default"
+        case .acceptEdits:       return "Accept edits"
+        case .bypassPermissions: return "Bypass permissions"
         }
     }
 }

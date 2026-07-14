@@ -107,6 +107,14 @@ final class V2AppState: ObservableObject {
     /// for the next spawn. Key must match StreamSession.defaultPermissionKey.
     @AppStorage("v2.defaultPermissionMode") var defaultPermissionMode: String = "acceptEdits"
 
+    /// Default `--effort` passed on spawn. "" omits the flag — the CLI's own
+    /// default applies. Unlike model, there's no live switch for an ALREADY
+    /// running session (verified: no set_effort-style control request
+    /// exists, and system/init never reports an effort catalog) — see
+    /// changeEffort(_:), which always restarts rather than picking a
+    /// live-switchable subset the way changePermissionMode does.
+    @AppStorage("v2.defaultSpawnEffort") var defaultSpawnEffort: String = ""
+
     /// Right dock collapsed by default — set-once-forget panels (agents /
     /// MCP) burn 360px when the user is just chatting. Expanded mode is
     /// for active loop / harness inspection.
@@ -513,7 +521,7 @@ final class V2AppState: ObservableObject {
                 session.restoreHibernated(
                     cwd: URL(fileURLWithPath: entry.projectCwd), claudeURL: binary,
                     sessionId: entry.sessionId, model: defaultSpawnModel,
-                    permissionMode: defaultPermissionMode
+                    permissionMode: defaultPermissionMode, effort: defaultSpawnEffort
                 )
             }
             if entry.sessionId == snapshot.activeSessionId { activeCandidate = id }
@@ -583,7 +591,8 @@ final class V2AppState: ObservableObject {
                 cwd: cwd,
                 claudeURL: binary,
                 model: defaultSpawnModel,
-                permissionMode: defaultPermissionMode
+                permissionMode: defaultPermissionMode,
+                effort: defaultSpawnEffort
             )
         }
     }
@@ -746,8 +755,29 @@ final class V2AppState: ObservableObject {
         let cwd = URL(fileURLWithPath: tab.projectCwd)
         let resume = session.sessionId ?? resumeIds[tab.id]
         let model = defaultSpawnModel
+        let effort = session.effort
         restartAfterStop(tabId: tab.id, session: session) {
-            session.start(cwd: cwd, claudeURL: binary, resumeId: resume, model: model, permissionMode: mode)
+            session.start(cwd: cwd, claudeURL: binary, resumeId: resume, model: model, permissionMode: mode, effort: effort)
+        }
+    }
+
+    /// Change the active session's effort level. Always a restart — unlike
+    /// permission mode, there is no live-switchable subset: verified against
+    /// the real binary that no set_effort-style control request exists (every
+    /// plausible subtype name returns "Unsupported control request subtype"),
+    /// and system/init never reports an effort catalog to switch within.
+    /// Same seamless --resume restart changePermissionMode uses for
+    /// bypassPermissions — conversation carries over, only the launch flag
+    /// changes.
+    func changeEffort(_ effort: String) {
+        defaultSpawnEffort = effort  // persist for next spawn (AppStorage)
+        guard let tab = activeTab, let session = tab.streamSession, let binary = claudeBinary else { return }
+        let cwd = URL(fileURLWithPath: tab.projectCwd)
+        let resume = session.sessionId ?? resumeIds[tab.id]
+        let model = defaultSpawnModel
+        let permissionMode = session.permissionMode
+        restartAfterStop(tabId: tab.id, session: session) {
+            session.start(cwd: cwd, claudeURL: binary, resumeId: resume, model: model, permissionMode: permissionMode, effort: effort)
         }
     }
 
@@ -798,7 +828,8 @@ final class V2AppState: ObservableObject {
             claudeURL: binary,
             resumeId: resume,
             model: defaultSpawnModel,
-            permissionMode: defaultPermissionMode
+            permissionMode: defaultPermissionMode,
+            effort: defaultSpawnEffort
         )
     }
 
@@ -828,7 +859,7 @@ final class V2AppState: ObservableObject {
                 case .idle, .terminated:
                     session.resume(cwd: URL(fileURLWithPath: projectCwd), claudeURL: binary,
                                    sessionId: sessionId, model: defaultSpawnModel,
-                                   permissionMode: defaultPermissionMode)
+                                   permissionMode: defaultPermissionMode, effort: defaultSpawnEffort)
                 default:
                     break
                 }
@@ -860,7 +891,8 @@ final class V2AppState: ObservableObject {
                 claudeURL: binary,
                 sessionId: sessionId,
                 model: defaultSpawnModel,
-                permissionMode: defaultPermissionMode
+                permissionMode: defaultPermissionMode,
+                effort: defaultSpawnEffort
             )
         }
     }

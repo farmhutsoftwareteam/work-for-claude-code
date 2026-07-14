@@ -68,6 +68,7 @@ final class StreamSession: ObservableObject {
     private var wakeClaudeURL: URL?
     private var wakeModel: String?
     private var wakePermissionMode: String?
+    private var wakeEffort: String?
     /// Message typed into a hibernated tab — buffered through the respawn and
     /// flushed the moment the new subprocess's stdin writer exists.
     private var pendingWakeText: String?
@@ -87,6 +88,13 @@ final class StreamSession: ObservableObject {
     @Published private(set) var sessionId: String?
     @Published private(set) var model: String = "claude-sonnet"
     @Published private(set) var permissionMode: String = "default"
+    /// `--effort` passed at launch. "" means the flag was omitted — the CLI's
+    /// own default applies. Unlike model/permission mode, there is no live
+    /// `set_effort`-style control request (verified against the real binary:
+    /// every plausible subtype name comes back "Unsupported control request
+    /// subtype") and `system/init` never reports an effort catalog either —
+    /// so this can only change via a restart, never mid-session.
+    @Published private(set) var effort: String = ""
 
     /// Unsent composer text, persisted on the (per-tab) session so a draft
     /// survives switching tabs and back — the composer view's @State is torn
@@ -494,7 +502,7 @@ final class StreamSession: ObservableObject {
     /// the (possibly large) .jsonl OFF the main thread, then preloads it and
     /// starts the process. `isResuming` is true for the read window so the UI
     /// shows a loading indicator instead of looking stuck.
-    func resume(cwd: URL, claudeURL: URL, sessionId: String, model: String? = nil, permissionMode: String? = nil) {
+    func resume(cwd: URL, claudeURL: URL, sessionId: String, model: String? = nil, permissionMode: String? = nil, effort: String? = nil) {
         // Re-entrancy guard: a double-click must not schedule two preloads
         // (which would append the history twice before start() no-ops).
         guard !isResuming else { return }
@@ -510,7 +518,7 @@ final class StreamSession: ObservableObject {
             if let preload { self.preloadHistory(preload) }
             self.isResuming = false
             self.start(cwd: cwd, claudeURL: claudeURL, resumeId: sessionId,
-                       model: model, permissionMode: permissionMode)
+                       model: model, permissionMode: permissionMode, effort: effort)
         }
     }
 
@@ -522,7 +530,7 @@ final class StreamSession: ObservableObject {
     /// machinery idle tabs already use. Restoring N tabs at launch is
     /// therefore N bounded file reads and ZERO subprocesses (each live
     /// claude process costs 0.4-0.6GB; this is what makes restore free).
-    func restoreHibernated(cwd: URL, claudeURL: URL, sessionId: String, model: String? = nil, permissionMode: String? = nil) {
+    func restoreHibernated(cwd: URL, claudeURL: URL, sessionId: String, model: String? = nil, permissionMode: String? = nil, effort: String? = nil) {
         guard !isResuming else { return }
         guard case .idle = state else { return }
         isResuming = true
@@ -533,6 +541,7 @@ final class StreamSession: ObservableObject {
         wakeClaudeURL = claudeURL
         wakeModel = model
         wakePermissionMode = permissionMode
+        wakeEffort = effort
         self.sessionId = sessionId
         let cwdPath = cwd.path
         Task { [weak self] in
@@ -657,7 +666,7 @@ final class StreamSession: ObservableObject {
     /// to replay that session's history before the new turn — claude will
     /// stream its prior messages out of stdout in addition to handling new
     /// user turns.
-    func start(cwd: URL, claudeURL: URL, resumeId: String? = nil, model: String? = nil, permissionMode: String? = nil) {
+    func start(cwd: URL, claudeURL: URL, resumeId: String? = nil, model: String? = nil, permissionMode: String? = nil, effort: String? = nil) {
         // Allow (re)start from a finished session too, not just a fresh one.
         // stop() leaves state at .terminated, so the previous `== .idle`
         // guard silently no-op'd every restart — the "Restart session" button
@@ -673,6 +682,7 @@ final class StreamSession: ObservableObject {
         wakeClaudeURL = claudeURL
         wakeModel = model
         wakePermissionMode = permissionMode
+        wakeEffort = effort
         // Clear transient per-run state so a restart doesn't inherit a stale
         // retry banner or permission card. Transcript is intentionally kept
         // so the conversation stays on screen across the restart.
@@ -751,6 +761,13 @@ final class StreamSession: ObservableObject {
         args.append("--permission-mode")
         args.append(resolvedPermission)
         self.permissionMode = resolvedPermission
+        if let effort, !effort.isEmpty {
+            args.append("--effort")
+            args.append(effort)
+            self.effort = effort
+        } else {
+            self.effort = ""
+        }
         process.arguments = args
         process.currentDirectoryURL = cwd
         // Critical: GUI-launched apps inherit launchd's stripped PATH which
@@ -1267,7 +1284,7 @@ final class StreamSession: ObservableObject {
         }
         pendingWakeText = text
         start(cwd: cwd, claudeURL: claude, resumeId: sessionId,
-              model: wakeModel, permissionMode: wakePermissionMode)
+              model: wakeModel, permissionMode: wakePermissionMode, effort: wakeEffort)
     }
 
     func stop() {
