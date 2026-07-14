@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Changelog - Atelier</title>
-    <meta name="description" content="Every release of Atelier, dated and itemised. Latest: v2.9.8 (july 14, 2026).">
+    <meta name="description" content="Every release of Atelier, dated and itemised. Latest: v2.9.9 (july 14, 2026).">
     <link rel="canonical" href="https://work.munyamakosa.com/releases.html">
     <link rel="alternate" type="application/rss+xml" title="Atelier appcast" href="https://work.munyamakosa.com/appcast.xml">
 
@@ -184,13 +184,35 @@
         </div>
 
 
+    <article id="v2-9-9" class="release-article" style="display:grid;grid-template-columns:200px 1fr;gap:40px;padding:38px 0;border-bottom:1px solid var(--line);">
+      <div>
+        <div style="font-family:var(--helv);font-weight:500;font-size:22px;letter-spacing:-.01em;">
+          <a href="#v2-9-9" style="color:var(--ink);text-decoration:none;">v2.9.9</a>
+        </div>
+        <div style="font-family:var(--mono);font-size:11px;color:var(--mute);margin-top:6px;">2026 · jul 14</div>
+        <div style="display:inline-block;font-family:var(--mono);font-size:10px;letter-spacing:.08em;text-transform:uppercase;border:1px solid var(--line2);padding:3px 8px;margin-top:12px;">latest</div>
+        <div style="font-family:var(--mono);font-size:10px;color:var(--mute);margin-top:10px;">macOS 15.0+</div>
+      </div>
+      <div class="release-body" style="font-family:var(--helv);font-size:16px;line-height:1.6;color:rgba(27,28,30,.82);">
+        <h3>The "/" command palette actually works now</h3>
+        <ul>
+          <li><b>The slash-command palette is reliable now.</b> It used to only open if "/" was literally the first character you'd ever typed into an empty box — after that, nothing. It now opens whenever "/" is at the start of a line or after a space, wherever your cursor actually is, and a permanent "/" icon (or ⌘/) opens it from anywhere regardless of what you've already typed. Picking or dismissing a command never wipes the rest of your message anymore.</li>
+          <li><b>Command search is real search now</b> — it matches names and descriptions, fuzzily, instead of only the start of a command's name.</li>
+          <li><b>MCP servers now split into "available everywhere" vs. "this project only"</b> instead of burying the distinction in small print on each row.</li>
+          <li><b>Skills can be edited with Claude's help now, not just manually</b> — "improve with Claude" revises a skill for you (via skill-creator, on a private copy first) and drops the result into the same review-before-save form as a manual edit.</li>
+          <li><b>Fixed: the model couldn't reliably tell when a command in a co-driven terminal had actually finished</b> — it can now ask to wait for a real answer instead of polling blind.</li>
+          <li><b>Tool call previews cover Claude Code's real tool surface now</b> — worktree actions, scheduled wakeups, background monitors, task management, and more all render their actual fields instead of a raw JSON blob or a blank summary.</li>
+          <li><b>Added a hang watchdog</b> — if the app ever fully freezes, it now notices automatically and captures a real stack sample, turning a future freeze into something diagnosable instead of a mystery.</li>
+        </ul>
+      </div>
+    </article>
+
     <article id="v2-9-8" class="release-article" style="display:grid;grid-template-columns:200px 1fr;gap:40px;padding:38px 0;border-bottom:1px solid var(--line);">
       <div>
         <div style="font-family:var(--helv);font-weight:500;font-size:22px;letter-spacing:-.01em;">
           <a href="#v2-9-8" style="color:var(--ink);text-decoration:none;">v2.9.8</a>
         </div>
         <div style="font-family:var(--mono);font-size:11px;color:var(--mute);margin-top:6px;">2026 · jul 14</div>
-        <div style="display:inline-block;font-family:var(--mono);font-size:10px;letter-spacing:.08em;text-transform:uppercase;border:1px solid var(--line2);padding:3px 8px;margin-top:12px;">latest</div>
         <div style="font-family:var(--mono);font-size:10px;color:var(--mute);margin-top:10px;">macOS 15.0+</div>
       </div>
       <div class="release-body" style="font-family:var(--helv);font-size:16px;line-height:1.6;color:rgba(27,28,30,.82);">
