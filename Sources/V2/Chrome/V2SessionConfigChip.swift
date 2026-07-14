@@ -42,6 +42,14 @@ struct V2SessionConfigChip: View {
     @Environment(\.v2) private var v2
     @EnvironmentObject private var appState: V2AppState
     @State private var open = false
+    // Same breakpoints V2SessionHeader derives from its own measured width —
+    // every other header control (modePill, dockSwitcher, runningPill) sheds
+    // detail at these thresholds; this one didn't (shipped with a hardcoded
+    // .fixedSize that could never shrink), which is what pinned the whole
+    // window's minimum width via .windowResizability(.contentMinSize) —
+    // "the app feels bigger, it won't fit" (user report, 2026-07-14).
+    let isCompact: Bool
+    let isTight: Bool
 
     private var chipModelLabel: String {
         if let m = appState.activeSession?.model { return V2ModelOption.displayLabel(for: m) }
@@ -59,22 +67,28 @@ struct V2SessionConfigChip: View {
 
     var body: some View {
         Button { open.toggle() } label: {
-            HStack(spacing: 9) {
+            HStack(spacing: isTight ? 6 : 9) {
                 HStack(spacing: 6) {
                     Circle().fill(v2.ink).frame(width: 6, height: 6)
+                    // Model name is the one thing that stays even at the
+                    // tightest breakpoint — a bare dot + chevron would carry
+                    // no information at all (every other header control
+                    // keeps at least a glyph or short label this small).
                     Text(chipModelLabel)
                 }
-                Rectangle().fill(v2.line2).frame(width: 1, height: 13)
-                Text(chipEffortLabel)
-                Rectangle().fill(v2.line2).frame(width: 1, height: 13)
-                Text(chipPermissionLabel).foregroundColor(v2.mute)
+                if !isCompact {
+                    Rectangle().fill(v2.line2).frame(width: 1, height: 13)
+                    Text(chipEffortLabel)
+                    Rectangle().fill(v2.line2).frame(width: 1, height: 13)
+                    Text(chipPermissionLabel).foregroundColor(v2.mute)
+                }
                 Image(systemName: "chevron.down")
                     .font(.system(size: 8, weight: .medium))
                     .foregroundColor(v2.mute)
             }
             .font(.system(size: 11.5, design: .monospaced))
             .foregroundColor(v2.ink)
-            .padding(.horizontal, 12)
+            .padding(.horizontal, isTight ? 8 : 12)
             .padding(.vertical, 7)
             .background(v2.card)
             .overlay(Rectangle().stroke(v2.ink, lineWidth: 1))
@@ -85,6 +99,7 @@ struct V2SessionConfigChip: View {
         // sets the defaults for future spawns (same as the old model-only
         // chip's behavior, now true of all three sections).
         .disabled(appState.activeSession == nil && appState.modelCatalog.isEmpty)
+        .help("\(chipModelLabel) · \(chipEffortLabel) · \(chipPermissionLabel)")
         .popover(isPresented: $open, arrowEdge: .bottom) {
             V2SessionConfigPanel()
                 .environmentObject(appState)

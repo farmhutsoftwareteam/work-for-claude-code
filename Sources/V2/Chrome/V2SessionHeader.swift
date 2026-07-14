@@ -1,7 +1,8 @@
 // Session header — bound to V2AppState's active tab (a TerminalTab from
-// TerminalsController). Shows project name + LIVE badge driven by surface
-// state, path subline with model, dock switcher, mode toggle pill, and
-// the live Running pill.
+// TerminalsController). Shows the project path subline, the unified
+// session-config pill (model/effort/permissions), dock switcher, mode
+// toggle pill, and the live Running pill. Session name and live state
+// live on the tab strip now, not duplicated here.
 
 import SwiftUI
 import Inject
@@ -46,23 +47,15 @@ struct V2SessionHeader: View {
                 .foregroundColor(v2.ink)
                 .layoutPriority(2)   // the mark never gets squeezed
 
-            VStack(alignment: .leading, spacing: 3) {
-                HStack(spacing: 9) {
-                    Text(headerTitle)
-                        .font(.system(size: 19, weight: .medium))
-                        .kerning(-0.38)
-                        .lineLimit(1)
-                        .truncationMode(.tail)
-                    if showLive { liveBadge }
-                }
-                pathSublineView
-            }
-            .layoutPriority(1)       // identity wins remaining space over Spacer
+            // Session name dropped — the tab strip already names it, showing
+            // it twice just squeezed everything else in a narrow header.
+            pathSublineView
+                .layoutPriority(1)       // identity wins remaining space over Spacer
 
             Spacer(minLength: 12)
 
             HStack(spacing: 10) {
-                V2SessionConfigChip()
+                V2SessionConfigChip(isCompact: isCompact, isTight: isTight)
                 modePill
                 dockSwitcher
                 runningPill
@@ -84,10 +77,6 @@ struct V2SessionHeader: View {
         .enableInjection()
     }
 
-    private var headerTitle: String {
-        appState.activeTab?.title ?? appState.selectedProjectName.ifEmpty("no project")
-    }
-
     private var pathSublineView: some View {
         // The model chip that used to live here (V2ModelChip) moved into
         // V2SessionConfigChip in the top-right controls — one unified
@@ -105,32 +94,6 @@ struct V2SessionHeader: View {
         appState.activeTab?.projectCwd
             ?? appState.selectedProjectCwd?.path
             ?? "—"
-    }
-
-    private var showLive: Bool {
-        guard let tab = appState.activeTab else { return false }
-        switch tab.surface {
-        case .modeA: return tab.isLive
-        case .modeB:
-            guard let s = tab.streamSession else { return false }
-            switch s.state {
-            case .idle, .terminated: return false
-            default: return true
-            }
-        }
-    }
-
-    private var liveBadge: some View {
-        HStack(spacing: 5) {
-            Circle().fill(v2.ink).frame(width: 6, height: 6)
-            Text("LIVE")
-                .font(.system(size: 10, design: .monospaced))
-                .kerning(0.8)
-        }
-        .foregroundColor(v2.mute)
-        .padding(.horizontal, 7)
-        .padding(.vertical, 2)
-        .overlay(Rectangle().stroke(v2.line2, lineWidth: 1))
     }
 
     private var modePill: some View {
