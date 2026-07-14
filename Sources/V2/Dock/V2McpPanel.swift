@@ -315,8 +315,20 @@ struct V2McpPanel: View {
 
     // MARK: - Configured servers (from project + user config)
 
+    /// The active TAB's own project wins whenever a tab is open — clicking a
+    /// tab in the strip (V2AppState.activate(tabId:)) updates activeTabId but
+    /// deliberately never touches selectedProjectCwd (that's the LEFT RAIL's
+    /// own selection, set only by clicking a project there). Reading
+    /// selectedProjectCwd first meant this panel kept showing whichever
+    /// project was last clicked in the rail — completely unrelated to
+    /// whichever tab you'd since switched to — e.g. open the rail's "munga"
+    /// project once, then click between already-open "hubflo" and "munga"
+    /// TABS, and the panel showed munga's servers under the hubflo tab and
+    /// vice versa (user report, 2026-07-14: "really crazy"). selectedProjectCwd
+    /// is only the right source when there's genuinely no active tab (the
+    /// project-home screen — see selectProject's own activeTabId = nil).
     private var projectCwd: String? {
-        appState.selectedProjectCwd?.path ?? appState.activeTab?.projectCwd
+        appState.activeTab?.projectCwd ?? appState.selectedProjectCwd?.path
     }
 
     /// MCPs configured for this project — `<cwd>/.mcp.json` (team, "project"),

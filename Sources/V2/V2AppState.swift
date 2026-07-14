@@ -628,7 +628,11 @@ final class V2AppState: ObservableObject {
     /// terminal and can complete sign-in there.
     func openMCPLogin(serverName: String) {
         guard let terminals else { return }
-        let cwd = selectedProjectCwd?.path ?? activeTab?.projectCwd ?? NSHomeDirectory()
+        // Active tab wins — same reasoning as V2McpPanel.projectCwd: the rail's
+        // selectedProjectCwd is a stale, unrelated selection once a tab is
+        // open, and this sign-in terminal must land in whichever project the
+        // needs-auth server actually belongs to.
+        let cwd = activeTab?.projectCwd ?? selectedProjectCwd?.path ?? NSHomeDirectory()
         let id = terminals.openMCPLogin(projectCwd: cwd, serverName: serverName)
         activeTabId = id
         mainView = .chat
