@@ -10,6 +10,47 @@ import AppKit
 import Darwin
 import Inject
 
+/// The three real MCP scopes, named exactly the way `claude mcp add --scope`
+/// itself names them — not an invented taxonomy. Previously this panel only
+/// drew ONE boundary (project+local merged into "this project" vs. global+
+/// plugin as "everywhere"), which silently flattened two scopes that behave
+/// completely differently (checked-in and team-shared vs. private-to-you)
+/// into one bucket distinguished only by a quiet subtext line. User
+/// feedback, verbatim (2026-07-14): "we still havent properly seprated
+/// proejct mcp and worspace mcp or the mcps available to the whole computer
+/// on my user, like its so confusing and not even onbious."
+enum V2McpScopeTier {
+    /// `<cwd>/.mcp.json` — checked into git, shared with the team.
+    case project
+    /// `~/.claude.json` → `projects.<cwd>` — private to you, this project only.
+    case local
+    /// `~/.claude.json` top-level, or a plugin — every project on this Mac.
+    case user
+
+    static func of(_ s: MCPServer.Source) -> V2McpScopeTier {
+        switch s {
+        case .project:        return .project
+        case .localUser:      return .local
+        case .global, .plugin: return .user
+        }
+    }
+
+    var title: String {
+        switch self {
+        case .project: return "Project"
+        case .local:   return "Local"
+        case .user:    return "User"
+        }
+    }
+    var subtitle: String {
+        switch self {
+        case .project: return "In .mcp.json — checked in, shared with your team."
+        case .local:   return "Just this project, just you — not shared, not checked in."
+        case .user:    return "Every project on this Mac, not just this one."
+        }
+    }
+}
+
 struct V2McpPanel: View {
     @ObserveInjection private var inject
     @Environment(\.v2) private var v2
@@ -369,37 +410,18 @@ struct V2McpPanel: View {
     /// already project-bound.
     private func canCopyToProject(_ server: MCPServer) -> Bool {
         guard projectCwd != nil else { return false }
-        return isEverywhereScope(server.source)
-    }
-
-    /// The split the "AVAILABLE EVERYWHERE" / "THIS PROJECT ONLY" section
-    /// headers are built on — the same boundary `canCopyToProject` already
-    /// draws (global + plugin live "above" any one project; local + project
-    /// are bound to just this one), just surfaced as a visible grouping
-    /// instead of small print in each row (user request — the scope words
-    /// alone weren't legible: "global what what stuff lol").
-    private func isEverywhereScope(_ s: MCPServer.Source) -> Bool {
-        switch s {
-        case .global, .plugin: return true
-        case .localUser, .project: return false
-        }
+        return V2McpScopeTier.of(server.source) == .user
     }
 
     /// Same everywhere-vs-this-project split as configuredContent, applied
     /// to a LIVE session row. Resolves scope via the matching configured
     /// entry by name (same lookup serviceKey(live:) already does) — falls
-    /// back to "everywhere" when there's no local config match at all
+    /// back to "user" (everywhere) when there's no local config match at all
     /// (e.g. a claude.ai connector, which is account-wide by nature, never
-    /// project-scoped). A running session reports every server it actually
-    /// resolved — project AND global — which is correct and complete, but
-    /// showing all of it flat once a session starts undid the same
-    /// decluttering configuredContent already got: sending a first message
-    /// flipped the panel from "this project's servers" to "everything,
-    /// unsorted" (user report, 2026-07-14: "the right tab had a lot of
-    /// other mcps... show up").
-    private func isEverywhereScope(live server: MCPServerInfo) -> Bool {
-        guard let cfg = configuredServers.first(where: { $0.name == server.name }) else { return true }
-        return isEverywhereScope(cfg.source)
+    /// project-scoped).
+    private func scopeTier(live server: MCPServerInfo) -> V2McpScopeTier {
+        guard let cfg = configuredServers.first(where: { $0.name == server.name }) else { return .user }
+        return V2McpScopeTier.of(cfg.source)
     }
 
     /// The scope MCPConfigWriter needs to edit/delete this row. v1
@@ -425,8 +447,9 @@ struct V2McpPanel: View {
 
     private var configuredContent: some View {
         let servers = configuredServers
-        let everywhere = servers.filter { isEverywhereScope($0.source) }
-        let thisProjectOnly = servers.filter { !isEverywhereScope($0.source) }
+        let project = servers.filter { V2McpScopeTier.of($0.source) == .project }
+        let local = servers.filter { V2McpScopeTier.of($0.source) == .local }
+        let user = servers.filter { V2McpScopeTier.of($0.source) == .user }
         return ScrollView {
             VStack(alignment: .leading, spacing: 0) {
                 if servers.isEmpty {
@@ -436,28 +459,32 @@ struct V2McpPanel: View {
                         .padding(.horizontal, 18).padding(.vertical, 20)
                         .frame(maxWidth: .infinity, alignment: .leading)
                 } else {
-                    // Project-scoped servers are the ones you actually reach
-                    // for — shown first, always expanded. "Available
-                    // everywhere" used to lead with the SAME weight, which
-                    // read as noise: every global server appeared whether or
-                    // not it had anything to do with the project you're
-                    // looking at (user feedback, 2026-07-14: "so so
-                    // confusing, i want mainly to see my project's scoped
-                    // mcps"). Collapsed by default now — one click away via
-                    // "→ project" activates one into this project's own
-                    // list, which is what actually promotes it here.
-                    if !thisProjectOnly.isEmpty {
-                        scopeSectionHeader(
-                            title: "This project",
-                            subtitle: "Scoped just to this project — private to you, or shared with your team."
-                        )
-                        serverGroupRows(thisProjectOnly)
+                    // Three real scopes get three sections, not two — Project
+                    // and Local used to share one "This project" header,
+                    // distinguished only by a quiet subtext line, which
+                    // silently flattened "checked in, shared with your team"
+                    // and "private to you, nobody else sees this" into what
+                    // read as one bucket (/lawsofux pass, 2026-07-14: Law of
+                    // Prägnanz — two visual buckets forced an incorrect
+                    // simplification of three real categories). Project and
+                    // Local both lead, expanded — both are genuinely specific
+                    // to the project you're looking at. User (every project on
+                    // this Mac) is the one that behaves unexpectedly outside
+                    // this project's boundary, so it stays a distinct,
+                    // collapsed-by-default disclosure rather than blending in.
+                    if !project.isEmpty {
+                        scopeSectionHeader(.project)
+                        serverGroupRows(project)
                     }
-                    if !everywhere.isEmpty {
-                        everywhereDisclosure(everywhere)
+                    if !local.isEmpty {
+                        scopeSectionHeader(.local)
+                        serverGroupRows(local)
+                    }
+                    if !user.isEmpty {
+                        everywhereDisclosure(user)
                     }
                 }
-                Text("From .mcp.json (project) and ~/.claude.json (local + user). Start a session to see live connection status.")
+                Text("Project → .mcp.json · Local → ~/.claude.json (this project) · User → ~/.claude.json (every project). Start a session to see live connection status.")
                     .font(.system(size: 10.5, design: .monospaced))
                     .lineSpacing(10.5 * 0.6)
                     .foregroundColor(v2.faint)
@@ -470,14 +497,15 @@ struct V2McpPanel: View {
     /// The outer "which world does this belong to" division — the service
     /// grouping (linear-garman/hubflo/khayalo as one "linear" header) nests
     /// INSIDE each of these, so the hierarchy reads scope → service →
-    /// account, biggest distinction first.
-    private func scopeSectionHeader(title: String, subtitle: String) -> some View {
+    /// account, biggest distinction first. Title/subtitle come straight off
+    /// V2McpScopeTier — same three words `claude mcp add --scope` uses.
+    private func scopeSectionHeader(_ tier: V2McpScopeTier) -> some View {
         VStack(alignment: .leading, spacing: 3) {
-            Text(title.uppercased())
+            Text(tier.title.uppercased())
                 .font(.system(size: 10, design: .monospaced))
                 .kerning(1.2)
                 .foregroundColor(v2.mute)
-            Text(subtitle)
+            Text(tier.subtitle)
                 .font(.system(size: 10, design: .monospaced))
                 .foregroundColor(v2.faint)
         }
@@ -487,8 +515,14 @@ struct V2McpPanel: View {
         .frame(maxWidth: .infinity, alignment: .leading)
     }
 
-    /// "Available everywhere" — collapsed by default so it doesn't compete
-    /// with the project's own servers. A quiet, click-to-expand row rather
+    /// "User" scope — collapsed by default so it doesn't compete with the
+    /// project's own servers, but marked with a solid (not hollow) dot
+    /// unique to this section: this is the one tier that reaches OUTSIDE
+    /// the project you're looking at, so it gets a visually distinct marker
+    /// rather than just fading into gray-and-collapsed (/lawsofux pass,
+    /// 2026-07-14 — Von Restorff Effect: the scope that behaves
+    /// unexpectedly is the one that most needs to be noticed, not the one
+    /// that most needs to be hidden). A quiet, click-to-expand row rather
     /// than a native DisclosureGroup, matching the chip/mono language the
     /// rest of the panel uses.
     private func everywhereDisclosure(_ servers: [MCPServer]) -> some View {
@@ -498,7 +532,8 @@ struct V2McpPanel: View {
                     Image(systemName: showEverywhere ? "chevron.down" : "chevron.right")
                         .font(.system(size: 8, weight: .medium))
                         .foregroundColor(v2.faint)
-                    Text("AVAILABLE EVERYWHERE")
+                    Circle().fill(v2.mute).frame(width: 5, height: 5)
+                    Text(V2McpScopeTier.user.title.uppercased())
                         .font(.system(size: 10, design: .monospaced))
                         .kerning(1.2)
                         .foregroundColor(v2.mute)
@@ -514,7 +549,7 @@ struct V2McpPanel: View {
             }
             .buttonStyle(.plain)
             if showEverywhere {
-                Text("Configured once, loads in every project you open. \"→ project\" on any of these moves it up into This project.")
+                Text("\(V2McpScopeTier.user.subtitle) \"→ project\" on any of these moves it into Local.")
                     .font(.system(size: 10, design: .monospaced))
                     .foregroundColor(v2.faint)
                     .padding(.horizontal, 18)
@@ -942,19 +977,21 @@ struct V2McpPanel: View {
 
     private func liveContent(for session: StreamSession) -> some View {
         let servers = session.mcpServers
-        let thisProjectOnly = servers.filter { !isEverywhereScope(live: $0) }
-        let everywhere = servers.filter { isEverywhereScope(live: $0) }
+        let project = servers.filter { scopeTier(live: $0) == .project }
+        let local = servers.filter { scopeTier(live: $0) == .local }
+        let user = servers.filter { scopeTier(live: $0) == .user }
         return ScrollView {
             VStack(alignment: .leading, spacing: 0) {
-                if !thisProjectOnly.isEmpty {
-                    scopeSectionHeader(
-                        title: "This project",
-                        subtitle: "Scoped just to this project — private to you, or shared with your team."
-                    )
-                    liveServerGroupRows(thisProjectOnly)
+                if !project.isEmpty {
+                    scopeSectionHeader(.project)
+                    liveServerGroupRows(project)
                 }
-                if !everywhere.isEmpty {
-                    liveEverywhereDisclosure(everywhere)
+                if !local.isEmpty {
+                    scopeSectionHeader(.local)
+                    liveServerGroupRows(local)
+                }
+                if !user.isEmpty {
+                    liveEverywhereDisclosure(user)
                 }
                 if session.mcpServers.isEmpty {
                     Text("No MCP servers loaded for this session.")
@@ -1061,7 +1098,8 @@ struct V2McpPanel: View {
                     Image(systemName: showEverywhere ? "chevron.down" : "chevron.right")
                         .font(.system(size: 8, weight: .medium))
                         .foregroundColor(v2.faint)
-                    Text("AVAILABLE EVERYWHERE")
+                    Circle().fill(v2.mute).frame(width: 5, height: 5)
+                    Text(V2McpScopeTier.user.title.uppercased())
                         .font(.system(size: 10, design: .monospaced))
                         .kerning(1.2)
                         .foregroundColor(v2.mute)
@@ -1077,7 +1115,7 @@ struct V2McpPanel: View {
             }
             .buttonStyle(.plain)
             if showEverywhere {
-                Text("Loaded in every project, live in this session too.")
+                Text("\(V2McpScopeTier.user.subtitle) Live in this session too.")
                     .font(.system(size: 10, design: .monospaced))
                     .foregroundColor(v2.faint)
                     .padding(.horizontal, 18)
