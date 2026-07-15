@@ -6,6 +6,24 @@
         <description>Updates for Work</description>
         <language>en</language>
         <item>
+            <title>Version 2.9.17</title>
+            <pubDate>Wed, 15 Jul 2026 11:12:12 +0400</pubDate>
+            <sparkle:version>66</sparkle:version>
+            <sparkle:shortVersionString>2.9.17</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>15.0</sparkle:minimumSystemVersion>
+            <description><![CDATA[
+                <h3>Atelier 2.9.17 — Project, Local, and User: three real MCP scopes</h3>
+                <ul>
+                    <li><b>The MCP panel now shows three real sections instead of two.</b> "Project" (checked into .mcp.json, shared with your team) and "Local" (private to you, this project only) used to be silently merged into one "This project" bucket, told apart only by a quiet line of subtext — easy to miss, easy to confuse. They're now their own sections, both shown up front. "User" (every project on this Mac, not just this one) stays out of the way by default, but now carries its own marker so it's never mistaken for something scoped to the project you're actually looking at. Same three words `claude mcp add --scope` already uses, in both the pre-session and live views.</li>
+                </ul>
+            ]]></description>
+            <enclosure
+                url="https://work.munyamakosa.com/Work-2.9.17.dmg"
+                length="13774559"
+                type="application/octet-stream"
+                sparkle:edSignature="xfQhLlh4W+wD/tEgXgDzybXez2Suo/YqNYh8aHFtMW0+Q30iRv+q3N3VLeRtA/XMtuEUuoYGQN4v4gp2EVb3BA==" />
+        </item>
+        <item>
             <title>Version 2.9.16</title>
             <pubDate>Wed, 15 Jul 2026 00:44:30 +0400</pubDate>
             <sparkle:version>65</sparkle:version>
