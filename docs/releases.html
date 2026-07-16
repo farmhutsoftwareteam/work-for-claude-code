@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Changelog - Atelier</title>
-    <meta name="description" content="Every release of Atelier, dated and itemised. Latest: v2.10.0 (july 16, 2026).">
+    <meta name="description" content="Every release of Atelier, dated and itemised. Latest: v2.10.1 (july 16, 2026).">
     <link rel="canonical" href="https://work.munyamakosa.com/releases.html">
     <link rel="alternate" type="application/rss+xml" title="Atelier appcast" href="https://work.munyamakosa.com/appcast.xml">
 
@@ -184,13 +184,34 @@
         </div>
 
 
+    <article id="v2-10-1" class="release-article" style="display:grid;grid-template-columns:200px 1fr;gap:40px;padding:38px 0;border-bottom:1px solid var(--line);">
+      <div>
+        <div style="font-family:var(--helv);font-weight:500;font-size:22px;letter-spacing:-.01em;">
+          <a href="#v2-10-1" style="color:var(--ink);text-decoration:none;">v2.10.1</a>
+        </div>
+        <div style="font-family:var(--mono);font-size:11px;color:var(--mute);margin-top:6px;">2026 · jul 16</div>
+        <div style="display:inline-block;font-family:var(--mono);font-size:10px;letter-spacing:.08em;text-transform:uppercase;border:1px solid var(--line2);padding:3px 8px;margin-top:12px;">latest</div>
+        <div style="font-family:var(--mono);font-size:10px;color:var(--mute);margin-top:10px;">macOS 15.0+</div>
+      </div>
+      <div class="release-body" style="font-family:var(--helv);font-size:16px;line-height:1.6;color:rgba(27,28,30,.82);">
+        <h3>Provider continuity you can trust</h3>
+        <ul>
+          <li><b>Claude-to-Codex handoff now works reliably.</b> Atelier sends Codex the correct app-server protocol shape and keeps both providers' native session identities, drafts, and visible working timeline when you switch.</li>
+          <li><b>Relaunch no longer sacrifices a retained provider.</b> Both provider slots are restored, with a safe fallback to whichever Claude or Codex history remains available.</li>
+          <li><b>Claude and Codex now share one responsive composer.</b> Attachment chips, send/stop controls, context meter, and layout stay consistent, while persistent labeled badges and distinct shapes/colors make the active provider clear at a glance.</li>
+          <li><b>History is unified.</b> Closed Codex threads are discovered and resumed through the local app-server alongside Claude sessions, without spending a model turn.</li>
+          <li><b>MCP discovery no longer blocks Codex startup or history restore.</b> Repeated refreshes are coalesced, while configuration and OAuth remain owned and isolated by each provider.</li>
+          <li><b>Codex tabs now show the correct elapsed time, and long streaming transcripts avoid a full indexed-array allocation on every refresh.</b></li>
+        </ul>
+      </div>
+    </article>
+
     <article id="v2-10-0" class="release-article" style="display:grid;grid-template-columns:200px 1fr;gap:40px;padding:38px 0;border-bottom:1px solid var(--line);">
       <div>
         <div style="font-family:var(--helv);font-weight:500;font-size:22px;letter-spacing:-.01em;">
           <a href="#v2-10-0" style="color:var(--ink);text-decoration:none;">v2.10.0</a>
         </div>
         <div style="font-family:var(--mono);font-size:11px;color:var(--mute);margin-top:6px;">2026 · jul 16</div>
-        <div style="display:inline-block;font-family:var(--mono);font-size:10px;letter-spacing:.08em;text-transform:uppercase;border:1px solid var(--line2);padding:3px 8px;margin-top:12px;">latest</div>
         <div style="font-family:var(--mono);font-size:10px;color:var(--mute);margin-top:10px;">macOS 15.0+</div>
       </div>
       <div class="release-body" style="font-family:var(--helv);font-size:16px;line-height:1.6;color:rgba(27,28,30,.82);">

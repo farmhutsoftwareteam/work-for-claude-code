@@ -6,6 +6,29 @@
         <description>Updates for Work</description>
         <language>en</language>
         <item>
+            <title>Version 2.10.1</title>
+            <pubDate>Thu, 16 Jul 2026 15:31:09 +0400</pubDate>
+            <sparkle:version>68</sparkle:version>
+            <sparkle:shortVersionString>2.10.1</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>15.0</sparkle:minimumSystemVersion>
+            <description><![CDATA[
+                <h3>Atelier 2.10.1 — provider continuity you can trust</h3>
+                <ul>
+                    <li><b>Claude-to-Codex handoff now works reliably.</b> Atelier sends Codex the correct app-server protocol shape and keeps both providers' native session identities, drafts, and visible working timeline when you switch.</li>
+                    <li><b>Relaunch no longer sacrifices a retained provider.</b> Both provider slots are restored, with a safe fallback to whichever Claude or Codex history remains available.</li>
+                    <li><b>Claude and Codex now share one responsive composer.</b> Attachment chips, send/stop controls, context meter, and layout stay consistent, while persistent labeled badges and distinct shapes/colors make the active provider clear at a glance.</li>
+                    <li><b>History is unified.</b> Closed Codex threads are discovered and resumed through the local app-server alongside Claude sessions, without spending a model turn.</li>
+                    <li><b>MCP discovery no longer blocks Codex startup or history restore.</b> Repeated refreshes are coalesced, while configuration and OAuth remain owned and isolated by each provider.</li>
+                    <li><b>Codex tabs now show the correct elapsed time, and long streaming transcripts avoid a full indexed-array allocation on every refresh.</b></li>
+                </ul>
+            ]]></description>
+            <enclosure
+                url="https://work.munyamakosa.com/Work-2.10.1.dmg"
+                length="14529291"
+                type="application/octet-stream"
+                sparkle:edSignature="VA0lDNi87R6orxPWIQnzuW7KC/kNfsUBQtdV7R73x0ZfngIBwT/u7+mgqmUFzhefxvFcZDiW3nubC5vLtI1TAQ==" />
+        </item>
+        <item>
             <title>Version 2.10.0</title>
             <pubDate>Thu, 16 Jul 2026 11:51:06 +0400</pubDate>
             <sparkle:version>67</sparkle:version>
