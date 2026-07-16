@@ -2,7 +2,7 @@
 title: "GPT-5.6 changed the plan"
 slug: gpt-5-6-changed-the-plan
 type: announcement
-description: Atelier started as a workshop for Claude. GPT-5.6 was good enough that keeping the door closed to OpenAI stopped making sense.
+description: One excellent model built the workshop. GPT-5.6 was good enough that the second bench could not stay empty.
 seoTitle: "Why I added OpenAI models to Atelier after GPT-5.6"
 metaDescription: "Why GPT-5.6 convinced me to add OpenAI and Codex as a first-class provider in Atelier, without replacing Claude or breaking the work already in progress."
 date: 2026-07-16
@@ -16,10 +16,11 @@ keywords:
   - Claude and Codex
   - Atelier OpenAI models
 ogAccent: "#10a37f"
-ogLabel: "CLAUDE + CODEX"
 ogMonogram: "5.6"
 ogDomain: "atelier.munyamakosa.com"
-imageAlt: "GPT-5.6 changed the plan, an Atelier announcement about Claude and Codex"
+ogProviderMarks: true
+providerStory: true
+imageAlt: "GPT-5.6 changed the plan, framed by the Claude and ChatGPT marks"
 ---
 
 Atelier started as a workshop for Claude Code. That was not a temporary description or a safe launch position. It was the whole idea.

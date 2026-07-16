@@ -23,6 +23,10 @@ const SRC = path.join(ROOT, 'recipes');
 const OUT = path.join(ROOT, 'docs', 'recipes');
 const SITEMAP = path.join(ROOT, 'docs', 'sitemap.xml');
 const SITE_URL = 'https://atelier.munyamakosa.com';
+const CLAUDE_CORAL = '#D97757';
+const CHATGPT_GREEN = '#10A37F';
+const CLAUDE_MARK_PATH = 'm4.714 15.956 4.718-2.648.079-.23-.08-.128h-.23l-.79-.048-2.695-.073-2.337-.097-2.265-.122-.57-.121-.535-.704.055-.353.48-.321.685.06 1.518.104 2.277.157 1.651.098 2.447.255h.389l.054-.158-.133-.097-.103-.098-2.356-1.596-2.55-1.688-1.336-.972-.722-.491L2 6.223l-.158-1.008.656-.722.88.06.224.061.893.686 1.906 1.476 2.49 1.833.364.304.146-.104.018-.072-.164-.274-1.354-2.446-1.445-2.49-.644-1.032-.17-.619a3 3 0 0 1-.103-.729L6.287.133 6.7 0l.995.134.42.364.619 1.415L9.735 4.14l1.555 3.03.455.898.243.832.09.255h.159V9.01l.127-1.706.237-2.095.23-2.695.08-.76.376-.91.747-.492.583.28.48.685-.067.444-.286 1.851-.558 2.903-.365 1.942h.213l.243-.242.983-1.306 1.652-2.064.728-.82.85-.904.547-.431h1.032l.759 1.129-.34 1.166-1.063 1.347-.88 1.142-1.263 1.7-.79 1.36.074.11.188-.02 2.853-.606 1.542-.28 1.84-.315.832.388.09.395-.327.807-1.967.486-2.307.462-3.436.813-.043.03.049.061 1.548.146.662.036h1.62l3.018.225.79.522.473.638-.08.485-1.213.62-1.64-.389-3.825-.91-1.31-.329h-.183v.11l1.093 1.068 2.003 1.81 2.508 2.33.127.578-.321.455-.34-.049-2.204-1.657-.85-.747-1.925-1.62h-.127v.17l.443.649 2.343 3.521.122 1.08-.17.353-.607.213-.668-.122-1.372-1.924-1.415-2.168-1.141-1.943-.14.08-.674 7.254-.316.37-.728.28-.607-.461-.322-.747.322-1.476.388-1.924.316-1.53.285-1.9.17-.632-.012-.042-.14.018-1.432 1.967-2.18 2.945-1.724 1.845-.413.164-.716-.37.066-.662.401-.589 2.386-3.036 1.439-1.882.929-1.086-.006-.158h-.055L4.138 18.56l-1.13.146-.485-.456.06-.746.231-.243 1.907-1.312Z';
+const CHATGPT_MARK_PATH = 'M22.282 9.821a6 6 0 0 0-.516-4.91 6.05 6.05 0 0 0-6.51-2.9A6.065 6.065 0 0 0 4.981 4.18a6 6 0 0 0-3.998 2.9 6.05 6.05 0 0 0 .743 7.097 5.98 5.98 0 0 0 .51 4.911 6.05 6.05 0 0 0 6.515 2.9A6 6 0 0 0 13.26 24a6.06 6.06 0 0 0 5.772-4.206 6 6 0 0 0 3.997-2.9 6.06 6.06 0 0 0-.747-7.073M13.26 22.43a4.48 4.48 0 0 1-2.876-1.04l.141-.081 4.779-2.758a.8.8 0 0 0 .392-.681v-6.737l2.02 1.168a.07.07 0 0 1 .038.052v5.583a4.504 4.504 0 0 1-4.494 4.494M3.6 18.304a4.47 4.47 0 0 1-.535-3.014l.142.085 4.783 2.759a.77.77 0 0 0 .78 0l5.843-3.369v2.332a.08.08 0 0 1-.033.062L9.74 19.95a4.5 4.5 0 0 1-6.14-1.646M2.34 7.896a4.5 4.5 0 0 1 2.366-1.973V11.6a.77.77 0 0 0 .388.677l5.815 3.354-2.02 1.168a.08.08 0 0 1-.071 0l-4.83-2.786A4.504 4.504 0 0 1 2.34 7.872zm16.597 3.855-5.833-3.387L15.119 7.2a.08.08 0 0 1 .071 0l4.83 2.791a4.494 4.494 0 0 1-.676 8.105v-5.678a.79.79 0 0 0-.407-.667m2.01-3.023-.141-.085-4.774-2.782a.78.78 0 0 0-.785 0L9.409 9.23V6.897a.07.07 0 0 1 .028-.061l4.83-2.787a4.5 4.5 0 0 1 6.68 4.66zm-12.64 4.135-2.02-1.164a.08.08 0 0 1-.038-.057V6.075a4.5 4.5 0 0 1 7.375-3.453l-.142.08L8.704 5.46a.8.8 0 0 0-.393.681zm1.097-2.365 2.602-1.5 2.607 1.5v2.999l-2.597 1.5-2.607-1.5Z';
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
@@ -33,6 +37,19 @@ function escHtml(s) {
         .replace(/>/g, '&gt;')
         .replace(/"/g, '&quot;')
         .replace(/'/g, '&#39;');
+}
+
+function providerMark(pathData, label, size = 24) {
+    return `<svg viewBox="0 0 24 24" width="${size}" height="${size}" role="img" aria-label="${escHtml(label)}"><path fill="currentColor" d="${pathData}"/></svg>`;
+}
+
+function renderProviderSignal(data) {
+    if (!data.providerStory) return '';
+    return `<div class="provider-signal" aria-label="Claude and ChatGPT">
+        <span class="provider-mark provider-mark-claude" title="Claude">${providerMark(CLAUDE_MARK_PATH, 'Claude', 27)}</span>
+        <span class="provider-bridge" aria-hidden="true"><i></i></span>
+        <span class="provider-mark provider-mark-chatgpt" title="ChatGPT">${providerMark(CHATGPT_MARK_PATH, 'ChatGPT', 27)}</span>
+    </div>`;
 }
 
 function formatDate(d) {
@@ -580,6 +597,60 @@ function renderDetailPage(data) {
         .footer-link { transition: color .12s ease; }
         .footer-link:hover { color: var(--ink) !important; }
 
+        .article-masthead-provider {
+            position: relative;
+            margin: 0 -30px 48px;
+            padding: 28px 30px 0;
+            overflow: hidden;
+            border: 1px solid var(--line);
+            background:
+                radial-gradient(circle at 0 0, rgba(217, 119, 87, .13), transparent 37%),
+                radial-gradient(circle at 100% 0, rgba(16, 163, 127, .11), transparent 39%),
+                rgba(243, 244, 242, .5);
+        }
+        .article-masthead-provider::before {
+            content: '';
+            position: absolute;
+            inset: 0 0 auto;
+            height: 3px;
+            background: linear-gradient(90deg, ${CLAUDE_CORAL} 0 46%, var(--paper) 46% 54%, ${CHATGPT_GREEN} 54% 100%);
+        }
+        .article-masthead-provider .article-meta-row { margin-bottom: 0 !important; }
+        .provider-signal {
+            display: flex;
+            align-items: center;
+            width: 100%;
+            gap: 12px;
+            margin-bottom: 24px;
+        }
+        .provider-mark {
+            width: 46px;
+            height: 46px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            border: 1px solid currentColor;
+            background: var(--paper2);
+        }
+        .provider-mark-claude { color: ${CLAUDE_CORAL}; }
+        .provider-mark-chatgpt { color: ${CHATGPT_GREEN}; }
+        .provider-bridge {
+            position: relative;
+            height: 1px;
+            flex: 1;
+            background: linear-gradient(90deg, rgba(217,119,87,.42), var(--line), rgba(16,163,127,.42));
+        }
+        .provider-bridge i {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            width: 7px;
+            height: 7px;
+            border: 1px solid var(--line2);
+            background: var(--paper);
+            transform: translate(-50%, -50%) rotate(45deg);
+        }
+
         /* Article body typography - matches the design's paragraph rhythm */
         .article-body p {
             font-family: var(--helv);
@@ -696,6 +767,9 @@ function renderDetailPage(data) {
             .responsive-padding { padding-left: 22px !important; padding-right: 22px !important; }
             .article-title { font-size: 36px !important; line-height: 1.04 !important; }
             .article-subtitle { font-size: 18px !important; }
+            .article-masthead-provider { margin: 0 0 38px; padding: 22px 18px 0; }
+            .provider-signal { margin-bottom: 20px; }
+            .provider-mark { width: 40px; height: 40px; }
             main.responsive-padding { padding-top: 18px !important; padding-bottom: 64px !important; }
             .cta-card { flex-direction: column !important; align-items: flex-start !important; padding: 26px !important; margin-top: 40px !important; gap: 18px !important; }
             .next-link { flex-direction: column !important; align-items: flex-start !important; gap: 8px !important; }
@@ -788,6 +862,9 @@ function renderDetailPage(data) {
 
         <!-- article masthead -->
         <article class="article-body">
+        <header class="article-masthead${data.providerStory ? ' article-masthead-provider' : ''}">
+${data.providerStory ? `            ${renderProviderSignal(data)}
+` : ''}
             <div style="display:flex;align-items:center;gap:12px;font-family:var(--mono);font-size:11.5px;color:var(--mute);margin-bottom:22px;">
                 <span style="border:1px solid var(--line2);padding:3px 9px;letter-spacing:.06em;">${escHtml(data.type)}</span>
                 ${data.readTime ? `<span>${escHtml(data.readTime)} min read</span>` : ''}
@@ -799,6 +876,7 @@ function renderDetailPage(data) {
                 <span style="color:var(--ink);">the atelier workshop</span>
                 <span style="margin-left:auto;">${escHtml(dateShort)}</span>
             </div>
+        </header>
 
             ${data.bodyHtml}
 ${installCard ? `
@@ -824,7 +902,7 @@ ${installCard ? `
 
     <footer style="border-top:1px solid var(--line);">
         <div class="responsive-padding" style="max-width:1180px;margin:0 auto;padding:36px 40px;font-family:var(--mono);font-size:11px;color:var(--mute);display:flex;justify-content:space-between;flex-wrap:wrap;gap:16px;">
-            <span>© mmxxvi atelier · a workshop for claude + codex</span>
+            <span>© mmxxvi atelier · a workshop for serious model work</span>
             <span><a class="footer-link" href="/recipes/" style="color:var(--mute);text-decoration:none;">← all recipes</a></span>
         </div>
     </footer>
@@ -884,16 +962,16 @@ function formatDateShort(d) {
 function renderFeaturedDecoration(r) {
     const tag = (r.tags && r.tags[0]) || r.type || 'recipe';
     if (r.slug === 'gpt-5-6-changed-the-plan') {
-        return `<div style="border:1px solid var(--line2);background:var(--paper);padding:24px;font-family:var(--mono);font-size:12px;line-height:1.75;color:var(--mute);">
-            <div style="display:flex;align-items:center;justify-content:space-between;color:var(--ink);margin-bottom:14px;">
-                <span>workshop.providers</span>
-                <span style="width:8px;height:8px;border-radius:50%;background:#10a37f;"></span>
+        return `<div class="provider-route-card" aria-label="Claude and ChatGPT connected through Atelier" style="border:1px solid var(--line2);background:rgba(233,234,232,.72);padding:26px;font-family:var(--mono);font-size:12px;color:var(--mute);">
+            <div style="display:flex;align-items:center;gap:14px;">
+                <span style="color:${CLAUDE_CORAL};width:50px;height:50px;display:flex;align-items:center;justify-content:center;border:1px solid currentColor;background:var(--paper2);" title="Claude">${providerMark(CLAUDE_MARK_PATH, 'Claude', 28)}</span>
+                <span style="height:1px;flex:1;background:linear-gradient(90deg,rgba(217,119,87,.55),var(--line2),rgba(16,163,127,.55));position:relative;"><i style="position:absolute;width:7px;height:7px;left:50%;top:50%;border:1px solid var(--line2);background:var(--paper);transform:translate(-50%,-50%) rotate(45deg);"></i></span>
+                <span style="color:${CHATGPT_GREEN};width:50px;height:50px;display:flex;align-items:center;justify-content:center;border:1px solid currentColor;background:var(--paper2);" title="ChatGPT">${providerMark(CHATGPT_MARK_PATH, 'ChatGPT', 28)}</span>
             </div>
-            claude &nbsp;= connected · retained<br>
-            codex &nbsp;&nbsp;= connected · retained<br>
-            model &nbsp;&nbsp;= gpt-5.6-sol<br>
-            handoff = checkpointed
-            <div style="margin-top:14px;padding-top:12px;border-top:1px solid var(--line);color:var(--ink);">→ one workshop<br>&nbsp;&nbsp;choose the right mind for the work</div>
+            <div style="display:flex;justify-content:space-between;align-items:end;margin-top:26px;padding-top:18px;border-top:1px solid var(--line);gap:16px;">
+                <div><span style="display:block;font-size:10px;letter-spacing:.12em;text-transform:uppercase;margin-bottom:5px;">model</span><strong style="font-family:var(--helv);font-size:22px;font-weight:500;letter-spacing:-.02em;color:var(--ink);">GPT-5.6 Sol</strong></div>
+                <span style="color:var(--ink);text-align:right;line-height:1.45;">one workshop<br>two native sessions</span>
+            </div>
         </div>`;
     }
     if (r.slug === 'welcome-to-atelier') {
@@ -932,7 +1010,7 @@ function renderListingPage(recipes) {
     }).join('');
 
     const featuredCard = featured
-        ? `<a href="${escHtml(featured.slug)}.html" class="featured-card" style="text-decoration:none;color:var(--ink);display:grid;grid-template-columns:1.25fr 1fr;gap:48px;align-items:center;border:1px solid var(--line2);background:var(--paper2);padding:44px;">
+        ? `<a href="${escHtml(featured.slug)}.html" class="featured-card${featured.providerStory ? ' provider-featured-card' : ''}" style="text-decoration:none;color:var(--ink);display:grid;grid-template-columns:1.25fr 1fr;gap:48px;align-items:center;border:1px solid var(--line2);background:var(--paper2);padding:44px;">
             <div>
                 <div style="display:flex;align-items:center;gap:12px;font-family:var(--mono);font-size:11px;color:var(--mute);margin-bottom:18px;">
                     <span style="border:1px solid var(--line2);padding:3px 9px;letter-spacing:.06em;">${escHtml(featured.type)}</span>
@@ -1026,6 +1104,21 @@ function renderListingPage(recipes) {
         .nav-cta:hover { background: #000 !important; }
         .featured-card { transition: background .12s ease; }
         .featured-card:hover { background: #fff !important; }
+        .provider-featured-card {
+            position: relative;
+            overflow: hidden;
+            background:
+                radial-gradient(circle at 0 0, rgba(217,119,87,.09), transparent 35%),
+                radial-gradient(circle at 100% 100%, rgba(16,163,127,.08), transparent 38%),
+                var(--paper2) !important;
+        }
+        .provider-featured-card::before {
+            content: '';
+            position: absolute;
+            inset: 0 auto 0 0;
+            width: 3px;
+            background: linear-gradient(180deg, ${CLAUDE_CORAL}, ${CHATGPT_GREEN});
+        }
         .recipe-row { transition: background .12s ease; }
         .recipe-row:hover { background: var(--paper2) !important; }
         .filter-chip { transition: background .12s ease, color .12s ease, border-color .12s ease; }
@@ -1131,7 +1224,7 @@ function renderListingPage(recipes) {
         <div style="border-bottom:1px solid var(--line2);padding-bottom:34px;">
             <div style="font-family:var(--mono);font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:var(--mute);margin-bottom:16px;">field notes from the workshop</div>
             <h1 style="font-family:var(--helv);font-weight:500;font-size:54px;line-height:1.02;letter-spacing:-.035em;margin:0;">Recipes</h1>
-            <p style="font-family:var(--helv);font-size:18px;line-height:1.5;color:rgba(27,28,30,.78);margin:18px 0 0;max-width:54ch;">Practical playbooks for Claude and Codex, with models, agents, harnesses, and the small moves that turn prompts into finished work.</p>
+            <p style="font-family:var(--helv);font-size:18px;line-height:1.5;color:rgba(27,28,30,.78);margin:18px 0 0;max-width:54ch;">Practical playbooks for working across models, agents, harnesses, and the small moves that turn prompts into finished work.</p>
         </div>
 
         <!-- category row -->
@@ -1151,7 +1244,7 @@ function renderListingPage(recipes) {
 
     <footer style="border-top:1px solid var(--line);">
         <div class="responsive-padding" style="max-width:1180px;margin:0 auto;padding:36px 40px;font-family:var(--mono);font-size:11px;color:var(--mute);display:flex;justify-content:space-between;flex-wrap:wrap;gap:16px;">
-            <span>© mmxxvi atelier · a workshop for claude + codex</span>
+            <span>© mmxxvi atelier · a workshop for serious model work</span>
             <span><a class="footer-link" href="/" style="color:var(--mute);text-decoration:none;">← home</a></span>
         </div>
     </footer>

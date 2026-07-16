@@ -134,6 +134,60 @@
         .footer-link { transition: color .12s ease; }
         .footer-link:hover { color: var(--ink) !important; }
 
+        .article-masthead-provider {
+            position: relative;
+            margin: 0 -30px 48px;
+            padding: 28px 30px 0;
+            overflow: hidden;
+            border: 1px solid var(--line);
+            background:
+                radial-gradient(circle at 0 0, rgba(217, 119, 87, .13), transparent 37%),
+                radial-gradient(circle at 100% 0, rgba(16, 163, 127, .11), transparent 39%),
+                rgba(243, 244, 242, .5);
+        }
+        .article-masthead-provider::before {
+            content: '';
+            position: absolute;
+            inset: 0 0 auto;
+            height: 3px;
+            background: linear-gradient(90deg, #D97757 0 46%, var(--paper) 46% 54%, #10A37F 54% 100%);
+        }
+        .article-masthead-provider .article-meta-row { margin-bottom: 0 !important; }
+        .provider-signal {
+            display: flex;
+            align-items: center;
+            width: 100%;
+            gap: 12px;
+            margin-bottom: 24px;
+        }
+        .provider-mark {
+            width: 46px;
+            height: 46px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            border: 1px solid currentColor;
+            background: var(--paper2);
+        }
+        .provider-mark-claude { color: #D97757; }
+        .provider-mark-chatgpt { color: #10A37F; }
+        .provider-bridge {
+            position: relative;
+            height: 1px;
+            flex: 1;
+            background: linear-gradient(90deg, rgba(217,119,87,.42), var(--line), rgba(16,163,127,.42));
+        }
+        .provider-bridge i {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            width: 7px;
+            height: 7px;
+            border: 1px solid var(--line2);
+            background: var(--paper);
+            transform: translate(-50%, -50%) rotate(45deg);
+        }
+
         /* Article body typography - matches the design's paragraph rhythm */
         .article-body p {
             font-family: var(--helv);
@@ -250,6 +304,9 @@
             .responsive-padding { padding-left: 22px !important; padding-right: 22px !important; }
             .article-title { font-size: 36px !important; line-height: 1.04 !important; }
             .article-subtitle { font-size: 18px !important; }
+            .article-masthead-provider { margin: 0 0 38px; padding: 22px 18px 0; }
+            .provider-signal { margin-bottom: 20px; }
+            .provider-mark { width: 40px; height: 40px; }
             main.responsive-padding { padding-top: 18px !important; padding-bottom: 64px !important; }
             .cta-card { flex-direction: column !important; align-items: flex-start !important; padding: 26px !important; margin-top: 40px !important; gap: 18px !important; }
             .next-link { flex-direction: column !important; align-items: flex-start !important; gap: 8px !important; }
@@ -342,6 +399,8 @@
 
         <!-- article masthead -->
         <article class="article-body">
+        <header class="article-masthead">
+
             <div style="display:flex;align-items:center;gap:12px;font-family:var(--mono);font-size:11.5px;color:var(--mute);margin-bottom:22px;">
                 <span style="border:1px solid var(--line2);padding:3px 9px;letter-spacing:.06em;">workflow</span>
                 <span>4 min read</span>
@@ -353,6 +412,7 @@
                 <span style="color:var(--ink);">the atelier workshop</span>
                 <span style="margin-left:auto;">2026 · apr 13</span>
             </div>
+        </header>
 
             <p>You closed the terminal at 6pm.</p>
 <p>You open it at 9am.</p>
@@ -459,7 +519,7 @@ claude --continue
 
     <footer style="border-top:1px solid var(--line);">
         <div class="responsive-padding" style="max-width:1180px;margin:0 auto;padding:36px 40px;font-family:var(--mono);font-size:11px;color:var(--mute);display:flex;justify-content:space-between;flex-wrap:wrap;gap:16px;">
-            <span>© mmxxvi atelier · a workshop for claude + codex</span>
+            <span>© mmxxvi atelier · a workshop for serious model work</span>
             <span><a class="footer-link" href="/recipes/" style="color:var(--mute);text-decoration:none;">← all recipes</a></span>
         </div>
     </footer>
