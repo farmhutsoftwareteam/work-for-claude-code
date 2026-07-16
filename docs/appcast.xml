@@ -6,6 +6,27 @@
         <description>Updates for Work</description>
         <language>en</language>
         <item>
+            <title>Version 2.10.0</title>
+            <pubDate>Thu, 16 Jul 2026 11:51:06 +0400</pubDate>
+            <sparkle:version>67</sparkle:version>
+            <sparkle:shortVersionString>2.10.0</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>15.0</sparkle:minimumSystemVersion>
+            <description><![CDATA[
+                <h3>Atelier 2.10.0 — Claude and Codex, side by side</h3>
+                <ul>
+                    <li><b>Use Claude or Codex from the same V2 workspace.</b> Codex connects through the local app-server and uses the ChatGPT/Codex subscription already managed on this Mac—no separate Atelier API key.</li>
+                    <li><b>Choose from the live Codex model catalog, including Sol when the signed-in account exposes it.</b> Threads, streaming, reasoning levels, attachments, approvals, follow-up forms, usage, and interruption are integrated into Atelier's native transcript.</li>
+                    <li><b>Switch an idle tab between Claude and Codex without losing the visible working thread.</b> Atelier passes a bounded, provider-neutral checkpoint while keeping hidden reasoning, credentials, and provider-specific caches isolated.</li>
+                    <li><b>Codex MCP status and configuration are available in Atelier.</b> Existing compatible project servers can be explicitly imported from <code>.mcp.json</code>, while each provider continues to own its credentials and OAuth sessions.</li>
+                </ul>
+            ]]></description>
+            <enclosure
+                url="https://work.munyamakosa.com/Work-2.10.0.dmg"
+                length="14428899"
+                type="application/octet-stream"
+                sparkle:edSignature="yCOK8M3oOSQt0I16Kv0HOJ5qbNkgZJGwiMhJIg5GsBkLNu2wfxaAqWfJy7BQp0ptmtuWdLwWXGRS1qPk+2pwBA==" />
+        </item>
+        <item>
             <title>Version 2.9.17</title>
             <pubDate>Wed, 15 Jul 2026 11:12:12 +0400</pubDate>
             <sparkle:version>66</sparkle:version>

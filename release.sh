@@ -482,6 +482,7 @@ echo "────────────────────────�
 
 TAG="v${VERSION}"
 GH_TITLE="Work ${VERSION}"
+TARGET_COMMIT=$(git rev-parse HEAD)
 
 if gh release view "$TAG" &>/dev/null; then
     IS_DRAFT=$(gh release view "$TAG" --json isDraft --jq .isDraft)
@@ -490,11 +491,13 @@ if gh release view "$TAG" &>/dev/null; then
         exit 1
     fi
     echo "  Existing draft $TAG found — replacing its DMG asset."
+    gh release edit "$TAG" --target "$TARGET_COMMIT"
     gh release upload "$TAG" "$DMG_NAME" --clobber
     echo "✓ Re-uploaded $DMG_NAME to draft $TAG."
 else
     gh release create "$TAG" \
         --draft \
+        --target "$TARGET_COMMIT" \
         --title "$GH_TITLE" \
         --notes-file "$NOTES_FILE" \
         "$DMG_NAME"

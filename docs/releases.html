@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Changelog - Atelier</title>
-    <meta name="description" content="Every release of Atelier, dated and itemised. Latest: v2.9.17 (july 15, 2026).">
+    <meta name="description" content="Every release of Atelier, dated and itemised. Latest: v2.10.0 (july 16, 2026).">
     <link rel="canonical" href="https://work.munyamakosa.com/releases.html">
     <link rel="alternate" type="application/rss+xml" title="Atelier appcast" href="https://work.munyamakosa.com/appcast.xml">
 
@@ -184,13 +184,33 @@
         </div>
 
 
+    <article id="v2-10-0" class="release-article" style="display:grid;grid-template-columns:200px 1fr;gap:40px;padding:38px 0;border-bottom:1px solid var(--line);">
+      <div>
+        <div style="font-family:var(--helv);font-weight:500;font-size:22px;letter-spacing:-.01em;">
+          <a href="#v2-10-0" style="color:var(--ink);text-decoration:none;">v2.10.0</a>
+        </div>
+        <div style="font-family:var(--mono);font-size:11px;color:var(--mute);margin-top:6px;">2026 · jul 16</div>
+        <div style="display:inline-block;font-family:var(--mono);font-size:10px;letter-spacing:.08em;text-transform:uppercase;border:1px solid var(--line2);padding:3px 8px;margin-top:12px;">latest</div>
+        <div style="font-family:var(--mono);font-size:10px;color:var(--mute);margin-top:10px;">macOS 15.0+</div>
+      </div>
+      <div class="release-body" style="font-family:var(--helv);font-size:16px;line-height:1.6;color:rgba(27,28,30,.82);">
+        <h3>Claude and Codex, side by side</h3>
+        <ul>
+          <li><b>Start either a Claude or Codex session from the same V2 workspace.</b> Codex connects through its local app-server and uses the ChatGPT/Codex subscription already managed on your Mac—Atelier does not collect a separate API key.</li>
+          <li><b>Pick from the live Codex model catalog, including Sol whenever your account exposes it.</b> Supported reasoning levels, thread resume, native streaming, attachments, interruption, approvals, follow-up forms, and context usage are all integrated.</li>
+          <li><b>Switch an idle tab between Claude and Codex while carrying the visible working thread.</b> The checkpoint is bounded and provider-neutral; hidden reasoning, credentials, hooks, and provider-specific caches never cross the boundary.</li>
+          <li><b>Inspect and configure Codex MCP servers without leaving Atelier.</b> OAuth remains owned by each server, and compatible project servers can be explicitly imported from <code>.mcp.json</code> without copying Claude credentials.</li>
+          <li><b>Existing Claude sessions and MCP behavior remain unchanged.</b> Restored Codex tabs resume lazily, drafts survive relaunch, and shutdown now cleans up both provider runtimes.</li>
+        </ul>
+      </div>
+    </article>
+
     <article id="v2-9-17" class="release-article" style="display:grid;grid-template-columns:200px 1fr;gap:40px;padding:38px 0;border-bottom:1px solid var(--line);">
       <div>
         <div style="font-family:var(--helv);font-weight:500;font-size:22px;letter-spacing:-.01em;">
           <a href="#v2-9-17" style="color:var(--ink);text-decoration:none;">v2.9.17</a>
         </div>
         <div style="font-family:var(--mono);font-size:11px;color:var(--mute);margin-top:6px;">2026 · jul 15</div>
-        <div style="display:inline-block;font-family:var(--mono);font-size:10px;letter-spacing:.08em;text-transform:uppercase;border:1px solid var(--line2);padding:3px 8px;margin-top:12px;">latest</div>
         <div style="font-family:var(--mono);font-size:10px;color:var(--mute);margin-top:10px;">macOS 15.0+</div>
       </div>
       <div class="release-body" style="font-family:var(--helv);font-size:16px;line-height:1.6;color:rgba(27,28,30,.82);">
