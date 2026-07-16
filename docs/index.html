@@ -3,14 +3,14 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Atelier - A native Mac workshop for Claude Code</title>
-    <meta name="description" content="Six live Claude Code sessions in one window. Every past chat searchable. Every MCP and skill in a real interface instead of hand-edited JSON. Free for macOS.">
+    <title>Atelier - Claude Code and Codex in one native Mac workspace</title>
+    <meta name="description" content="Run Claude Code and Codex side by side on macOS. Use the subscriptions already on your Mac, switch providers without losing the working thread, and manage history and MCP in one native workspace.">
     <link rel="canonical" href="https://work.munyamakosa.com/">
 
     <!-- Open Graph -->
     <meta property="og:type" content="website">
-    <meta property="og:title" content="Atelier - A native Mac workshop for Claude Code">
-    <meta property="og:description" content="Six live Claude Code sessions in one window. Every MCP and skill in a real UI, not hand-edited JSON.">
+    <meta property="og:title" content="Atelier - Claude Code and Codex in one native Mac workspace">
+    <meta property="og:description" content="Choose Claude or Codex for the work in front of you, then switch without losing the thread. Your subscriptions, files, history and MCP—one native Mac workspace.">
     <meta property="og:image" content="https://work.munyamakosa.com/og-image.png">
     <meta property="og:image:width" content="1200">
     <meta property="og:image:height" content="630">
@@ -19,8 +19,8 @@
 
     <!-- Twitter -->
     <meta name="twitter:card" content="summary_large_image">
-    <meta name="twitter:title" content="Atelier - A native Mac workshop for Claude Code">
-    <meta name="twitter:description" content="Six live Claude Code sessions in one window. Every MCP and skill in a real UI, not hand-edited JSON.">
+    <meta name="twitter:title" content="Atelier - Claude Code and Codex in one native Mac workspace">
+    <meta name="twitter:description" content="Choose Claude or Codex for the work in front of you, then switch without losing the thread.">
     <meta name="twitter:image" content="https://work.munyamakosa.com/og-image.png">
 
     <!-- Structured Data -->
@@ -29,7 +29,7 @@
         "@context": "https://schema.org",
         "@type": "SoftwareApplication",
         "name": "Atelier",
-        "description": "A native Mac workshop for Claude Code. Six live sessions in one window, every past chat searchable, every MCP and skill in a real UI.",
+        "description": "A native Mac workspace for Claude Code and Codex. Run both providers side by side, use the subscriptions already on your Mac, and switch without losing the working thread.",
         "applicationCategory": "DeveloperApplication",
         "operatingSystem": "macOS 15+",
         "offers": {
@@ -53,18 +53,18 @@
         "mainEntity": [
             {
                 "@type": "Question",
-                "name": "How does Atelier access my Claude Code sessions?",
+                "name": "How does Atelier connect to Claude Code and Codex?",
                 "acceptedAnswer": {
                     "@type": "Answer",
-                    "text": "Atelier reads the local JSONL log files that Claude Code writes to ~/.claude/projects/ on your Mac. It does not make any network requests, use any API keys, or send data anywhere. All processing happens on your device."
+                    "text": "Atelier runs the Claude binary and the local Codex app-server already installed on your Mac. Each provider keeps its own authentication, native session identity, history, configuration and MCP credentials. Atelier does not proxy your prompts through an Atelier cloud service."
                 }
             },
             {
                 "@type": "Question",
-                "name": "Does Atelier require a Claude API key or subscription?",
+                "name": "Does Atelier require API keys?",
                 "acceptedAnswer": {
                     "@type": "Answer",
-                    "text": "No. Atelier is a read-only viewer of files already on your Mac. It does not call the Claude API. You need Claude Code installed and to have run at least one session for Atelier to have anything to display."
+                    "text": "Atelier does not require an Atelier API key. Claude sessions use the Claude Code authentication already configured on your Mac. Codex sessions use the account and ChatGPT/Codex subscription already managed by your local Codex installation. Provider charges and limits still follow your provider plans."
                 }
             },
             {
@@ -77,10 +77,10 @@
             },
             {
                 "@type": "Question",
-                "name": "What is session handoff in Atelier?",
+                "name": "Can I switch between Claude and Codex without losing context?",
                 "acceptedAnswer": {
                     "@type": "Answer",
-                    "text": "Session handoff generates a structured summary of a conversation using Claude Code's print mode, including files changed, key decisions, and current state. The summary is copied to your clipboard so a teammate can paste it into their own LLM and continue the work with full context."
+                    "text": "Yes. When you switch an idle tab, Atelier carries a bounded provider-neutral checkpoint of the visible work and keeps both native provider sessions, drafts and histories available. Hidden reasoning, credentials, OAuth sessions and provider-specific caches never cross the boundary."
                 }
             },
             {
@@ -300,12 +300,12 @@
 
     <a id="top"></a>
 
-    <!-- ============ HERO - six sessions ============ -->
+    <!-- ============ HERO - Claude + Codex ============ -->
     <section class="responsive-padding hero-grid" style="max-width:1180px;margin:0 auto;padding:84px 40px 72px;display:grid;grid-template-columns:1fr 1fr;gap:64px;align-items:center;">
         <div>
-            <div style="font-family:var(--mono);font-size:12.5px;letter-spacing:.12em;text-transform:uppercase;color:var(--mute);margin-bottom:26px;">for claude code · macOS</div>
-            <h1 style="font-family:var(--helv);font-weight:500;font-size:64px;line-height:1.02;letter-spacing:-.035em;margin:0 0 26px;">Six live sessions.<br>One window.</h1>
-            <p style="font-family:var(--helv);font-size:19px;line-height:1.55;max-width:30em;margin:0 0 36px;color:rgba(27,28,30,.82);">A native Mac workshop for Claude&nbsp;Code - every session, chat, MCP and skill in a real interface instead of hand-edited JSON.</p>
+            <div style="font-family:var(--mono);font-size:12.5px;letter-spacing:.12em;text-transform:uppercase;color:var(--mute);margin-bottom:26px;">claude code + codex · macOS</div>
+            <h1 style="font-family:var(--helv);font-weight:500;font-size:64px;line-height:1.02;letter-spacing:-.035em;margin:0 0 26px;">Claude and Codex.<br>One workshop.</h1>
+            <p style="font-family:var(--helv);font-size:19px;line-height:1.55;max-width:31em;margin:0 0 36px;color:rgba(27,28,30,.82);">Run six live coding sessions in one native Mac workspace. Choose Claude or Codex—including Sol when your account offers it—and switch without losing the working thread.</p>
             <div style="display:flex;align-items:center;gap:20px;flex-wrap:wrap;">
                 <a class="btn-primary" href="#download" style="display:inline-flex;align-items:center;gap:12px;background:var(--ink);color:var(--paper);text-decoration:none;padding:15px 24px;font-family:var(--helv);font-weight:500;font-size:17px;">
                     <svg viewBox="0 0 64 64" style="width:20px;height:20px;color:var(--paper);overflow:visible;"><use href="#dt"/></svg>
@@ -318,19 +318,44 @@
             <div style="border:1px solid var(--line2);background:var(--paper2);">
                 <div style="display:flex;align-items:center;gap:8px;padding:9px 13px;border-bottom:1px solid var(--line);font-family:var(--mono);font-size:11px;color:var(--mute);">
                     <span style="width:9px;height:9px;border:1px solid var(--line2);display:inline-block;"></span>
-                    atelier - workshop
-                    <span style="margin-left:auto;">6 sessions</span>
+                    atelier - claude + codex
+                    <span style="margin-left:auto;">6 live sessions</span>
                 </div>
                 <div class="mockup-grid" style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:1px;background:var(--line);">
-                    <div style="background:var(--paper2);padding:14px;border-top:2px solid var(--ink);"><div style="font-family:var(--mono);font-size:10px;color:var(--ink);margin-bottom:9px;">01 ▸ auth-svc</div><div style="height:4px;background:var(--line2);width:90%;margin-bottom:6px;"></div><div style="height:4px;background:var(--line);width:70%;margin-bottom:6px;"></div><div style="height:4px;background:var(--line);width:80%;margin-bottom:6px;"></div><div style="display:flex;align-items:center;gap:4px;"><div style="height:4px;background:var(--line2);width:40%;"></div><span style="width:6px;height:11px;background:var(--ink);display:inline-block;animation:blink 1.1s steps(1) infinite;"></span></div></div>
-                    <div style="background:var(--paper2);padding:14px;"><div style="font-family:var(--mono);font-size:10px;color:var(--mute);margin-bottom:9px;">02 ▸ web</div><div style="height:4px;background:var(--line);width:80%;margin-bottom:6px;"></div><div style="height:4px;background:var(--line);width:60%;margin-bottom:6px;"></div><div style="height:4px;background:var(--line);width:85%;"></div></div>
-                    <div style="background:var(--paper2);padding:14px;"><div style="font-family:var(--mono);font-size:10px;color:var(--mute);margin-bottom:9px;">03 ▸ infra</div><div style="height:4px;background:var(--line);width:70%;margin-bottom:6px;"></div><div style="height:4px;background:var(--line);width:90%;margin-bottom:6px;"></div><div style="height:4px;background:var(--line);width:50%;"></div></div>
-                    <div style="background:var(--paper2);padding:14px;"><div style="font-family:var(--mono);font-size:10px;color:var(--mute);margin-bottom:9px;">04 ▸ docs</div><div style="height:4px;background:var(--line);width:85%;margin-bottom:6px;"></div><div style="height:4px;background:var(--line);width:65%;margin-bottom:6px;"></div><div style="height:4px;background:var(--line);width:75%;"></div></div>
-                    <div style="background:var(--paper2);padding:14px;"><div style="font-family:var(--mono);font-size:10px;color:var(--mute);margin-bottom:9px;">05 ▸ tests</div><div style="height:4px;background:var(--line);width:60%;margin-bottom:6px;"></div><div style="height:4px;background:var(--line);width:80%;margin-bottom:6px;"></div><div style="height:4px;background:var(--line);width:70%;"></div></div>
-                    <div style="background:var(--paper2);padding:14px;"><div style="font-family:var(--mono);font-size:10px;color:var(--mute);margin-bottom:9px;">06 ▸ scratch</div><div style="height:4px;background:var(--line);width:75%;margin-bottom:6px;"></div><div style="height:4px;background:var(--line);width:55%;margin-bottom:6px;"></div><div style="height:4px;background:var(--line);width:88%;"></div></div>
+                    <div style="background:var(--paper2);padding:14px;border-top:2px solid var(--ink);"><div style="font-family:var(--mono);font-size:10px;color:var(--ink);margin-bottom:9px;">CLD 01 ▸ auth-svc</div><div style="height:4px;background:var(--line2);width:90%;margin-bottom:6px;"></div><div style="height:4px;background:var(--line);width:70%;margin-bottom:6px;"></div><div style="height:4px;background:var(--line);width:80%;margin-bottom:6px;"></div><div style="display:flex;align-items:center;gap:4px;"><div style="height:4px;background:var(--line2);width:40%;"></div><span style="width:6px;height:11px;background:var(--ink);display:inline-block;animation:blink 1.1s steps(1) infinite;"></span></div></div>
+                    <div style="background:var(--paper2);padding:14px;"><div style="font-family:var(--mono);font-size:10px;color:var(--mute);margin-bottom:9px;">CDX 02 ▸ web</div><div style="height:4px;background:var(--line);width:80%;margin-bottom:6px;"></div><div style="height:4px;background:var(--line);width:60%;margin-bottom:6px;"></div><div style="height:4px;background:var(--line);width:85%;"></div></div>
+                    <div style="background:var(--paper2);padding:14px;"><div style="font-family:var(--mono);font-size:10px;color:var(--mute);margin-bottom:9px;">CLD 03 ▸ infra</div><div style="height:4px;background:var(--line);width:70%;margin-bottom:6px;"></div><div style="height:4px;background:var(--line);width:90%;margin-bottom:6px;"></div><div style="height:4px;background:var(--line);width:50%;"></div></div>
+                    <div style="background:var(--paper2);padding:14px;"><div style="font-family:var(--mono);font-size:10px;color:var(--mute);margin-bottom:9px;">CDX 04 ▸ docs</div><div style="height:4px;background:var(--line);width:85%;margin-bottom:6px;"></div><div style="height:4px;background:var(--line);width:65%;margin-bottom:6px;"></div><div style="height:4px;background:var(--line);width:75%;"></div></div>
+                    <div style="background:var(--paper2);padding:14px;"><div style="font-family:var(--mono);font-size:10px;color:var(--mute);margin-bottom:9px;">CDX 05 ▸ tests</div><div style="height:4px;background:var(--line);width:60%;margin-bottom:6px;"></div><div style="height:4px;background:var(--line);width:80%;margin-bottom:6px;"></div><div style="height:4px;background:var(--line);width:70%;"></div></div>
+                    <div style="background:var(--paper2);padding:14px;"><div style="font-family:var(--mono);font-size:10px;color:var(--mute);margin-bottom:9px;">CLD 06 ▸ scratch</div><div style="height:4px;background:var(--line);width:75%;margin-bottom:6px;"></div><div style="height:4px;background:var(--line);width:55%;margin-bottom:6px;"></div><div style="height:4px;background:var(--line);width:88%;"></div></div>
                 </div>
             </div>
-            <div style="font-family:var(--mono);font-size:11px;color:var(--mute);margin-top:11px;text-align:right;">same claude binary · same files · one window</div>
+            <div style="font-family:var(--mono);font-size:11px;color:var(--mute);margin-top:11px;text-align:right;">your subscriptions · your files · one window</div>
+        </div>
+    </section>
+
+    <!-- ============ PROVIDER STORY ============ -->
+    <section data-screen-label="Claude + Codex" style="border-top:1px solid var(--line);background:var(--ink);color:var(--paper);">
+        <div class="responsive-padding" style="max-width:1180px;margin:0 auto;padding:84px 40px;">
+            <div style="font-family:var(--mono);font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:rgba(233,234,232,.52);margin-bottom:18px;">new in atelier 2.10 · two providers, one continuous workspace</div>
+            <div class="responsive-grid-2" style="display:grid;grid-template-columns:1.05fr .95fr;gap:72px;align-items:start;">
+                <div>
+                    <h2 style="font-family:var(--helv);font-weight:500;font-size:52px;line-height:1.01;letter-spacing:-.035em;margin:0 0 24px;color:var(--paper);">Choose the model for the work—not the app for the model.</h2>
+                    <p style="font-family:var(--helv);font-size:19px;line-height:1.55;color:rgba(233,234,232,.8);margin:0 0 16px;max-width:42ch;">Start in Claude. Move the same task to Codex when you want a different model, a fresh limit pool, or Sol. Atelier carries a bounded checkpoint of the visible work and keeps both native sessions ready when you switch back.</p>
+                    <p style="font-family:var(--helv);font-size:16px;line-height:1.55;color:rgba(233,234,232,.6);margin:0;max-width:48ch;">Drafts and history stay with the task. Hidden reasoning, provider credentials, OAuth sessions and private caches stay with the provider.</p>
+                </div>
+                <div style="display:grid;grid-template-columns:1fr;gap:12px;">
+                    <div style="border:1px solid rgba(217,161,91,.55);padding:22px;background:rgba(217,161,91,.06);">
+                        <div style="font-family:var(--mono);font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:#d9a15b;margin-bottom:10px;">◆ Claude</div>
+                        <div style="font-family:var(--helv);font-size:17px;line-height:1.5;color:rgba(233,234,232,.84);">Runs your installed Claude Code binary with the Claude authentication, sessions, hooks, skills and MCP setup already on this Mac.</div>
+                    </div>
+                    <div style="border:1px solid rgba(143,175,229,.55);padding:22px;background:rgba(143,175,229,.06);">
+                        <div style="font-family:var(--mono);font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:#8fafe5;margin-bottom:10px;">● Codex</div>
+                        <div style="font-family:var(--helv);font-size:17px;line-height:1.5;color:rgba(233,234,232,.84);">Connects to the local Codex app-server and uses the ChatGPT/Codex account, live model catalog, approvals and MCP setup already managed there.</div>
+                    </div>
+                    <div style="font-family:var(--mono);font-size:11px;line-height:1.6;color:rgba(233,234,232,.5);padding:5px 2px 0;">no Atelier API key · no copied credentials · no mixed OAuth</div>
+                </div>
+            </div>
         </div>
     </section>
 
@@ -339,15 +364,15 @@
         <div class="responsive-padding" style="max-width:1180px;margin:0 auto;padding:72px 40px;">
             <div class="responsive-grid-2" style="display:grid;grid-template-columns:280px 1fr;gap:48px;align-items:start;">
                 <div class="workbench-aside" style="position:sticky;top:90px;">
-                    <div style="font-family:var(--mono);font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:var(--mute);margin-bottom:14px;">on the workbench</div>
-                    <h2 style="font-family:var(--helv);font-weight:500;font-size:34px;line-height:1.05;letter-spacing:-.025em;margin:0;">The whole<br>Claude&nbsp;Code stack.</h2>
-                    <p style="font-family:var(--mono);font-size:12px;line-height:1.7;color:var(--mute);margin-top:18px;">Every primitive - sessions, agents, loops, harnesses, hooks, skills, MCP, plugins - in one real interface. No hidden state, no config you can't see.</p>
+                    <div style="font-family:var(--mono);font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:var(--mute);margin-bottom:14px;">one shared workspace</div>
+                    <h2 style="font-family:var(--helv);font-weight:500;font-size:34px;line-height:1.05;letter-spacing:-.025em;margin:0;">The whole bench.<br>Claude + Codex.</h2>
+                    <p style="font-family:var(--mono);font-size:12px;line-height:1.7;color:var(--mute);margin-top:18px;">Shared tabs, drafts, attachments and history across providers—plus the deep agents, loops, harnesses, hooks, skills and plugin controls built around Claude Code.</p>
                 </div>
                 <div class="catalog-grid" style="display:grid;grid-template-columns:1fr 1fr;gap:1px;background:var(--line);border:1px solid var(--line);">
                     <div style="background:var(--paper2);padding:22px 22px 24px;">
                         <div style="font-family:var(--mono);font-size:11px;color:var(--mute);margin-bottom:11px;">01 · sessions</div>
                         <h3 style="font-family:var(--helv);font-weight:500;font-size:18px;letter-spacing:-.01em;margin:0 0 6px;">Six parallel sessions</h3>
-                        <p style="font-family:var(--helv);font-size:14.5px;line-height:1.5;color:rgba(27,28,30,.7);margin:0;">Run six side by side in one window - same binary, same files.</p>
+                        <p style="font-family:var(--helv);font-size:14.5px;line-height:1.5;color:rgba(27,28,30,.7);margin:0;">Run six side by side; choose Claude or Codex per task and see the active provider at a glance.</p>
                     </div>
                     <div style="background:var(--paper2);padding:22px 22px 24px;">
                         <div style="font-family:var(--mono);font-size:11px;color:var(--mute);margin-bottom:11px;">02 · agents</div>
@@ -377,7 +402,7 @@
                     <div style="background:var(--paper2);padding:22px 22px 24px;">
                         <div style="font-family:var(--mono);font-size:11px;color:var(--mute);margin-bottom:11px;">07 · mcp</div>
                         <h3 style="font-family:var(--helv);font-weight:500;font-size:18px;letter-spacing:-.01em;margin:0 0 6px;">MCP manager</h3>
-                        <p style="font-family:var(--helv);font-size:14.5px;line-height:1.5;color:rgba(27,28,30,.7);margin:0;">Add, edit and toggle servers in a real UI instead of parsing JSON.</p>
+                        <p style="font-family:var(--helv);font-size:14.5px;line-height:1.5;color:rgba(27,28,30,.7);margin:0;">See each provider's servers and import compatible project config without copying credentials or OAuth.</p>
                     </div>
                     <div style="background:var(--paper2);padding:22px 22px 24px;">
                         <div style="font-family:var(--mono);font-size:11px;color:var(--mute);margin-bottom:11px;">08 · plugins</div>
@@ -387,7 +412,7 @@
                     <div style="background:var(--paper2);padding:22px 22px 24px;">
                         <div style="font-family:var(--mono);font-size:11px;color:var(--mute);margin-bottom:11px;">09 · history</div>
                         <h3 style="font-family:var(--helv);font-weight:500;font-size:18px;letter-spacing:-.01em;margin:0 0 6px;">Searchable history</h3>
-                        <p style="font-family:var(--helv);font-size:14.5px;line-height:1.5;color:rgba(27,28,30,.7);margin:0;">Every past chat indexed - find where you solved it the first time.</p>
+                        <p style="font-family:var(--helv);font-size:14.5px;line-height:1.5;color:rgba(27,28,30,.7);margin:0;">Claude sessions and Codex threads in one rail—find or resume the work without spending a turn.</p>
                     </div>
                     <div style="background:var(--paper2);padding:22px 22px 24px;">
                         <div style="font-family:var(--mono);font-size:11px;color:var(--mute);margin-bottom:11px;">10 · checkpoints</div>
@@ -485,18 +510,18 @@
     <section data-screen-label="Continuity" style="border-top:1px solid var(--line);">
         <div class="responsive-padding responsive-grid-2" style="max-width:1180px;margin:0 auto;padding:72px 40px;display:grid;grid-template-columns:1fr 1fr;gap:64px;align-items:center;">
             <div>
-                <div style="font-family:var(--mono);font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:var(--mute);margin-bottom:16px;">a tool, not a wrapper</div>
-                <h2 style="font-family:var(--helv);font-weight:500;font-size:36px;line-height:1.05;letter-spacing:-.025em;margin:0 0 20px;">Same claude. Just a workshop.</h2>
-                <p style="font-family:var(--helv);font-size:17px;line-height:1.55;color:rgba(27,28,30,.78);margin:0 0 16px;max-width:42ch;">Atelier drives the <code style="font-family:var(--mono);font-size:14px;">claude</code> binary already on your machine, reads and writes the same files, and uses the auth you already set up.</p>
-                <p style="font-family:var(--helv);font-size:17px;line-height:1.55;color:rgba(27,28,30,.78);margin:0;max-width:42ch;">No lock-in, no hidden state, no cloud middleman. Your config stays yours - you can still edit it by hand whenever you want.</p>
+                <div style="font-family:var(--mono);font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:var(--mute);margin-bottom:16px;">local bridge · provider-owned identity</div>
+                <h2 style="font-family:var(--helv);font-weight:500;font-size:36px;line-height:1.05;letter-spacing:-.025em;margin:0 0 20px;">Your subscriptions.<br>Your context.</h2>
+                <p style="font-family:var(--helv);font-size:17px;line-height:1.55;color:rgba(27,28,30,.78);margin:0 0 16px;max-width:44ch;">Atelier talks directly to the installed <code style="font-family:var(--mono);font-size:14px;">claude</code> binary and the local Codex app-server. Claude uses your Claude login. Codex uses the ChatGPT/Codex subscription already signed in on your Mac.</p>
+                <p style="font-family:var(--helv);font-size:17px;line-height:1.55;color:rgba(27,28,30,.78);margin:0;max-width:44ch;">There is no Atelier cloud in the middle and no provider key to paste into Atelier. Files stay local; each provider keeps its own credentials, config, MCP OAuth and native history.</p>
             </div>
             <div style="font-family:var(--mono);font-size:12.5px;line-height:1;color:var(--ink);">
                 <div style="display:grid;grid-template-columns:1fr;gap:1px;background:var(--line);border:1px solid var(--line);">
-                    <div style="background:var(--paper);padding:16px 18px;display:flex;justify-content:space-between;"><span>uses your installed claude</span><span style="color:var(--mute);">✓</span></div>
-                    <div style="background:var(--paper);padding:16px 18px;display:flex;justify-content:space-between;"><span>reads / writes your files</span><span style="color:var(--mute);">✓</span></div>
-                    <div style="background:var(--paper);padding:16px 18px;display:flex;justify-content:space-between;"><span>your existing auth</span><span style="color:var(--mute);">✓</span></div>
-                    <div style="background:var(--paper);padding:16px 18px;display:flex;justify-content:space-between;"><span>config still hand-editable</span><span style="color:var(--mute);">✓</span></div>
-                    <div style="background:var(--paper);padding:16px 18px;display:flex;justify-content:space-between;"><span>no account required</span><span style="color:var(--mute);">✓</span></div>
+                    <div style="background:var(--paper);padding:16px 18px;display:flex;justify-content:space-between;"><span>installed Claude + local Codex app-server</span><span style="color:var(--mute);">✓</span></div>
+                    <div style="background:var(--paper);padding:16px 18px;display:flex;justify-content:space-between;"><span>existing Claude subscription / auth</span><span style="color:var(--mute);">✓</span></div>
+                    <div style="background:var(--paper);padding:16px 18px;display:flex;justify-content:space-between;"><span>existing ChatGPT / Codex subscription</span><span style="color:var(--mute);">✓</span></div>
+                    <div style="background:var(--paper);padding:16px 18px;display:flex;justify-content:space-between;"><span>separate provider MCP + OAuth</span><span style="color:var(--mute);">✓</span></div>
+                    <div style="background:var(--paper);padding:16px 18px;display:flex;justify-content:space-between;"><span>no Atelier account or API key</span><span style="color:var(--mute);">✓</span></div>
                 </div>
                 <div style="font-family:var(--mono);font-size:11px;color:var(--mute);margin-top:11px;">the file system you care most about - treated with care.</div>
             </div>
@@ -507,8 +532,8 @@
     <section id="download" data-screen-label="Download" style="background:var(--ink);color:var(--paper);">
         <div class="responsive-padding download-band" style="max-width:1180px;margin:0 auto;padding:84px 40px;text-align:center;">
             <svg viewBox="0 0 64 64" style="width:46px;height:46px;color:var(--paper);overflow:visible;margin-bottom:26px;"><use href="#dt"/></svg>
-            <h2 style="font-family:var(--helv);font-weight:500;font-size:46px;line-height:1.03;letter-spacing:-.03em;margin:0 0 18px;">Open the workshop.</h2>
-            <p style="font-family:var(--helv);font-size:18px;color:rgba(233,234,232,.72);margin:0 auto 36px;max-width:38ch;">Free for macOS. Windows and Linux are on the bench.</p>
+            <h2 style="font-family:var(--helv);font-weight:500;font-size:46px;line-height:1.03;letter-spacing:-.03em;margin:0 0 18px;">Bring both subscriptions to one bench.</h2>
+            <p style="font-family:var(--helv);font-size:18px;line-height:1.5;color:rgba(233,234,232,.72);margin:0 auto 36px;max-width:42ch;">Atelier is free for macOS. Your Claude and ChatGPT/Codex plans stay exactly where they are—under your control.</p>
             <a class="btn-light" href="/Work.dmg" style="display:inline-flex;align-items:center;gap:12px;background:var(--paper);color:var(--ink);text-decoration:none;padding:17px 30px;font-family:var(--helv);font-weight:500;font-size:18px;">
                 <svg viewBox="0 0 64 64" style="width:22px;height:22px;color:var(--ink);overflow:visible;"><use href="#dt"/></svg>
                 Download for Mac · .dmg
@@ -524,7 +549,7 @@
                 <svg viewBox="0 0 64 64" style="width:24px;height:24px;color:var(--ink);overflow:visible;"><use href="#dt"/></svg>
                 <div>
                     <div style="font-family:var(--helv);font-weight:500;font-size:18px;letter-spacing:-.01em;">atelier</div>
-                    <div style="font-family:var(--mono);font-size:11px;color:var(--mute);">a workshop for claude code</div>
+                    <div style="font-family:var(--mono);font-size:11px;color:var(--mute);">a workshop for claude + codex</div>
                 </div>
             </div>
             <nav class="footer-nav" style="display:flex;gap:48px;font-family:var(--mono);font-size:12.5px;flex-wrap:wrap;">
