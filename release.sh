@@ -97,6 +97,7 @@ xcodebuild \
     -project Work.xcodeproj \
     -scheme Work \
     -configuration Release \
+    -jobs 1 \
     -derivedDataPath build/DerivedData \
     clean build \
     CODE_SIGN_IDENTITY="$SIGNING_IDENTITY" \
