@@ -1,0 +1,52 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom">
+    <channel>
+        <title>Atelier Recipes</title>
+        <link>https://atelier.munyamakosa.com/recipes/</link>
+        <description>Field notes from the Atelier workshop for Claude and Codex.</description>
+        <language>en-us</language>
+        <atom:link href="https://atelier.munyamakosa.com/recipes/feed.xml" rel="self" type="application/rss+xml" />
+        <item>
+            <title>GPT-5.6 changed the plan</title>
+            <link>https://atelier.munyamakosa.com/recipes/gpt-5-6-changed-the-plan.html</link>
+            <guid isPermaLink="true">https://atelier.munyamakosa.com/recipes/gpt-5-6-changed-the-plan.html</guid>
+            <pubDate>Thu, 16 Jul 2026 00:00:00 GMT</pubDate>
+            <description>Atelier started as a workshop for Claude. GPT-5.6 was good enough that keeping the door closed to OpenAI stopped making sense.</description>
+        </item>
+        <item>
+            <title>Welcome to Atelier</title>
+            <link>https://atelier.munyamakosa.com/recipes/welcome-to-atelier.html</link>
+            <guid isPermaLink="true">https://atelier.munyamakosa.com/recipes/welcome-to-atelier.html</guid>
+            <pubDate>Tue, 23 Jun 2026 00:00:00 GMT</pubDate>
+            <description>We renamed the app, redesigned the website, and committed to a sharper direction. Here&apos;s why - and what comes next.</description>
+        </item>
+        <item>
+            <title>What broke at GitHub on April 23, explained without jargon</title>
+            <link>https://atelier.munyamakosa.com/recipes/github-april-23-merge-queue-explained.html</link>
+            <guid isPermaLink="true">https://atelier.munyamakosa.com/recipes/github-april-23-merge-queue-explained.html</guid>
+            <pubDate>Thu, 30 Apr 2026 00:00:00 GMT</pubDate>
+            <description>GitHub silently undid 2,092 pull requests of code last week. Most explanations assume you already know what a merge queue is. This one doesn&apos;t.</description>
+        </item>
+        <item>
+            <title>I used Opus 4.7 for 24 hours. Here&apos;s what I actually found.</title>
+            <link>https://atelier.munyamakosa.com/recipes/opus-4-7-upgrade-guide.html</link>
+            <guid isPermaLink="true">https://atelier.munyamakosa.com/recipes/opus-4-7-upgrade-guide.html</guid>
+            <pubDate>Fri, 17 Apr 2026 00:00:00 GMT</pubDate>
+            <description>A day with Claude Opus 4.7. What felt different, what broke, and the four things my old code was silently depending on.</description>
+        </item>
+        <item>
+            <title>Never lose your place: claude continue and claude resume</title>
+            <link>https://atelier.munyamakosa.com/recipes/claude-continue-and-resume.html</link>
+            <guid isPermaLink="true">https://atelier.munyamakosa.com/recipes/claude-continue-and-resume.html</guid>
+            <pubDate>Mon, 13 Apr 2026 00:00:00 GMT</pubDate>
+            <description>Two built-in flags that turn Claude Code sessions into persistent workstreams. The version of this workflow I wish someone had shown me on day one.</description>
+        </item>
+        <item>
+            <title>Review PRs like a staff engineer</title>
+            <link>https://atelier.munyamakosa.com/recipes/review-prs-like-a-staff-engineer.html</link>
+            <guid isPermaLink="true">https://atelier.munyamakosa.com/recipes/review-prs-like-a-staff-engineer.html</guid>
+            <pubDate>Mon, 13 Apr 2026 00:00:00 GMT</pubDate>
+            <description>A Claude Code skill that catches real bugs, not style nits - ranked by blast radius with confidence filtering so you only see what matters.</description>
+        </item>
+    </channel>
+</rss>

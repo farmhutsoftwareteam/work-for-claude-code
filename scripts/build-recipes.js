@@ -22,7 +22,7 @@ const ROOT = path.resolve(__dirname, '..');
 const SRC = path.join(ROOT, 'recipes');
 const OUT = path.join(ROOT, 'docs', 'recipes');
 const SITEMAP = path.join(ROOT, 'docs', 'sitemap.xml');
-const SITE_URL = 'https://work.munyamakosa.com';
+const SITE_URL = 'https://atelier.munyamakosa.com';
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
@@ -801,8 +801,9 @@ function renderDetailPage(data) {
             </div>
 
             ${data.bodyHtml}
-
+${installCard ? `
             ${installCard}
+` : ''}
         </article>
 
         <!-- CTA -->
@@ -823,7 +824,7 @@ function renderDetailPage(data) {
 
     <footer style="border-top:1px solid var(--line);">
         <div class="responsive-padding" style="max-width:1180px;margin:0 auto;padding:36px 40px;font-family:var(--mono);font-size:11px;color:var(--mute);display:flex;justify-content:space-between;flex-wrap:wrap;gap:16px;">
-            <span>© mmxxvi atelier · a workshop for claude code</span>
+            <span>© mmxxvi atelier · a workshop for claude + codex</span>
             <span><a class="footer-link" href="/recipes/" style="color:var(--mute);text-decoration:none;">← all recipes</a></span>
         </div>
     </footer>
@@ -882,6 +883,19 @@ function formatDateShort(d) {
 // have a custom decoration.
 function renderFeaturedDecoration(r) {
     const tag = (r.tags && r.tags[0]) || r.type || 'recipe';
+    if (r.slug === 'gpt-5-6-changed-the-plan') {
+        return `<div style="border:1px solid var(--line2);background:var(--paper);padding:24px;font-family:var(--mono);font-size:12px;line-height:1.75;color:var(--mute);">
+            <div style="display:flex;align-items:center;justify-content:space-between;color:var(--ink);margin-bottom:14px;">
+                <span>workshop.providers</span>
+                <span style="width:8px;height:8px;border-radius:50%;background:#10a37f;"></span>
+            </div>
+            claude &nbsp;= connected · retained<br>
+            codex &nbsp;&nbsp;= connected · retained<br>
+            model &nbsp;&nbsp;= gpt-5.6-sol<br>
+            handoff = checkpointed
+            <div style="margin-top:14px;padding-top:12px;border-top:1px solid var(--line);color:var(--ink);">→ one workshop<br>&nbsp;&nbsp;choose the right mind for the work</div>
+        </div>`;
+    }
     if (r.slug === 'welcome-to-atelier') {
         return `<div style="border:1px solid var(--line2);background:var(--paper);padding:24px;font-family:var(--mono);font-size:12px;line-height:1.75;color:var(--mute);">
             <div style="color:var(--ink);margin-bottom:12px;">recipe.atelier</div>
@@ -959,19 +973,20 @@ function renderListingPage(recipes) {
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Recipes - Atelier</title>
-    <meta name="description" content="Field notes from the workshop - practical playbooks for Claude Code. Loops, agents, harnesses and the small moves that separate dabblers from power users.">
+    <meta name="description" content="Field notes from the workshop, with practical playbooks for Claude and Codex. Models, agents, harnesses, and the small moves that turn prompts into finished work.">
     <link rel="canonical" href="${SITE_URL}/recipes/">
+    <link rel="alternate" type="application/rss+xml" title="Atelier Recipes" href="${SITE_URL}/recipes/feed.xml">
 
     <meta property="og:type" content="website">
     <meta property="og:title" content="Recipes - Atelier">
-    <meta property="og:description" content="Field notes from the workshop - practical playbooks for Claude Code.">
+    <meta property="og:description" content="Field notes from the workshop, with practical playbooks for Claude and Codex.">
     <meta property="og:url" content="${SITE_URL}/recipes/">
     <meta property="og:image" content="${SITE_URL}/og-image.png">
     <meta property="og:site_name" content="Atelier">
 
     <meta name="twitter:card" content="summary_large_image">
     <meta name="twitter:title" content="Recipes - Atelier">
-    <meta name="twitter:description" content="Field notes from the workshop - practical playbooks for Claude Code.">
+    <meta name="twitter:description" content="Field notes from the workshop, with practical playbooks for Claude and Codex.">
     <meta name="twitter:image" content="${SITE_URL}/og-image.png">
 
     <link rel="icon" type="image/svg+xml" href="/atelier-mark.svg">
@@ -1116,7 +1131,7 @@ function renderListingPage(recipes) {
         <div style="border-bottom:1px solid var(--line2);padding-bottom:34px;">
             <div style="font-family:var(--mono);font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:var(--mute);margin-bottom:16px;">field notes from the workshop</div>
             <h1 style="font-family:var(--helv);font-weight:500;font-size:54px;line-height:1.02;letter-spacing:-.035em;margin:0;">Recipes</h1>
-            <p style="font-family:var(--helv);font-size:18px;line-height:1.5;color:rgba(27,28,30,.78);margin:18px 0 0;max-width:54ch;">Practical playbooks for Claude&nbsp;Code - loops, agents, harnesses and the small moves that separate dabblers from power users.</p>
+            <p style="font-family:var(--helv);font-size:18px;line-height:1.5;color:rgba(27,28,30,.78);margin:18px 0 0;max-width:54ch;">Practical playbooks for Claude and Codex, with models, agents, harnesses, and the small moves that turn prompts into finished work.</p>
         </div>
 
         <!-- category row -->
@@ -1136,7 +1151,7 @@ function renderListingPage(recipes) {
 
     <footer style="border-top:1px solid var(--line);">
         <div class="responsive-padding" style="max-width:1180px;margin:0 auto;padding:36px 40px;font-family:var(--mono);font-size:11px;color:var(--mute);display:flex;justify-content:space-between;flex-wrap:wrap;gap:16px;">
-            <span>© mmxxvi atelier · a workshop for claude code</span>
+            <span>© mmxxvi atelier · a workshop for claude + codex</span>
             <span><a class="footer-link" href="/" style="color:var(--mute);text-decoration:none;">← home</a></span>
         </div>
     </footer>
@@ -1204,6 +1219,38 @@ ${u.lastmod ? `        <lastmod>${u.lastmod}</lastmod>\n` : ''}        <changefr
 </urlset>
 `;
     fs.writeFileSync(SITEMAP, xml, 'utf8');
+}
+
+function writeFeed(recipes) {
+    const feedPath = path.join(OUT, 'feed.xml');
+    const xml = `<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom">
+    <channel>
+        <title>Atelier Recipes</title>
+        <link>${SITE_URL}/recipes/</link>
+        <description>Field notes from the Atelier workshop for Claude and Codex.</description>
+        <language>en-us</language>
+        <atom:link href="${SITE_URL}/recipes/feed.xml" rel="self" type="application/rss+xml" />
+${recipes.map(r => `        <item>
+            <title>${escXml(r.title)}</title>
+            <link>${SITE_URL}/recipes/${encodeURIComponent(r.slug)}.html</link>
+            <guid isPermaLink="true">${SITE_URL}/recipes/${encodeURIComponent(r.slug)}.html</guid>
+            <pubDate>${new Date(r.date).toUTCString()}</pubDate>
+            <description>${escXml(r.description)}</description>
+        </item>`).join('\n')}
+    </channel>
+</rss>
+`;
+    fs.writeFileSync(feedPath, xml, 'utf8');
+}
+
+function escXml(s) {
+    return String(s)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&apos;');
 }
 
 // ─── Main ───────────────────────────────────────────────────────────────────
@@ -1292,6 +1339,9 @@ async function main() {
     // Update sitemap
     updateSitemap(recipes);
     console.log(`✓ sitemap.xml`);
+
+    writeFeed(recipes);
+    console.log(`✓ feed.xml`);
 
     console.log(`\nBuilt ${recipes.length} recipe${recipes.length === 1 ? '' : 's'} into ${path.relative(ROOT, OUT)}/`);
 }

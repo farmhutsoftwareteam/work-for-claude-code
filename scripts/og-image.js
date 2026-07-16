@@ -61,7 +61,8 @@ function el(type, props, ...children) {
 }
 
 function buildOgTree(data) {
-    const accent = typeColor(data.type);
+    const accent = data.ogAccent || typeColor(data.type);
+    const label = data.ogLabel || typeLabel(data.type);
 
     return el('div', {
         style: {
@@ -91,6 +92,20 @@ function buildOgTree(data) {
                 display: 'flex',
             },
         }),
+        data.ogMonogram ? el('div', {
+            style: {
+                position: 'absolute',
+                right: '54px',
+                bottom: '24px',
+                fontSize: '214px',
+                lineHeight: 1,
+                fontWeight: 700,
+                letterSpacing: '-18px',
+                color: accent,
+                opacity: 0.075,
+                display: 'flex',
+            },
+        }, data.ogMonogram) : null,
         // Accent vertical bar on the left
         el('div', {
             style: {
@@ -157,7 +172,7 @@ function buildOgTree(data) {
                     background: `${accent}15`,
                     display: 'flex',
                 },
-            }, typeLabel(data.type))
+            }, label)
         ),
 
         // Spacer
@@ -208,7 +223,7 @@ function buildOgTree(data) {
             }, 'Munya Makosa'),
             el('span', {
                 style: { fontSize: '16px', color: COLORS.ivoryMuted, fontWeight: 400, display: 'flex' },
-            }, 'work.munyamakosa.com')
+            }, data.ogDomain || 'atelier.munyamakosa.com')
         ),
     );
 }
