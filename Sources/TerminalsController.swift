@@ -218,18 +218,21 @@ final class TerminalsController: ObservableObject {
         tabs[idx].harness = harness
     }
 
-    func setCodexSession(_ session: CodexSession, on tabId: UUID) {
+    /// Store a Codex runtime on the tab. Provider switches retain the inactive
+    /// Claude slot so returning can resume its native session instead of
+    /// silently creating a new conversation.
+    func setCodexSession(_ session: CodexSession, on tabId: UUID, activate: Bool = true) {
         guard let idx = tabs.firstIndex(where: { $0.id == tabId }) else { return }
-        tabs[idx].provider = .codex
-        tabs[idx].streamSession = nil
+        if activate { tabs[idx].provider = .codex }
         tabs[idx].codexSession = session
     }
 
-    func setClaudeSession(_ session: StreamSession, on tabId: UUID) {
+    /// Store a Claude runtime on the tab without discarding a retained Codex
+    /// slot. `activate: false` is used while restoring the inactive provider.
+    func setClaudeSession(_ session: StreamSession, on tabId: UUID, activate: Bool = true) {
         guard let idx = tabs.firstIndex(where: { $0.id == tabId }) else { return }
-        tabs[idx].provider = .claude
+        if activate { tabs[idx].provider = .claude }
         tabs[idx].streamSession = session
-        tabs[idx].codexSession = nil
     }
 
     /// Flip a tab between Mode-A (SwiftTerm) and Mode-B (StreamSession).

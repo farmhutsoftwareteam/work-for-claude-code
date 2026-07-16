@@ -3,7 +3,7 @@ import Foundation
 /// The agent runtime backing a native-chat tab. Claude keeps using its
 /// stream-json process; Codex uses the local `codex app-server` process and
 /// the account already managed by Codex (including ChatGPT subscription auth).
-enum V2AgentProvider: String, Codable, CaseIterable, Identifiable {
+enum V2AgentProvider: String, Codable, CaseIterable, Identifiable, Hashable {
     case claude
     case codex
 
@@ -35,6 +35,13 @@ struct CodexAccount: Equatable, Sendable {
         if let planType, !planType.isEmpty { return "ChatGPT \(planType)" }
         return email ?? "ChatGPT"
     }
+}
+
+struct CodexThreadSummary: Identifiable, Equatable, Sendable {
+    let id: String
+    let cwd: String
+    let title: String
+    let updatedAt: Date
 }
 
 struct CodexMCPServer: Identifiable, Equatable, Sendable {

@@ -70,10 +70,10 @@ struct V2LiveComposer: View {
     private var helperTight: Bool { helperWidth > 0 && helperWidth < 470 }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 9) {
-            if !attachments.items.isEmpty {
-                attachmentStrip
-            }
+        V2ComposerChrome(
+            attachments: attachments.items,
+            onRemoveAttachment: attachments.remove
+        ) {
             // Slash-command popover floats above the composer when the draft
             // starts with "/" and no space has been typed yet.
             ZStack(alignment: .bottomLeading) {
@@ -83,13 +83,8 @@ struct V2LiveComposer: View {
                         .offset(y: -(cachedHeight + 36))
                 }
             }
+        } helper: {
             helperRow
-        }
-        .padding(.horizontal, 26)
-        .padding(.top, 14)
-        .padding(.bottom, 16)
-        .overlay(alignment: .top) {
-            Rectangle().fill(v2.line).frame(height: 1)
         }
         .onAppear {
             inputFocused = true
@@ -125,7 +120,8 @@ struct V2LiveComposer: View {
     // MARK: - Composer box
 
     private var composerBox: some View {
-        HStack(alignment: .top, spacing: 12) {
+        V2ComposerBoxChrome {
+            HStack(alignment: .top, spacing: 12) {
             // Always-visible entry point — not conditional on the box being
             // empty, unlike the old "/ for commands" helper-row hint. Opens
             // the palette at the cursor regardless of what's already typed.
@@ -180,7 +176,7 @@ struct V2LiveComposer: View {
                 // once per EDIT here, not in body: the composer re-renders per
                 // streamed token, and re-scanning a big pasted draft 30×/s
                 // was part of the long-paste glitch.
-                cachedHeight = Self.height(for: draft)
+                cachedHeight = V2ComposerMetrics.height(for: draft)
             }
             .onChange(of: cursorPosition) { _, _ in
                 // The trigger span and query are cursor-relative — moving
@@ -190,7 +186,7 @@ struct V2LiveComposer: View {
                 if slashActive >= cachedSlashResults.count { slashActive = 0 }
             }
             .onAppear {
-                cachedHeight = Self.height(for: draft)
+                cachedHeight = V2ComposerMetrics.height(for: draft)
                 recomputeSlashResults()
             }
             // Size to actual text content. 19pt per line approximates the
@@ -199,40 +195,15 @@ struct V2LiveComposer: View {
             // kicks in.
             .frame(height: cachedHeight)
 
-            attachButton
-
-            if isWorking {
-                Button { session.interrupt() } label: {
-                    HStack(spacing: 7) {
-                        Rectangle().fill(v2.ink).frame(width: 8, height: 8)
-                        Text("Stop")
-                    }
-                    .font(.system(size: 11, design: .monospaced))
-                    .foregroundColor(v2.ink)
-                    .padding(.horizontal, 13)
-                    .padding(.vertical, 7)
-                    .background(v2.paper2)
-                    .overlay(Rectangle().stroke(v2.line2, lineWidth: 1))
-                }
-                .buttonStyle(.plain)
-            } else {
-                Button(action: sendCurrent) {
-                    Text("⏎ send")
-                        .font(.system(size: 11, design: .monospaced))
-                        .foregroundColor(canSend ? v2.ink : v2.faint)
-                        .padding(.horizontal, 13)
-                        .padding(.vertical, 7)
-                        .background(v2.paper2)
-                        .overlay(Rectangle().stroke(v2.line2, lineWidth: 1))
-                }
-                .buttonStyle(.plain)
-                .disabled(!canSend)
+                V2ComposerAttachButton(enabled: canType, action: openImagePicker)
+                V2ComposerTurnButton(
+                    isWorking: isWorking,
+                    canSend: canSend,
+                    onSend: sendCurrent,
+                    onStop: session.interrupt
+                )
             }
         }
-        .padding(.horizontal, 15)
-        .padding(.vertical, 10)
-        .background(v2.card)
-        .overlay(Rectangle().stroke(v2.line2, lineWidth: 1))
     }
 
     // MARK: - Slash command popover
@@ -706,72 +677,16 @@ struct V2LiveComposer: View {
         }
     }
 
-    private var attachButton: some View {
-        Button(action: openImagePicker) {
-            Image(systemName: "paperclip")
-                .font(.system(size: 13, weight: .medium))
-                .foregroundColor(v2.mute)
-                .padding(.horizontal, 8)
-                .padding(.vertical, 6)
-                .overlay(Rectangle().stroke(v2.line2, lineWidth: 1))
-        }
-        .buttonStyle(.plain)
-        .help("Attach an image or file (or drag one in / paste with ⌘V)")
-        .disabled(!canType)
-    }
-
-    // MARK: - Attachment strip
-
-    private var attachmentStrip: some View {
-        ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: 8) {
-                ForEach(attachments.items) { item in
-                    attachmentChip(item)
-                }
-            }
-        }
-    }
-
-    private func attachmentChip(_ item: V2Attachment) -> some View {
-        HStack(spacing: 8) {
-            if let thumb = item.thumbnail {
-                Image(nsImage: thumb)
-                    .resizable()
-                    .interpolation(.high)
-                    .scaledToFill()
-                    .frame(width: 24, height: 24)
-                    .clipped()
-            } else {
-                Image(systemName: "doc")
-                    .font(.system(size: 11))
-                    .foregroundColor(v2.mute)
-                    .frame(width: 24, height: 24)
-                    .background(v2.paper3)
-            }
-            Text(item.displayName)
-                .font(.system(size: 11, design: .monospaced))
-                .foregroundColor(v2.ink)
-                .lineLimit(1)
-                .truncationMode(.middle)
-                .frame(maxWidth: 140)
-            Button { attachments.remove(item) } label: {
-                Image(systemName: "xmark")
-                    .font(.system(size: 9, weight: .medium))
-                    .foregroundColor(v2.mute)
-            }
-            .buttonStyle(.plain)
-        }
-        .padding(.leading, 4)
-        .padding(.trailing, 8)
-        .padding(.vertical, 4)
-        .background(v2.paper2)
-        .overlay(Rectangle().stroke(v2.line2, lineWidth: 1))
-    }
-
     // MARK: - Helper row
 
     private var helperRow: some View {
         HStack(spacing: 14) {
+            V2ProviderBadge(
+                provider: .claude,
+                density: helperTight ? .compact : .full
+            )
+            .layoutPriority(2)
+
             if activeCommand != nil {
                 Text("⌫ at start removes the command · ⏎ runs it")
                     .foregroundColor(v2.faint)
@@ -821,50 +736,14 @@ struct V2LiveComposer: View {
     /// to honest raw "Nk in context" with no invented denominator.
     private var contextMeter: some View {
         let used = session.contextTokens
-        let usedLabel = V2Format.count(used)
         let window = appState.contextWindow(for: session.model)
-        return HStack(spacing: 8) {
-            // Model name is the first thing the meter sheds when space is tight
-            // — the gauge + percentage matter more than the id. Capped with an
-            // explicit maxWidth, not just lineLimit+truncation alone: helperTight
-            // is driven by a GeometryReader/PreferenceKey @State that starts at
-            // 0 and may not have measured yet by the time SwiftUI's
-            // .windowResizability(.contentMinSize) probes this view's minimum
-            // size — so this text's WORST CASE needs its own hard ceiling,
-            // not just a conditional that depends on live measurement timing
-            // (same root pattern as the header pill's fixedSize bug).
-            if !helperTight {
-                Text(session.model)
-                    .foregroundColor(v2.faint)
-                    .lineLimit(1).truncationMode(.middle)
-                    .frame(maxWidth: 90, alignment: .leading)
-            }
-            if used == 0 {
-                Text("context idle").foregroundColor(v2.faint).lineLimit(1)
-            } else if let window, window > 0 {
-                let frac = min(1, Double(used) / Double(window))
-                let high = frac >= 0.85
-                let pct = Int((frac * 100).rounded())
-                ZStack(alignment: .leading) {
-                    Rectangle().fill(v2.line2).frame(width: 46, height: 4)
-                    Rectangle().fill(high ? v2.del : v2.ink)
-                        .frame(width: 46 * max(0, frac), height: 4)
-                }
-                Text(helperTight ? "\(pct)%" : "\(pct)% · \(usedLabel)/\(V2Format.count(window))")
-                    .foregroundColor(high ? v2.del : v2.faint)
-                    .lineLimit(1)
-                    .help("Context: \(usedLabel) of \(V2Format.count(window)) tokens (\(pct)%). /clear resets it, /compact summarises.")
-            } else {
-                // This model isn't in the bundled snapshot — never fake a %.
-                Text(helperTight ? usedLabel : "\(usedLabel) in context")
-                    .foregroundColor(v2.faint)
-                    .lineLimit(1)
-                    .help("Tokens in context. No context-window on file for \(session.model) — run scripts/sync-model-windows.sh to refresh the snapshot from Anthropic.")
-            }
-        }
-        // Never let the meter wrap or get truncated — it sheds its own bits
-        // (model id, byte counts) via helperTight instead.
-        .fixedSize(horizontal: true, vertical: false)
+        return V2ComposerContextMeter(
+            model: session.model,
+            used: used,
+            window: window,
+            isTight: helperTight,
+            helpText: "Claude model and current context usage. /clear resets it; /compact summarises."
+        )
     }
 
     // MARK: - Image picker
@@ -940,23 +819,6 @@ struct V2LiveComposer: View {
         case "auto":              return "auto"
         default:                  return "default permissions"
         }
-    }
-
-    // MARK: - Sizing
-
-    /// One line by default; grows with explicit newlines up to 8 lines.
-    /// Soft-wrapped long lines also count via a rough column estimate so
-    /// pasted paragraphs don't snap to a single row. Computed once per edit
-    /// into `cachedHeight` (see onChange) — NOT in body, which re-runs per
-    /// streamed token.
-    private static func height(for draft: String) -> CGFloat {
-        let lineHeight: CGFloat = 19
-        let topBottomPadding: CGFloat = 8
-        let newlines = draft.filter { $0 == "\n" }.count
-        // Rough soft-wrap estimate: 80 chars per visible line.
-        let wrapped = max(0, (draft.count / 80) - newlines)
-        let lines = max(1, min(8, 1 + newlines + wrapped))
-        return CGFloat(lines) * lineHeight + topBottomPadding
     }
 
     // MARK: - Send

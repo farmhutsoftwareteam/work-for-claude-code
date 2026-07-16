@@ -95,7 +95,11 @@ final class CodexAppServerClient: @unchecked Sendable {
                 "title": "Atelier",
                 "version": Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "dev"
             ],
-            "capabilities": [:]
+            // Provider handoff uses `turn/start.additionalContext`, which is
+            // intentionally gated by Codex's experimental API capability.
+            // The payload itself is still generated from the versioned schema
+            // and treated as untrusted context (see CodexSession).
+            "capabilities": ["experimentalApi": true]
         ])
         try sendNotification("initialized", params: [:])
     }
@@ -120,6 +124,7 @@ final class CodexAppServerClient: @unchecked Sendable {
             return String(nextID)
         }
         let timeout = Self.timeout(for: method)
+        log.debug("Codex request \(method, privacy: .public) started")
         return try await withCheckedThrowingContinuation { continuation in
             lock.withLock {
                 pending[id] = PendingRequest(
@@ -205,6 +210,7 @@ final class CodexAppServerClient: @unchecked Sendable {
                 log.debug("Codex request \(request.method, privacy: .public) completed in \(String(describing: elapsed), privacy: .public)")
             }
             if let error = object["error"] as? [String: Any] {
+                log.error("Codex request \(request?.method ?? "unknown", privacy: .public) failed with code \(error["code"] as? Int ?? 0, privacy: .public): \(error["message"] as? String ?? "unknown error", privacy: .private)")
                 request?.continuation.resume(throwing: CodexAppServerError.rpc(
                     code: error["code"] as? Int,
                     message: error["message"] as? String ?? "Unknown Codex error"

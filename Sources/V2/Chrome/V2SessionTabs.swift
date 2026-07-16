@@ -146,31 +146,45 @@ private struct V2TabChip: View {
     /// secondary info, and Chrome's own floor state (favicon-only, no
     /// title at all) shows title always wins what little room is left.
     private static let projectLabelFloor: CGFloat = 150
+    private var isNarrow: Bool { width < 120 }
+    private var badgeDensity: V2ProviderBadgeDensity { width >= 180 ? .full : .compact }
 
     var body: some View {
-        HStack(spacing: 10) {
+        HStack(spacing: isNarrow ? 6 : 10) {
             statusGlyph
-            VStack(alignment: .leading, spacing: 1) {
+            VStack(alignment: .leading, spacing: 2) {
                 Text(tab.title)
                     .font(.system(size: 14))
                     .fontWeight(isActive ? .medium : .regular)
                     .kerning(-0.14)
                     .foregroundColor(v2.ink)
                     .lineLimit(1).truncationMode(.tail)
-                if showProject, width >= Self.projectLabelFloor {
-                    Text(projectLabel)
-                        .font(.system(size: 10, design: .monospaced))
-                        .foregroundColor(v2.faint)
-                        .lineLimit(1).truncationMode(.tail)
+                HStack(spacing: 6) {
+                    V2ProviderBadge(
+                        provider: tab.provider,
+                        density: badgeDensity,
+                        style: isNarrow ? .plain : .outlined
+                    )
+                    if showProject, width >= Self.projectLabelFloor {
+                        Text(projectLabel)
+                            .font(.system(size: 10, design: .monospaced))
+                            .foregroundColor(v2.faint)
+                            .lineLimit(1).truncationMode(.tail)
+                    }
                 }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
             trailing
         }
-        .padding(.horizontal, 14)
+        .padding(.horizontal, isNarrow ? 8 : 14)
         .frame(width: width, height: 52)
         .background(isActive ? v2.card : Color.clear)
         .overlay { if isActive { Rectangle().stroke(v2.line2, lineWidth: 1) } }
+        .overlay(alignment: .leading) {
+            if isActive {
+                Rectangle().fill(v2.providerAccent(tab.provider)).frame(width: 2)
+            }
+        }
         // Status underline (done/needs) OR the working indeterminate line —
         // mutually exclusive, both pinned to the tab's bottom edge.
         .overlay(alignment: .bottom) { statusUnderline }
@@ -233,7 +247,7 @@ private struct V2TabChip: View {
 
     @ViewBuilder
     private var trailing: some View {
-        if status == .working, let started = tab.streamSession?.turnStartedAt {
+        if let started = activeTurnStartedAt {
             TimelineView(.periodic(from: started, by: 1)) { ctx in
                 Text(Self.elapsed(since: started, now: ctx.date))
                     .font(.system(size: 10, design: .monospaced))
@@ -250,6 +264,20 @@ private struct V2TabChip: View {
                     .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
+        }
+    }
+
+    /// Only time an actual model turn. `.working` tab status also covers
+    /// process spawning/initialization, which must keep the ordinary close
+    /// control instead of reviving a stale timer from the previous turn.
+    private var activeTurnStartedAt: Date? {
+        switch tab.provider {
+        case .claude:
+            guard tab.streamSession?.state == .working else { return nil }
+            return tab.streamSession?.turnStartedAt
+        case .codex:
+            guard tab.codexSession?.state == .working else { return nil }
+            return tab.codexSession?.turnStartedAt
         }
     }
 
@@ -351,6 +379,7 @@ private struct V2TabOverflowMenu: View {
     private func row(for tab: TerminalTab) -> some View {
         HStack(spacing: 8) {
             statusDot(for: statusFor(tab))
+            V2ProviderBadge(provider: tab.provider, density: .compact)
             Text(tab.title)
                 .font(.system(size: 12.5))
                 .fontWeight(tab.id == activeTabId ? .medium : .regular)

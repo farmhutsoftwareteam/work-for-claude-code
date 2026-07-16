@@ -1,4 +1,5 @@
 import SwiftUI
+import UniformTypeIdentifiers
 
 struct V2CodexChatView: View {
     @Environment(\.v2) private var v2
@@ -61,8 +62,11 @@ struct V2CodexChatView: View {
                         }
                         .frame(maxWidth: .infinity, alignment: .leading)
                     }
-                    ForEach(Array(session.transcript.enumerated()), id: \.offset) { _, item in
-                        row(item)
+                    // Positional ids are stable for this append-only live list.
+                    // Iterating indices avoids allocating a complete
+                    // Array(enumerated()) on every coalesced streaming update.
+                    ForEach(session.transcript.indices, id: \.self) { index in
+                        row(session.transcript[index])
                     }
                     if session.state == .working {
                         HStack(spacing: 8) {
@@ -141,90 +145,177 @@ struct V2CodexComposer: View {
     @ObservedObject var session: CodexSession
     @StateObject private var attachments = V2AttachmentStore()
     @State private var draft = ""
+    @State private var cachedHeight: CGFloat = 27
+    @State private var inputFocused = false
+    @State private var cursorPosition = 0
+    @State private var pendingCursorTarget: Int?
+    @State private var helperWidth: CGFloat = 0
+
+    private var helperCompact: Bool { helperWidth > 0 && helperWidth < 620 }
+    private var helperTight: Bool { helperWidth > 0 && helperWidth < 470 }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            if !attachments.items.isEmpty {
-                ScrollView(.horizontal, showsIndicators: false) {
-                    HStack(spacing: 7) {
-                        ForEach(attachments.items) { item in
-                            HStack(spacing: 6) {
-                                Image(systemName: item.thumbnail == nil ? "doc" : "photo")
-                                Text(item.displayName).lineLimit(1).truncationMode(.middle)
-                                Button { attachments.remove(item) } label: { Image(systemName: "xmark") }
-                                    .buttonStyle(.plain)
-                            }
-                            .font(.system(size: 10.5, design: .monospaced))
-                            .foregroundColor(v2.mute)
-                            .padding(.horizontal, 8).padding(.vertical, 5)
-                            .overlay(Rectangle().stroke(v2.line2, lineWidth: 1))
-                        }
-                    }
-                }
-            }
-            HStack(alignment: .bottom, spacing: 12) {
-                Button { chooseAttachments() } label: { Image(systemName: "paperclip") }
-                    .buttonStyle(.plain).foregroundColor(v2.mute)
-                    .padding(.vertical, 10)
-                    .disabled(session.state != .ready)
-                    .help("Attach images or files")
-                TextField("Ask Codex…", text: $draft, axis: .vertical)
-                    .textFieldStyle(.plain)
-                    .font(.system(size: 13))
-                    .lineLimit(1...8)
-                    .padding(10)
-                    .background(v2.card)
-                    .overlay(Rectangle().stroke(v2.line2, lineWidth: 1))
-                    .disabled(session.state != .ready)
-                    .onSubmit(send)
-                if session.state == .working || session.state == .awaitingPermission {
-                    Button("Stop") { session.interrupt() }
-                        .buttonStyle(.plain).foregroundColor(v2.ink)
-                        .padding(.horizontal, 14).padding(.vertical, 10)
-                        .overlay(Rectangle().stroke(v2.ink, lineWidth: 1))
-                } else {
-                    Button("Send") { send() }
-                        .buttonStyle(.plain).foregroundColor(v2.paper)
-                        .padding(.horizontal, 14).padding(.vertical, 10)
-                        .background(v2.ink)
-                        .disabled((draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && attachments.items.isEmpty) || session.state != .ready)
-                }
-            }
-            if session.totalTokens > 0 {
-                Text(usageLabel)
-                    .font(.system(size: 9.5, design: .monospaced)).foregroundColor(v2.faint)
-            }
+        V2ComposerChrome(
+            attachments: attachments.items,
+            onRemoveAttachment: attachments.remove
+        ) {
+            composerBox
+        } helper: {
+            helperRow
         }
-        .padding(.horizontal, 26).padding(.vertical, 14)
-        .overlay(alignment: .top) { Rectangle().fill(v2.line).frame(height: 1) }
-        .onAppear { if draft.isEmpty { draft = session.composerDraft } }
-        .onChange(of: draft) { _, value in
-            session.composerDraft = value
-            appState.scheduleWorkspacePersist()
+        .onAppear {
+            inputFocused = true
+            if draft.isEmpty { draft = session.composerDraft }
+            cachedHeight = V2ComposerMetrics.height(for: draft)
+        }
+        .background(
+            Button("Interrupt") { if isWorking { session.interrupt() } }
+                .keyboardShortcut(.escape, modifiers: [])
+                .opacity(0)
+                .frame(width: 0, height: 0)
+                .disabled(!isWorking)
+        )
+    }
+
+    private var composerBox: some View {
+        V2ComposerBoxChrome {
+            HStack(alignment: .top, spacing: 12) {
+                Text("›")
+                    .font(.system(size: 14, design: .monospaced))
+                    .foregroundColor(v2.mute)
+                    .padding(.top, 6)
+
+                V2ComposerTextView(
+                    text: $draft,
+                    focused: $inputFocused,
+                    cursorPosition: $cursorPosition,
+                    pendingCursorTarget: $pendingCursorTarget,
+                    placeholder: placeholder,
+                    isEnabled: canType,
+                    foregroundColor: NSColor(v2.ink),
+                    placeholderColor: NSColor(v2.faint),
+                    onSubmit: send,
+                    onImagePasted: attachments.addImage,
+                    onFilesDropped: attachments.addFiles
+                )
+                .onChange(of: draft) { _, value in
+                    session.composerDraft = value
+                    appState.scheduleWorkspacePersist()
+                    cachedHeight = V2ComposerMetrics.height(for: value)
+                }
+                .frame(height: cachedHeight)
+
+                V2ComposerAttachButton(enabled: canType, action: chooseAttachments)
+                V2ComposerTurnButton(
+                    isWorking: isWorking,
+                    canSend: canSend,
+                    onSend: send,
+                    onStop: session.interrupt
+                )
+            }
         }
     }
 
+    private var helperRow: some View {
+        HStack(spacing: 14) {
+            V2ProviderBadge(
+                provider: .codex,
+                density: helperTight ? .compact : .full
+            )
+            .layoutPriority(2)
+
+            if !helperTight {
+                Text(permissionLabel)
+                    .foregroundColor(v2.faint)
+                    .lineLimit(1)
+            }
+
+            if !helperCompact {
+                Text("⇧⏎ newline · ⌘V paste image")
+                    .foregroundColor(v2.faint)
+                    .lineLimit(1)
+            }
+
+            if isWorking {
+                Text("esc to interrupt").lineLimit(1)
+            }
+
+            Spacer(minLength: 8)
+
+            V2ComposerContextMeter(
+                model: session.model,
+                used: session.totalTokens,
+                window: session.contextWindow,
+                isTight: helperTight,
+                helpText: "Codex model and current context usage"
+            )
+            .layoutPriority(1)
+        }
+        .font(.system(size: 10.5, design: .monospaced))
+        .foregroundColor(v2.faint)
+        .background(
+            GeometryReader { geometry in
+                Color.clear.preference(key: V2WidthKey.self, value: geometry.size.width)
+            }
+        )
+        .onPreferenceChange(V2WidthKey.self) { helperWidth = $0 }
+    }
+
     private func send() {
+        guard canSend else { return }
         let message = draft.trimmingCharacters(in: .whitespacesAndNewlines)
         let urls = attachments.items.map(\.url)
-        guard !message.isEmpty || !urls.isEmpty else { return }
         draft = ""
         session.composerDraft = ""
         attachments.clear()
         session.send(text: message, attachments: urls)
+        inputFocused = true
     }
 
-    private var usageLabel: String {
-        if let window = session.contextWindow, window > 0 {
-            return "context · \(session.totalTokens.formatted()) / \(window.formatted()) tokens"
+    private var isWorking: Bool {
+        session.state == .working || session.state == .awaitingPermission
+    }
+
+    private var canType: Bool {
+        switch session.state {
+        case .initializing, .working, .ready: return true
+        default: return false
         }
-        return "usage · \(session.totalTokens.formatted()) tokens"
+    }
+
+    private var canSend: Bool {
+        guard session.state == .ready else { return false }
+        return !draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || !attachments.items.isEmpty
+    }
+
+    private var placeholder: String {
+        switch session.state {
+        case .idle, .terminated:  return "Ask Codex…"
+        case .ready:              return "Reply to Codex…"
+        case .hibernated:         return "Reply to wake this session…"
+        case .spawning:           return "Spawning Codex…"
+        case .initializing:       return "Initializing Codex…"
+        case .working:            return "Reply, or ⎋ to interrupt…"
+        case .awaitingPermission: return "Resolve permission above to continue"
+        case .closing:            return "Closing…"
+        }
+    }
+
+    private var permissionLabel: String {
+        switch session.permissionMode {
+        case "never": return "never ask"
+        case "on-failure": return "ask on failure"
+        case "untrusted": return "ask for untrusted commands"
+        default: return "ask when needed"
+        }
     }
 
     private func chooseAttachments() {
         let panel = NSOpenPanel()
         panel.allowsMultipleSelection = true
         panel.canChooseDirectories = false
+        panel.allowedContentTypes = [.image, .pdf, .text, .data]
+        panel.message = "Attach to the next message"
         guard panel.runModal() == .OK else { return }
         attachments.addFiles(panel.urls)
     }

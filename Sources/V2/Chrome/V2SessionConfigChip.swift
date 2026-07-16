@@ -52,6 +52,7 @@ struct V2SessionConfigChip: View {
     let isTight: Bool
 
     private var isCodex: Bool { appState.activeTab?.provider == .codex }
+    private var provider: V2AgentProvider { appState.activeTab?.provider ?? appState.defaultAgentProvider }
 
     private var chipModelLabel: String {
         if let m = appState.activeCodexSession?.model, !m.isEmpty { return m }
@@ -79,7 +80,11 @@ struct V2SessionConfigChip: View {
         Button { open.toggle() } label: {
             HStack(spacing: isTight ? 6 : 9) {
                 HStack(spacing: 6) {
-                    Circle().fill(v2.ink).frame(width: 6, height: 6)
+                    V2ProviderBadge(
+                        provider: provider,
+                        density: isCompact ? .compact : .full,
+                        style: .plain
+                    )
                     // Model name is the one thing that stays even at the
                     // tightest breakpoint — a bare dot + chevron would carry
                     // no information at all (every other header control
@@ -126,7 +131,7 @@ struct V2SessionConfigChip: View {
         // sets the defaults for future spawns (same as the old model-only
         // chip's behavior, now true of all three sections).
         .disabled(!isCodex && appState.activeSession == nil && appState.modelCatalog.isEmpty)
-        .help("\(chipModelLabel) · \(chipEffortLabel) · \(chipPermissionLabel)")
+        .help("\(provider.displayName) · \(chipModelLabel) · \(chipEffortLabel) · \(chipPermissionLabel)")
         .popover(isPresented: $open, arrowEdge: .bottom) {
             if let session = appState.activeCodexSession {
                 V2CodexSessionConfigPanel(session: session)
@@ -154,9 +159,9 @@ private struct V2CodexSessionConfigPanel: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 0) {
                 sectionHeader("PROVIDER")
-                HStack {
-                    Circle().fill(v2.ink).frame(width: 7, height: 7)
-                    Text("Codex · \(session.account?.label ?? "local app-server")")
+                HStack(spacing: 8) {
+                    V2ProviderBadge(provider: .codex)
+                    Text(session.account?.label ?? "local app-server")
                         .font(.system(size: 12.5)).foregroundColor(v2.ink)
                 }.padding(.horizontal, 13).padding(.bottom, 10)
                 Button("Continue this work with Claude") { appState.switchActiveProvider(to: .claude) }
@@ -305,6 +310,14 @@ private struct V2SessionConfigPanel: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             sectionHeader("PROVIDER")
+            HStack(spacing: 8) {
+                V2ProviderBadge(provider: .claude)
+                Text("Claude Code subscription")
+                    .font(.system(size: 12.5))
+                    .foregroundColor(v2.ink)
+            }
+            .padding(.horizontal, 13)
+            .padding(.bottom, 10)
             Button("Continue this work with Codex") { appState.switchActiveProvider(to: .codex) }
                 .buttonStyle(.plain)
                 .font(.system(size: 11, design: .monospaced)).foregroundColor(v2.ink)

@@ -1,10 +1,10 @@
 // History list shown inside the left rail when the user flips the
-// projects/history toggle. Sessions are pulled from Store.projects, flattened
-// across all projects, then grouped into time buckets per the design
+// projects/history toggle. Claude sessions come from Store.projects; Codex
+// threads come from the local official app-server. Both are merged, sorted,
+// then grouped into time buckets per the design
 // (Atelier+app.dc.html → historyData).
 //
-// Each row is a button that calls V2AppState.openHistorySession, which spawns
-// a Mode-B tab with --resume <session-id>.
+// Each row resumes its provider-native session/thread in a Mode-B tab.
 
 import SwiftUI
 import Inject
@@ -15,14 +15,19 @@ struct V2HistoryRail: View {
     @EnvironmentObject private var store: Store
     @EnvironmentObject private var appState: V2AppState
 
-    // Cached snapshot of all history entries across all projects. Recomputed
-    // only when store.projects changes — not on every render. Previously
+    // Cached snapshot of both providers across all projects. Claude is
+    // recomputed only when store.projects changes; Codex is refreshed once
+    // when the rail appears/binary changes — never on every render. Previously
     // V2HistoryEntry.collect (a flatMap + map + sort across thousands of
     // sessions) ran on EVERY SwiftUI render, which made the rail noticeably
     // chunky as the user typed into the search box.
     @State private var cachedAll: [V2HistoryEntry] = []
+    @State private var cachedClaude: [V2HistoryEntry] = []
+    @State private var cachedCodex: [V2HistoryEntry] = []
     @State private var cachedGroups: [V2HistoryGroup] = []
     @State private var lastProjectSignature: Int = 0
+    @State private var codexHistoryLoading = false
+    @State private var codexHistoryError: String?
 
     var body: some View {
         ScrollView {
@@ -31,7 +36,14 @@ struct V2HistoryRail: View {
                 // Sessions already open in an Atelier tab are never "live to
                 // observe" — they're live IN-APP. Built once per body eval
                 // (tabs are a handful), not per row.
-                let openIds = Set(appState.tabs.compactMap { $0.streamSession?.sessionId })
+                let openClaudeIds = Set(appState.tabs.compactMap { $0.streamSession?.sessionId })
+                let openCodexIds = Set(appState.tabs.compactMap { $0.codexSession?.threadId })
+                    .union(appState.codexResumeIds.values)
+                if codexHistoryLoading {
+                    historyStatus("Loading Codex history…")
+                } else if let codexHistoryError {
+                    historyStatus("Codex history unavailable · \(codexHistoryError)")
+                }
                 if groups.isEmpty {
                     emptyState
                 } else {
@@ -43,10 +55,19 @@ struct V2HistoryRail: View {
                             // — offer observing instead of resume (resuming a
                             // session another harness owns is the takeover
                             // path observer mode exists to avoid).
-                            let isLive = !openIds.contains(entry.sessionId)
+                            let isOpen = entry.provider == .claude
+                                ? openClaudeIds.contains(entry.sessionId)
+                                : openCodexIds.contains(entry.sessionId)
+                            let isLive = entry.provider == .claude && !isOpen
                                 && Date().timeIntervalSince(entry.lastActivity) < 120
                             V2HistoryRow(entry: entry, isLive: isLive) {
-                                if isLive {
+                                if entry.provider == .codex {
+                                    appState.openCodexHistoryThread(
+                                        threadId: entry.sessionId,
+                                        projectCwd: entry.projectCwd,
+                                        title: entry.title
+                                    )
+                                } else if isLive {
                                     appState.openObserver(
                                         projectCwd: entry.projectCwd,
                                         sessionId: entry.sessionId,
@@ -70,10 +91,11 @@ struct V2HistoryRail: View {
         }
         .onAppear { refreshIfNeeded() }
         .onChange(of: projectSignature) { _, _ in
-            cachedAll = V2HistoryEntry.collect(from: store.projects)
-            cachedGroups = V2HistoryEntry.bucket(cachedAll)
+            cachedClaude = V2HistoryEntry.collect(from: store.projects)
+            rebuildCombinedHistory()
             lastProjectSignature = projectSignature
         }
+        .task(id: appState.codexBinary) { await refreshCodexHistory() }
         .enableInjection()
     }
 
@@ -92,10 +114,34 @@ struct V2HistoryRail: View {
     private func refreshIfNeeded() {
         let sig = projectSignature
         if sig != lastProjectSignature || cachedAll.isEmpty {
-            cachedAll = V2HistoryEntry.collect(from: store.projects)
-            cachedGroups = V2HistoryEntry.bucket(cachedAll)
+            cachedClaude = V2HistoryEntry.collect(from: store.projects)
+            rebuildCombinedHistory()
             lastProjectSignature = sig
         }
+    }
+
+    @MainActor
+    private func refreshCodexHistory() async {
+        guard let binary = appState.codexBinary else {
+            cachedCodex = []
+            codexHistoryError = nil
+            rebuildCombinedHistory()
+            return
+        }
+        codexHistoryLoading = true
+        codexHistoryError = nil
+        defer { codexHistoryLoading = false }
+        do {
+            cachedCodex = try await CodexSession.listThreads(codexURL: binary).map(V2HistoryEntry.init)
+        } catch {
+            codexHistoryError = error.localizedDescription
+        }
+        rebuildCombinedHistory()
+    }
+
+    private func rebuildCombinedHistory() {
+        cachedAll = (cachedClaude + cachedCodex).sorted { $0.lastActivity > $1.lastActivity }
+        cachedGroups = V2HistoryEntry.bucket(cachedAll)
     }
 
     /// Filter is cheap relative to collect — runs on the cached set on
@@ -124,6 +170,15 @@ struct V2HistoryRail: View {
             .padding(.horizontal, 8)
             .padding(.top, 13)
             .padding(.bottom, 6)
+    }
+
+    private func historyStatus(_ text: String) -> some View {
+        Text(text)
+            .font(.system(size: 9.5, design: .monospaced))
+            .foregroundColor(v2.faint)
+            .lineLimit(2)
+            .padding(.horizontal, 8)
+            .padding(.vertical, 7)
     }
 
     private var emptyState: some View {
@@ -182,6 +237,7 @@ private struct V2HistoryRow: View {
                     }
                 }
                 HStack(spacing: 7) {
+                    V2ProviderBadge(provider: entry.provider, density: .compact, style: .plain)
                     Text(entry.projectName)
                         .font(.system(size: 10, design: .monospaced))
                         .foregroundColor(v2.faint)
@@ -211,15 +267,16 @@ private struct V2HistoryRow: View {
             }
         }
         .buttonStyle(V2RowPressStyle())
-        .help("\(entry.projectCwd) · session \(String(entry.sessionId.prefix(8)))")
+        .help("\(entry.projectCwd) · \(entry.provider.displayName) \(String(entry.sessionId.prefix(8)))")
     }
 }
 
 // MARK: - Model
 
 struct V2HistoryEntry: Identifiable {
-    let id: String  // sessionId, unique
+    let id: String  // provider-prefixed native id
     let sessionId: String
+    let provider: V2AgentProvider
     let projectCwd: String
     let projectName: String
     let title: String
@@ -233,8 +290,9 @@ struct V2HistoryEntry: Identifiable {
         projects.flatMap { project in
             project.sessions.map { s in
                 V2HistoryEntry(
-                    id: s.id,
+                    id: "claude:\(s.id)",
                     sessionId: s.id,
+                    provider: .claude,
                     projectCwd: project.cwd,
                     projectName: project.displayName,
                     title: titleFor(session: s),
@@ -293,6 +351,20 @@ struct V2HistoryEntry: Identifiable {
         if weeks < 8 { return "\(weeks)w" }
         let months = days / 30
         return "\(months)mo"
+    }
+}
+
+extension V2HistoryEntry {
+    init(_ thread: CodexThreadSummary) {
+        id = "codex:\(thread.id)"
+        sessionId = thread.id
+        provider = .codex
+        projectCwd = thread.cwd
+        projectName = (thread.cwd as NSString).lastPathComponent
+        title = thread.title
+        lastActivity = thread.updatedAt
+        isActive = false
+        meta = ""
     }
 }
 

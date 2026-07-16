@@ -1078,6 +1078,17 @@ final class StreamSession: ObservableObject {
         pendingProviderHandoffContext = context
     }
 
+    /// Replace only the provider-neutral visible timeline during a runtime
+    /// switch. The destination Claude process still resumes its own native
+    /// session (when one exists) and receives a bounded handoff checkpoint on
+    /// the next turn; this keeps the UI continuous without pretending Codex's
+    /// native thread id is portable to Claude.
+    func adoptProviderTimeline(_ items: [TranscriptItem], from provider: V2AgentProvider) {
+        finalizeStreamingText()
+        transcript = items
+        transcript.append(.systemNote(kind: .info, text: "Continuing with Claude from \(provider.displayName)."))
+    }
+
     /// Re-send the most recent user turn. Used by the Retry button so a
     /// failed / unsatisfying turn can be re-run without retyping. No-op if
     /// there's no prior user message or a turn is already in flight.

@@ -20,6 +20,13 @@ struct V2Palette {
     let addBg: Color
     let del: Color
     let delBg: Color
+    /// Provider identity accents. These are Atelier UI colors, not altered
+    /// vendor logos. They never carry lifecycle meaning — add/del remain the
+    /// exclusive done/needs-you colors throughout the app.
+    let claude: Color
+    let claudeBg: Color
+    let codex: Color
+    let codexBg: Color
     /// "Token" chip — file paths, refs, shas, inline code. The agent-vocabulary
     /// primitive (design: Agent vocabulary.dc.html).
     let tok: Color
@@ -42,6 +49,10 @@ enum V2Theme {
         addBg:  Color(red: 0x3f/255.0, green: 0x6f/255.0, blue: 0x57/255.0).opacity(0.10),
         del:    Color(red: 0x9c/255.0, green: 0x52/255.0, blue: 0x49/255.0),
         delBg:  Color(red: 0x9c/255.0, green: 0x52/255.0, blue: 0x49/255.0).opacity(0.10),
+        claude: Color(red: 0x9b/255.0, green: 0x58/255.0, blue: 0x18/255.0),
+        claudeBg: Color(red: 0x9b/255.0, green: 0x58/255.0, blue: 0x18/255.0).opacity(0.09),
+        codex:  Color(red: 0x3e/255.0, green: 0x65/255.0, blue: 0xa8/255.0),
+        codexBg: Color(red: 0x3e/255.0, green: 0x65/255.0, blue: 0xa8/255.0).opacity(0.09),
         tok:    Color(red: 0xdd/255.0, green: 0xe0/255.0, blue: 0xdb/255.0),
         tokInk: Color(red: 0x2c/255.0, green: 0x2e/255.0, blue: 0x2b/255.0)
     )
@@ -61,6 +72,10 @@ enum V2Theme {
         addBg:  Color(red: 0x7f/255.0, green: 0xb8/255.0, blue: 0x9a/255.0).opacity(0.13),
         del:    Color(red: 0xd3/255.0, green: 0x91/255.0, blue: 0x89/255.0),
         delBg:  Color(red: 0xd3/255.0, green: 0x91/255.0, blue: 0x89/255.0).opacity(0.13),
+        claude: Color(red: 0xd9/255.0, green: 0xa1/255.0, blue: 0x5b/255.0),
+        claudeBg: Color(red: 0xd9/255.0, green: 0xa1/255.0, blue: 0x5b/255.0).opacity(0.12),
+        codex:  Color(red: 0x8f/255.0, green: 0xaf/255.0, blue: 0xe5/255.0),
+        codexBg: Color(red: 0x8f/255.0, green: 0xaf/255.0, blue: 0xe5/255.0).opacity(0.12),
         tok:    Color(red: 0x33/255.0, green: 0x35/255.0, blue: 0x2f/255.0),
         tokInk: Color(red: 0xcd/255.0, green: 0xd0/255.0, blue: 0xc8/255.0)
     )

@@ -31,7 +31,11 @@ final class V2AppState: ObservableObject {
 
     /// Last seen lifecycle state per tab, so we can detect transitions
     /// (working → ready = a turn finished; → awaitingPermission = blocked).
-    private var lastTabState: [UUID: StreamSession.LifecycleState] = [:]
+    /// Lifecycle history is provider-scoped because a dual-slot tab retains
+    /// both sessions. An inactive provider may finish teardown after the active
+    /// provider has already started a turn; sharing one value would corrupt the
+    /// active provider's working -> ready completion transition.
+    private var lastTabState: [UUID: [V2AgentProvider: StreamSession.LifecycleState]] = [:]
 
     /// Project the left rail is currently focused on. New tabs spawn here.
     @Published var selectedProjectCwd: URL?
@@ -75,6 +79,11 @@ final class V2AppState: ObservableObject {
     /// StreamSession starts. Set when a history row opens a new tab; cleared
     /// on tab close.
     @Published private(set) var resumeIds: [UUID: String] = [:]
+
+    /// Codex's native thread id is a different namespace from Claude session
+    /// UUIDs. Keeping it in a typed sibling map prevents a provider switch from
+    /// overwriting (or accidentally passing) the other provider's identity.
+    @Published private(set) var codexResumeIds: [UUID: String] = [:]
 
     /// Models the user has actually used, discovered by scanning
     /// ~/.claude/projects/**/*.jsonl. Empty until the first scan completes;
@@ -209,7 +218,9 @@ final class V2AppState: ObservableObject {
         // republish); the other low-frequency fields just republish chrome.
         let stateSub = session.$state
             .receive(on: RunLoop.main)
-            .sink { [weak self] newState in self?.handleStateTransition(tabId: tabId, to: newState) }
+            .sink { [weak self] newState in
+                self?.handleStateTransition(tabId: tabId, provider: .claude, to: newState)
+            }
         let otherSignals: [AnyPublisher<Void, Never>] = [
             session.$model.map { _ in () }.eraseToAnyPublisher(),
             session.$permissionMode.map { _ in () }.eraseToAnyPublisher(),
@@ -238,7 +249,9 @@ final class V2AppState: ObservableObject {
     private func observeCodexSessionState(_ session: CodexSession, tabId: UUID) {
         let stateSub = session.$state
             .receive(on: RunLoop.main)
-            .sink { [weak self] state in self?.handleStateTransition(tabId: tabId, to: state) }
+            .sink { [weak self] state in
+                self?.handleStateTransition(tabId: tabId, provider: .codex, to: state)
+            }
         let otherSub = Publishers.MergeMany([
             session.$model.map { _ in () }.eraseToAnyPublisher(),
             session.$effort.map { _ in () }.eraseToAnyPublisher(),
@@ -252,9 +265,13 @@ final class V2AppState: ObservableObject {
     }
 
     /// Detect tab-status transitions and fire the matching attention cue.
-    private func handleStateTransition(tabId: UUID, to newState: StreamSession.LifecycleState) {
-        let old = lastTabState[tabId]
-        lastTabState[tabId] = newState
+    private func handleStateTransition(
+        tabId: UUID,
+        provider: V2AgentProvider,
+        to newState: StreamSession.LifecycleState
+    ) {
+        let old = lastTabState[tabId]?[provider]
+        lastTabState[tabId, default: [:]][provider] = newState
 
         // A restoring tab reaching any non-idle state has finished its
         // preload — drop it from the in-flight set (see restorePendingTabs).
@@ -279,6 +296,10 @@ final class V2AppState: ObservableObject {
 
         // Skip the publisher's initial replay (no real transition yet).
         guard let old else { return }
+        // Retained inactive sessions still publish teardown states. Persist
+        // those native ids, but never let them drive the active tab's sounds or
+        // unseen markers.
+        guard tabs.first(where: { $0.id == tabId })?.provider == provider else { return }
         let isBackground = (tabId != activeTabId)
 
         // Needs you: entered awaitingPermission from anything else.
@@ -419,8 +440,15 @@ final class V2AppState: ObservableObject {
         return tabs.first(where: { $0.id == id })
     }
 
-    var activeSession: StreamSession? { activeTab?.streamSession }
-    var activeCodexSession: CodexSession? { activeTab?.codexSession }
+    var activeSession: StreamSession? {
+        guard activeTab?.provider == .claude else { return nil }
+        return activeTab?.streamSession
+    }
+
+    var activeCodexSession: CodexSession? {
+        guard activeTab?.provider == .codex else { return nil }
+        return activeTab?.codexSession
+    }
 
     /// The four-state status for a tab (shared by the tab strip + the title-bar
     /// summary). Selection is separate — that's `activeTabId`.
@@ -500,15 +528,24 @@ final class V2AppState: ObservableObject {
     /// What survives a quit: each Mode-B tab that has a real claude session
     /// behind it. Mode-A tabs are live PTYs — nothing to restore them TO —
     /// and a Mode-B tab that never started a session isn't worth a slot.
-    private struct WorkspaceSnapshot: Codable {
+    struct WorkspaceSnapshot: Codable {
         struct TabEntry: Codable {
             let projectCwd: String
             let title: String
+            /// Legacy/current active-provider id. Retained so v2.10.0
+            /// snapshots continue to decode and older builds have a fallback.
             let sessionId: String
             /// Optional so snapshots written before multi-provider support
             /// continue to decode as Claude.
             let provider: V2AgentProvider?
             let draft: String?
+            /// Typed provider slots added after v2.10.0. Optional fields make
+            /// decoding the original single-id snapshot format non-breaking.
+            let claudeSessionId: String?
+            let codexThreadId: String?
+            let claudeDraft: String?
+            let codexDraft: String?
+            let providerSlotsVersion: Int?
         }
         let tabs: [TabEntry]
         let activeSessionId: String?
@@ -531,18 +568,29 @@ final class V2AppState: ObservableObject {
             // hibernated tab would give it a wake-via-resume path into a
             // session another process owns (#76's takeover rule).
             guard tab.streamSession?.isObserving != true else { return nil }
-            let sid = tab.provider == .codex
-                ? (tab.codexSession?.threadId ?? resumeIds[tab.id])
-                : (tab.streamSession?.sessionId ?? resumeIds[tab.id])
-            guard let sid else { return nil }
+            let claudeId = tab.streamSession?.sessionId ?? resumeIds[tab.id]
+            let codexId = tab.codexSession?.threadId ?? codexResumeIds[tab.id]
+            let activeId = tab.provider == .codex ? codexId : claudeId
+            guard let sid = activeId ?? claudeId ?? codexId else { return nil }
             let draft = tab.provider == .codex ? tab.codexSession?.composerDraft : tab.streamSession?.composerDraft
-            return .init(projectCwd: tab.projectCwd, title: tab.title, sessionId: sid, provider: tab.provider, draft: draft)
+            return .init(
+                projectCwd: tab.projectCwd,
+                title: tab.title,
+                sessionId: sid,
+                provider: tab.provider,
+                draft: draft,
+                claudeSessionId: claudeId,
+                codexThreadId: codexId,
+                claudeDraft: tab.streamSession?.composerDraft,
+                codexDraft: tab.codexSession?.composerDraft,
+                providerSlotsVersion: 1
+            )
         }
         let active = activeTabId
             .flatMap { id in tabs.first { $0.id == id } }
             .flatMap { tab in
                 tab.provider == .codex
-                    ? (tab.codexSession?.threadId ?? resumeIds[tab.id])
+                    ? (tab.codexSession?.threadId ?? codexResumeIds[tab.id])
                     : (tab.streamSession?.sessionId ?? resumeIds[tab.id])
             }
         let snapshot = WorkspaceSnapshot(tabs: entries, activeSessionId: active)
@@ -585,40 +633,61 @@ final class V2AppState: ObservableObject {
 
         var activeCandidate: UUID?
         for entry in snapshot.tabs {
-            let provider = entry.provider ?? .claude
-            if provider == .codex {
-                guard codexBinary != nil else { continue }
-                let id = terminals.openModeB(projectCwd: entry.projectCwd, title: entry.title, provider: .codex)
-                resumeIds[id] = entry.sessionId
-                if let session = terminals.tabs.first(where: { $0.id == id })?.codexSession {
-                    session.composerDraft = entry.draft ?? ""
-                    observeCodexSessionState(session, tabId: id)
-                }
-                if entry.sessionId == snapshot.activeSessionId { activeCandidate = id }
-                continue
-            }
-            guard let binary = claudeBinary else { continue }
-            // Snapshot hygiene: a session whose transcript is gone (cleaned
-            // up, machine changed) can't be resumed — skip it rather than
-            // restoring a tab whose first message would fail.
-            let transcript = SessionHistoryLoader.jsonlURL(sessionId: entry.sessionId, projectCwd: entry.projectCwd)
-            guard FileManager.default.fileExists(atPath: transcript.path) else { continue }
+            let preferredProvider = entry.provider ?? .claude
+            let hasTypedSlots = entry.providerSlotsVersion != nil
+            let claudeId = hasTypedSlots
+                ? entry.claudeSessionId
+                : (preferredProvider == .claude ? entry.sessionId : nil)
+            let codexId = hasTypedSlots
+                ? entry.codexThreadId
+                : (preferredProvider == .codex ? entry.sessionId : nil)
 
-            let id = terminals.openModeB(projectCwd: entry.projectCwd, title: entry.title, provider: .claude)
-            resumeIds[id] = entry.sessionId
-            if let session = terminals.tabs.first(where: { $0.id == id })?.streamSession {
-                session.composerDraft = entry.draft ?? ""
+            let claudeTranscript = claudeId.map {
+                SessionHistoryLoader.jsonlURL(sessionId: $0, projectCwd: entry.projectCwd)
+            }
+            let claudeAvailable = claudeId != nil
+                && claudeBinary != nil
+                && claudeTranscript.map { FileManager.default.fileExists(atPath: $0.path) } == true
+            let codexAvailable = codexId != nil && codexBinary != nil
+            guard let provider = Self.restoredProvider(
+                preferred: preferredProvider,
+                claudeAvailable: claudeAvailable,
+                codexAvailable: codexAvailable
+            ) else { continue }
+
+            let id = terminals.openModeB(
+                projectCwd: entry.projectCwd,
+                title: entry.title,
+                provider: provider
+            )
+
+            if claudeAvailable, let claudeId, let binary = claudeBinary {
+                resumeIds[id] = claudeId
+                let session = terminals.tabs.first(where: { $0.id == id })?.streamSession ?? StreamSession()
+                session.composerDraft = entry.claudeDraft
+                    ?? (provider == .claude ? entry.draft : nil)
+                    ?? ""
+                terminals.setClaudeSession(session, on: id, activate: false)
                 // Mark BEFORE the async restore is kicked off so its later,
-                // staggered .hibernated landing is recognised as part of the
-                // burst and collapsed into one republish (see
-                // restorePendingTabs / handleStateTransition).
+                // staggered .hibernated landing is collapsed into one chrome
+                // republish even when Claude is the retained inactive slot.
                 restorePendingTabs.insert(id)
                 observeSessionState(session, tabId: id)
                 session.restoreHibernated(
                     cwd: URL(fileURLWithPath: entry.projectCwd), claudeURL: binary,
-                    sessionId: entry.sessionId, model: defaultSpawnModel,
+                    sessionId: claudeId, model: defaultSpawnModel,
                     permissionMode: defaultPermissionMode, effort: defaultSpawnEffort
                 )
+            }
+
+            if codexAvailable, let codexId {
+                codexResumeIds[id] = codexId
+                let session = terminals.tabs.first(where: { $0.id == id })?.codexSession ?? CodexSession()
+                session.composerDraft = entry.codexDraft
+                    ?? (provider == .codex ? entry.draft : nil)
+                    ?? ""
+                terminals.setCodexSession(session, on: id, activate: false)
+                observeCodexSessionState(session, tabId: id)
             }
             if entry.sessionId == snapshot.activeSessionId { activeCandidate = id }
         }
@@ -631,7 +700,7 @@ final class V2AppState: ObservableObject {
             if tab.provider == .codex, let session = tab.codexSession, let binary = codexBinary {
                 session.start(
                     cwd: URL(fileURLWithPath: tab.projectCwd), codexURL: binary,
-                    resumeId: resumeIds[tab.id], model: defaultCodexModel,
+                    resumeId: codexResumeIds[tab.id], model: defaultCodexModel,
                     permissionMode: defaultCodexApprovalPolicy, effort: defaultCodexEffort
                 )
             }
@@ -647,6 +716,24 @@ final class V2AppState: ObservableObject {
                 self.objectWillChange.send()
             }
         }
+    }
+
+    /// Pick the saved active provider when possible, but never discard a valid
+    /// retained slot just because that preferred runtime is missing today.
+    static func restoredProvider(
+        preferred: V2AgentProvider,
+        claudeAvailable: Bool,
+        codexAvailable: Bool
+    ) -> V2AgentProvider? {
+        switch preferred {
+        case .claude:
+            if claudeAvailable { return .claude }
+            if codexAvailable { return .codex }
+        case .codex:
+            if codexAvailable { return .codex }
+            if claudeAvailable { return .claude }
+        }
+        return nil
     }
 
     // MARK: - Tab management
@@ -728,6 +815,7 @@ final class V2AppState: ObservableObject {
             default: break
             }
             sourceTranscript = source.transcript
+            if let id = source.sessionId { resumeIds[tab.id] = id }
             source.stop()
         case .codex:
             guard let source = tab.codexSession else { return }
@@ -736,6 +824,7 @@ final class V2AppState: ObservableObject {
             default: break
             }
             sourceTranscript = source.transcript
+            if let id = source.threadId { codexResumeIds[tab.id] = id }
             source.stop()
         }
 
@@ -746,27 +835,34 @@ final class V2AppState: ObservableObject {
         switch target {
         case .claude:
             guard let binary = claudeBinary else { return }
-            let replacement = StreamSession()
+            let replacement = tab.streamSession ?? StreamSession()
             replacement.setProviderHandoffContext(checkpoint)
+            replacement.adoptProviderTimeline(sourceTranscript, from: tab.provider)
             terminals.setClaudeSession(replacement, on: tab.id)
-            codexSessionStateSubs[tab.id] = nil
             observeSessionState(replacement, tabId: tab.id)
             replacement.start(
-                cwd: cwd, claudeURL: binary, model: defaultSpawnModel,
+                cwd: cwd, claudeURL: binary,
+                resumeId: replacement.sessionId ?? resumeIds[tab.id],
+                model: defaultSpawnModel,
                 permissionMode: defaultPermissionMode, effort: defaultSpawnEffort
             )
         case .codex:
             guard let binary = codexBinary else { return }
-            let replacement = CodexSession()
+            let replacement = tab.codexSession ?? CodexSession()
             replacement.setProviderHandoffContext(checkpoint)
+            replacement.adoptProviderTimeline(sourceTranscript, from: tab.provider)
             terminals.setCodexSession(replacement, on: tab.id)
-            sessionStateSubs[tab.id] = nil
             observeCodexSessionState(replacement, tabId: tab.id)
             replacement.start(
-                cwd: cwd, codexURL: binary, model: defaultCodexModel,
+                cwd: cwd, codexURL: binary,
+                resumeId: replacement.threadId ?? codexResumeIds[tab.id],
+                model: defaultCodexModel,
                 permissionMode: defaultCodexApprovalPolicy, effort: defaultCodexEffort
             )
         }
+        let retained = terminals.tabs.first(where: { $0.id == tab.id })
+        log.notice("Provider switch retained tab \(tab.id.uuidString, privacy: .private): \(tab.provider.displayName, privacy: .public) -> \(target.displayName, privacy: .public); Claude slot=\(retained?.streamSession != nil, privacy: .public), Codex slot=\(retained?.codexSession != nil, privacy: .public)")
+        persistWorkspace()
         objectWillChange.send()
     }
 
@@ -891,6 +987,7 @@ final class V2AppState: ObservableObject {
         }
         _ = terminals?.close(tabId, force: true)
         resumeIds.removeValue(forKey: tabId)
+        codexResumeIds.removeValue(forKey: tabId)
         sessionStateSubs[tabId] = nil   // cancel the state subscription (was leaked)
         codexSessionStateSubs[tabId] = nil
         loopSubs[tabId] = nil           // cancel any loop objectWillChange sub (was leaked)
@@ -975,8 +1072,10 @@ final class V2AppState: ObservableObject {
     /// matching what `/clear` does in the terminal. The transcript is wiped
     /// and a fresh session spawns in the same project / model / mode.
     func clearConversation() {
-        if let tab = activeTab, let session = tab.codexSession, let binary = codexBinary {
+        if let tab = activeTab, tab.provider == .codex,
+           let session = tab.codexSession, let binary = codexBinary {
             session.stop()
+            codexResumeIds.removeValue(forKey: tab.id)
             let replacement = CodexSession()
             guard let terminals else { return }
             terminals.setCodexSession(replacement, on: tab.id)
@@ -1014,7 +1113,7 @@ final class V2AppState: ObservableObject {
             switch session.state { case .idle, .terminated: break; default: return }
             session.start(
                 cwd: URL(fileURLWithPath: tab.projectCwd), codexURL: binary,
-                resumeId: resumeIds[tab.id], model: defaultCodexModel, permissionMode: defaultCodexApprovalPolicy,
+                resumeId: codexResumeIds[tab.id], model: defaultCodexModel, permissionMode: defaultCodexApprovalPolicy,
                 effort: defaultCodexEffort
             )
             return
@@ -1102,6 +1201,57 @@ final class V2AppState: ObservableObject {
                 model: defaultSpawnModel,
                 permissionMode: defaultPermissionMode,
                 effort: defaultSpawnEffort
+            )
+        }
+    }
+
+    /// Open a closed Codex thread from the unified History rail. Thread
+    /// discovery and resume both go through the user's local Codex app-server;
+    /// no API key or paid model turn is used until the user sends a message.
+    func openCodexHistoryThread(threadId: String, projectCwd: String, title: String) {
+        guard let terminals, let binary = codexBinary else { return }
+        let projectName = (projectCwd as NSString).lastPathComponent
+
+        if let existing = tabs.first(where: {
+            codexResumeIds[$0.id] == threadId || $0.codexSession?.threadId == threadId
+        }) {
+            activeTabId = existing.id
+            mainView = .chat
+            selectedProjectCwd = URL(fileURLWithPath: projectCwd)
+            selectedProjectName = projectName
+            if existing.provider != .codex {
+                switchActiveProvider(to: .codex)
+            } else if let session = existing.codexSession {
+                switch session.state {
+                case .idle, .terminated:
+                    session.start(
+                        cwd: URL(fileURLWithPath: projectCwd), codexURL: binary,
+                        resumeId: threadId, model: defaultCodexModel,
+                        permissionMode: defaultCodexApprovalPolicy, effort: defaultCodexEffort
+                    )
+                default:
+                    break
+                }
+            }
+            return
+        }
+
+        let id = terminals.openModeB(
+            projectCwd: projectCwd,
+            title: title.isEmpty ? projectName : title,
+            provider: .codex
+        )
+        codexResumeIds[id] = threadId
+        activeTabId = id
+        mainView = .chat
+        selectedProjectCwd = URL(fileURLWithPath: projectCwd)
+        selectedProjectName = projectName
+        if let session = terminals.tabs.first(where: { $0.id == id })?.codexSession {
+            observeCodexSessionState(session, tabId: id)
+            session.start(
+                cwd: URL(fileURLWithPath: projectCwd), codexURL: binary,
+                resumeId: threadId, model: defaultCodexModel,
+                permissionMode: defaultCodexApprovalPolicy, effort: defaultCodexEffort
             )
         }
     }

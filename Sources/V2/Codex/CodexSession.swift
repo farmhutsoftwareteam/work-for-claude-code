@@ -55,6 +55,9 @@ final class CodexSession: ObservableObject {
 
     private(set) var threadId: String?
     private(set) var turnId: String?
+    /// Timestamp for the active model turn. Kept separate from process startup
+    /// so the tab timer never counts account/model/MCP initialization time.
+    private(set) var turnStartedAt: Date?
     private(set) var cwd: URL?
     var composerDraft = ""
 
@@ -69,6 +72,8 @@ final class CodexSession: ObservableObject {
     private var renderedItemIDs: Set<String> = []
     private var requestedPermissionGrant: [String: Any]?
     private var pendingProviderHandoffContext: String?
+    private var mcpRefreshInFlight = false
+    private var mcpRefreshQueued = false
 
     var selectedModel: CodexModel? {
         availableModels.first { $0.id == model || $0.model == model }
@@ -85,7 +90,13 @@ final class CodexSession: ObservableObject {
         guard client == nil else { return }
         self.cwd = cwd
         self.binary = codexURL
-        self.resumeThreadId = resumeId
+        // A stopped CodexSession retains its native thread id. A fresh
+        // app-server connection must explicitly resume that thread before it
+        // can accept another turn; merely retaining `threadId` locally is not
+        // enough for the new server process.
+        let threadToResume = resumeId ?? threadId
+        self.resumeThreadId = threadToResume
+        if threadToResume != nil { self.threadId = nil }
         self.model = model ?? ""
         self.permissionMode = permissionMode
         self.effort = effort
@@ -111,10 +122,14 @@ final class CodexSession: ObservableObject {
                 self.state = .initializing
                 await self.refreshAccount()
                 await self.refreshModels()
-                await self.refreshMCPStatus()
                 if !self.requiresChatGPTLogin { try await self.openThreadIfNeeded() }
                 else { self.state = .idle }
+                // MCP discovery must never gate thread creation or history
+                // restore. Slow/startup-heavy servers update independently.
+                Task { [weak self] in await self?.refreshMCPStatus() }
             } catch {
+                client.stop()
+                if self.client === client { self.client = nil }
                 self.fail(error.localizedDescription)
             }
         }
@@ -213,6 +228,7 @@ final class CodexSession: ObservableObject {
         let displayText = text + (attachmentNames.isEmpty ? "" : "\n\nAttached: \(attachmentNames.joined(separator: ", "))")
         transcript.append(.userText(displayText))
         endError = nil
+        turnStartedAt = Date()
         state = .working
         var input: [[String: Any]] = []
         if !text.isEmpty { input.append(["type": "text", "text": text]) }
@@ -224,17 +240,15 @@ final class CodexSession: ObservableObject {
                 input.append(["type": "mention", "name": url.lastPathComponent, "path": url.path])
             }
         }
-        var params: [String: Any] = [
-            "threadId": threadId,
-            "input": input,
-            "model": model,
-            "approvalPolicy": permissionMode
-        ]
-        if !effort.isEmpty { params["effort"] = effort }
         let handoffContext = pendingProviderHandoffContext
-        if let handoffContext {
-            params["additionalContext"] = [["kind": "untrusted", "value": handoffContext]]
-        }
+        let params = Self.turnStartParams(
+            threadId: threadId,
+            input: input,
+            model: model,
+            approvalPolicy: permissionMode,
+            effort: effort,
+            handoffContext: handoffContext
+        )
         Task { [weak self] in
             do {
                 let response = try await client.request("turn/start", params: CodexJSONObject(params))
@@ -244,6 +258,8 @@ final class CodexSession: ObservableObject {
                 }
             } catch {
                 self?.state = .ready
+                self?.turnStartedAt = nil
+                self?.log.error("turn/start failed: \(error.localizedDescription, privacy: .private)")
                 self?.appendError("Send failed: \(error.localizedDescription)")
             }
         }
@@ -251,6 +267,98 @@ final class CodexSession: ObservableObject {
 
     func setProviderHandoffContext(_ context: String) {
         pendingProviderHandoffContext = context
+    }
+
+    /// Keep the whole visible conversation on screen while the destination
+    /// provider receives only the bounded ProviderHandoff checkpoint. This is
+    /// display state, not an attempt to reuse another provider's native thread.
+    func adoptProviderTimeline(_ items: [TranscriptItem], from provider: V2AgentProvider) {
+        finalizeStreamingText()
+        transcript = items
+        transcript.append(.systemNote(kind: .info, text: "Continuing with Codex from \(provider.displayName)."))
+        renderedItemIDs.removeAll()
+    }
+
+    /// Versioned app-server wire shape for a turn. Kept as a pure builder so
+    /// tests can validate it against Codex's generated schema without starting
+    /// a real paid turn.
+    static func turnStartParams(
+        threadId: String,
+        input: [[String: Any]],
+        model: String,
+        approvalPolicy: String,
+        effort: String,
+        handoffContext: String?
+    ) -> [String: Any] {
+        var params: [String: Any] = [
+            "threadId": threadId,
+            "input": input,
+            "model": model,
+            "approvalPolicy": approvalPolicy
+        ]
+        if !effort.isEmpty { params["effort"] = effort }
+        if let handoffContext {
+            // Codex 0.144.4 TurnStartParams.additionalContext is a MAP keyed
+            // by an opaque source id, not an array of entries.
+            let entry: [String: Any] = ["kind": "untrusted", "value": handoffContext]
+            params["additionalContext"] = ["atelier-provider-handoff": entry] as [String: Any]
+        }
+        return params
+    }
+
+    /// Read local Codex history through the same official app-server protocol
+    /// used for live chats. This starts no model turn and consumes no tokens.
+    static func listThreads(codexURL: URL) async throws -> [CodexThreadSummary] {
+        let client = CodexAppServerClient(binary: codexURL)
+        try await client.start()
+        defer { client.stop() }
+
+        var cursor: String?
+        var threadsByID: [String: CodexThreadSummary] = [:]
+        repeat {
+            try Task.checkCancellation()
+            var params: [String: Any] = [
+                "limit": 100,
+                "sortKey": "updated_at",
+                "sortDirection": "desc"
+            ]
+            if let cursor { params["cursor"] = cursor }
+            let response = try await client.request("thread/list", params: CodexJSONObject(params))
+            for raw in response["data"] as? [[String: Any]] ?? [] {
+                if let thread = decodeThreadSummary(raw) {
+                    threadsByID[thread.id] = thread
+                }
+            }
+            cursor = response["nextCursor"] as? String
+        } while cursor != nil
+
+        return threadsByID.values.sorted { $0.updatedAt > $1.updatedAt }
+    }
+
+    static func decodeThreadSummary(_ raw: [String: Any]) -> CodexThreadSummary? {
+        guard let id = raw["id"] as? String, !id.isEmpty,
+              let cwd = raw["cwd"] as? String, !cwd.isEmpty else { return nil }
+        let timestamp = (raw["updatedAt"] as? NSNumber)?.doubleValue
+            ?? (raw["createdAt"] as? NSNumber)?.doubleValue
+            ?? 0
+        let explicitName = (raw["name"] as? String)?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        let preview = (raw["preview"] as? String ?? "")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        let title: String
+        if let explicitName, !explicitName.isEmpty {
+            title = explicitName
+        } else if !preview.isEmpty {
+            title = String(preview.split(whereSeparator: \.isNewline).first?.prefix(72) ?? Substring(preview.prefix(72)))
+        } else {
+            title = "thread \(String(id.prefix(8)))"
+        }
+        return CodexThreadSummary(
+            id: id,
+            cwd: cwd,
+            title: title,
+            updatedAt: Date(timeIntervalSince1970: timestamp)
+        )
     }
 
     func interrupt() {
@@ -331,6 +439,21 @@ final class CodexSession: ObservableObject {
 
     func refreshMCPStatus() async {
         guard let client else { return }
+        guard !mcpRefreshInFlight else {
+            mcpRefreshQueued = true
+            return
+        }
+        mcpRefreshInFlight = true
+        defer {
+            mcpRefreshInFlight = false
+            if mcpRefreshQueued {
+                mcpRefreshQueued = false
+                Task { @MainActor [weak self] in
+                    try? await Task.sleep(for: .milliseconds(180))
+                    await self?.refreshMCPStatus()
+                }
+            }
+        }
         do {
             var cursor: String?
             var collected: [CodexMCPServer] = []
@@ -460,14 +583,14 @@ final class CodexSession: ObservableObject {
         }
         if let thread = response["thread"] as? [String: Any] {
             threadId = thread["id"] as? String
-            if let turns = thread["turns"] as? [[String: Any]], !turns.isEmpty {
+            if transcript.isEmpty,
+               let turns = thread["turns"] as? [[String: Any]], !turns.isEmpty {
                 transcript = Self.transcript(from: turns)
             }
         }
         if let actual = response["model"] as? String { model = actual }
         if let actual = response["reasoningEffort"] as? String { effort = actual }
         state = .ready
-        await refreshMCPStatus()
     }
 
     private func handleNotification(method: String, params: [String: Any]) {
@@ -484,6 +607,7 @@ final class CodexSession: ObservableObject {
             Task { [weak self] in await self?.refreshMCPStatus() }
         case "turn/started":
             turnId = (params["turn"] as? [String: Any])?["id"] as? String
+            if turnStartedAt == nil { turnStartedAt = Date() }
             state = .working
         case "turn/completed":
             finalizeStreamingText()
@@ -495,6 +619,7 @@ final class CodexSession: ObservableObject {
             pendingUserInput = nil
             requestedPermissionGrant = nil
             turnId = nil
+            turnStartedAt = nil
             state = .ready
         case "item/agentMessage/delta":
             if let delta = params["delta"] as? String,

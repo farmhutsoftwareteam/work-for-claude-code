@@ -32,16 +32,14 @@ struct TerminalTab: Identifiable {
     /// Mode-B tabs; v2 renders both surfaces depending on this field.
     var surface: Surface = .modeA
 
-    /// Native-chat runtime. Existing tabs decode/behave as Claude; Codex tabs
-    /// keep their own app-server session alongside the unchanged Claude path.
+    /// Active native-chat runtime. A tab may retain both provider-specific
+    /// session objects while only this provider's process is live.
     var provider: V2AgentProvider = .claude
 
-    /// Mode-B StreamSession reference. Always non-nil while `surface == .modeB`.
-    /// Reference type — the controller stores it here so callers don't have
-    /// to keep a sibling dictionary.
+    /// Retained Claude slot. Nil until this tab has used Claude.
     var streamSession: StreamSession?
 
-    /// Mode-B Codex app-server session. Non-nil when provider == .codex.
+    /// Retained Codex slot. Nil until this tab has used Codex.
     var codexSession: CodexSession?
 
     /// Active loop orchestrator on this tab (issue #24). Non-nil while a loop
