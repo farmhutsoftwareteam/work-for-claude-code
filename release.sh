@@ -219,7 +219,7 @@ MOUNT_POINT="/Volumes/Work"
 hdiutil detach "$MOUNT_POINT" -force 2>/dev/null || true
 hdiutil info | grep -B2 "Work.dmg" | grep -E '^/dev/disk' | awk '{print $1}' | while read -r dev; do
     hdiutil detach "$dev" -force 2>/dev/null || true
-done
+done || true
 rm -f "$RAW_DMG" "$DMG_NAME"
 
 # Size the read-write DMG to the app plus ~30MB headroom
