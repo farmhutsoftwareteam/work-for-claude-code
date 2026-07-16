@@ -26,6 +26,8 @@ struct V2SessionHeader: View {
     /// the current project has a configured server that needs sign-in. Drives
     /// the red badge on the dock's `mcp` control.
     private var mcpAlert: Bool {
+        if let servers = appState.activeCodexSession?.mcpServers,
+           servers.contains(where: \.needsLogin) { return true }
         if let servers = appState.activeSession?.mcpServers, !servers.isEmpty {
             let bad = servers.contains {
                 let s = ($0.status ?? "").lowercased()

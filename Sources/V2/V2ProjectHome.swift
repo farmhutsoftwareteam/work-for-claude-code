@@ -74,8 +74,14 @@ struct V2ProjectHome: View {
             }
             Spacer(minLength: 12)
             HStack(spacing: 8) {
-                Button(action: { appState.newTab() }) {
-                    Text("+ New session")
+                Menu {
+                    Button("Claude") { appState.newTab(provider: .claude) }
+                    Button("Codex · ChatGPT subscription") { appState.newTab(provider: .codex) }
+                } label: {
+                    HStack(spacing: 7) {
+                        Text("+ New session")
+                        Image(systemName: "chevron.down").font(.system(size: 8))
+                    }
                         .font(.system(size: 11.5, design: .monospaced))
                         .foregroundColor(v2.paper)
                         .padding(.horizontal, 18).padding(.vertical, 9)

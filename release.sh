@@ -1,5 +1,5 @@
 #!/bin/bash
-set -e
+set -eo pipefail
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Release pipeline for Work.app (macOS)
@@ -16,14 +16,51 @@ fi
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 cd "$SCRIPT_DIR"
 
+if ! [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+    echo "Error: version must be MAJOR.MINOR.PATCH (received: $VERSION)."
+    exit 1
+fi
+
+PROJECT_VERSION=$(grep -E "^  MARKETING_VERSION:" project.yml | head -1 | sed -E 's/.*"([^"]+)".*/\1/')
+if [ "$PROJECT_VERSION" != "$VERSION" ]; then
+    echo "Error: project.yml MARKETING_VERSION is $PROJECT_VERSION, not $VERSION."
+    exit 1
+fi
+
+NOTES_FILE="$SCRIPT_DIR/release-notes/v${VERSION}.md"
+if [ ! -s "$NOTES_FILE" ]; then
+    echo "Error: release notes are required at $NOTES_FILE."
+    exit 1
+fi
+if [ ! -d "$SCRIPT_DIR/docs" ]; then
+    echo "Error: docs/ is required so the exact signed DMG can be staged."
+    exit 1
+fi
+for tool in git xcodegen xcodebuild codesign xcrun hdiutil gh; do
+    if ! command -v "$tool" >/dev/null 2>&1; then
+        echo "Error: required release tool '$tool' is not installed."
+        exit 1
+    fi
+done
+if [ -n "$(git status --porcelain --untracked-files=normal)" ]; then
+    echo "Error: release from a clean, committed worktree so the tag identifies the exact source."
+    git status --short
+    exit 1
+fi
+if ! git symbolic-ref -q HEAD >/dev/null; then
+    echo "Error: refusing to release from a detached HEAD."
+    exit 1
+fi
+if ! gh auth status >/dev/null 2>&1; then
+    echo "Error: gh is not authenticated. Run 'gh auth login' first."
+    exit 1
+fi
+
 SIGNING_IDENTITY="Developer ID Application: Ryan Katayi (9TUBWSP9WT)"
 TEAM_ID="9TUBWSP9WT"
-BUNDLE_ID="com.munyamakosa.work"
 APP_PATH="build/DerivedData/Build/Products/Release/Work.app"
 DMG_NAME="Work.dmg"
 ENTITLEMENTS_PATH="/tmp/Work-dist.entitlements"
-SPARKLE_PUBKEY="OxlQLub17dx6WhaZ4eF79PE1vfQF+/x4Qo6gt/ThCH0="
-APPCAST_URL="https://munyamakosa.github.io/work/appcast.xml"
 
 echo "============================================================"
 echo "  Work.app Release Pipeline — v${VERSION}"
@@ -38,6 +75,16 @@ echo "  Step 1: Generating Xcode project with xcodegen"
 echo "──────────────────────────────────────────────────────────────"
 xcodegen generate
 echo "✓ Xcode project generated."
+echo ""
+
+echo "  Running the complete XCTest release gate..."
+xcodebuild \
+    -project Work.xcodeproj \
+    -scheme Work \
+    -configuration Debug \
+    -destination 'platform=macOS' \
+    test
+echo "✓ XCTest release gate passed."
 echo ""
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -386,19 +433,20 @@ if [ -n "$SIGN_UPDATE_BIN" ]; then
         fi
     fi
 else
-    echo "  ⚠ sign_update not found. You will need to generate the EdDSA signature manually."
-    echo "    Run: sparkle/bin/sign_update $DMG_NAME"
+    echo "  ✗ sign_update not found; refusing to publish an unsigned Sparkle update."
+    exit 1
+fi
+
+if ! echo "$EDDSA_SIG" | grep -Eq '^[A-Za-z0-9+/]{80,}={0,2}$'; then
+    echo "  ✗ Sparkle signature is missing or malformed; refusing to publish."
+    exit 1
 fi
 
 echo ""
 echo "  ── Appcast XML snippet ──"
 echo ""
 
-if [ -n "$EDDSA_SIG" ]; then
-    EDDSA_ATTR="sparkle:edSignature=\"$EDDSA_SIG\""
-else
-    EDDSA_ATTR="sparkle:edSignature=\"REPLACE_WITH_EDDSA_SIGNATURE\""
-fi
+EDDSA_ATTR="sparkle:edSignature=\"$EDDSA_SIG\""
 
 APPCAST_SNIPPET=$(cat <<XMLEOF
 <item>
@@ -424,41 +472,32 @@ echo ""
 # Step 11: Create the GitHub release (tag + notes + DMG asset)
 # Reads notes from release-notes/v${VERSION}.md. The file's expected to exist
 # before this step — write it alongside the version bump in project.yml so the
-# release flow has the full body to hand to `gh release create`. If absent,
-# we print the exact command to run later instead of failing the build.
+# release flow has the full body to hand to `gh release create`. Preflight
+# refuses to start without it, so every draft release has complete notes.
 # ─────────────────────────────────────────────────────────────────────────────
 echo "──────────────────────────────────────────────────────────────"
 echo "  Step 11: Creating GitHub release"
 echo "──────────────────────────────────────────────────────────────"
 
-NOTES_FILE="$SCRIPT_DIR/release-notes/v${VERSION}.md"
 TAG="v${VERSION}"
 GH_TITLE="Work ${VERSION}"
 
-if ! command -v gh &>/dev/null; then
-    echo "  ⚠ gh CLI not installed — skipping. Install with: brew install gh"
-    echo "    After installing, run:"
-    echo "      gh release create $TAG --title \"$GH_TITLE\" --notes-file $NOTES_FILE $DMG_NAME"
-elif [ ! -f "$NOTES_FILE" ]; then
-    echo "  ⚠ Release notes not found at $NOTES_FILE"
-    echo "    Write the body for this release there (markdown), then run:"
-    echo "      gh release create $TAG --title \"$GH_TITLE\" --notes-file $NOTES_FILE $DMG_NAME"
-elif gh release view "$TAG" &>/dev/null; then
-    # Release already exists (re-running release.sh on the same version):
-    # just refresh the DMG asset so users get the freshest binary.
-    echo "  ⚠ GitHub release $TAG already exists — replacing the DMG asset only."
+if gh release view "$TAG" &>/dev/null; then
+    IS_DRAFT=$(gh release view "$TAG" --json isDraft --jq .isDraft)
+    if [ "$IS_DRAFT" != "true" ]; then
+        echo "Error: $TAG is already public; refusing to replace its binary."
+        exit 1
+    fi
+    echo "  Existing draft $TAG found — replacing its DMG asset."
     gh release upload "$TAG" "$DMG_NAME" --clobber
-    echo "✓ Re-uploaded $DMG_NAME to existing release $TAG."
+    echo "✓ Re-uploaded $DMG_NAME to draft $TAG."
 else
-    # `gh release create` creates the git tag at the current HEAD if it
-    # doesn't exist locally. Make sure your version-bump commit is the tip
-    # of the branch before running this — otherwise the tag will point at
-    # an older commit.
     gh release create "$TAG" \
+        --draft \
         --title "$GH_TITLE" \
         --notes-file "$NOTES_FILE" \
         "$DMG_NAME"
-    echo "✓ GitHub release $TAG created with $DMG_NAME attached."
+    echo "✓ Draft GitHub release $TAG created with $DMG_NAME attached."
 fi
 echo ""
 
@@ -486,7 +525,8 @@ if [ -d "$DOCS_DIR" ]; then
     if [ "$VERSIONED_COPIED_SIZE" = "$SRC_SIZE" ]; then
         echo "✓ Copied $DMG_NAME → docs/$VERSIONED_DMG_NAME ($VERSIONED_COPIED_SIZE bytes — matches appcast enclosure length)."
     else
-        echo "⚠ docs/$VERSIONED_DMG_NAME size ($VERSIONED_COPIED_SIZE) != source ($SRC_SIZE) — investigate before deploying."
+        echo "Error: docs/$VERSIONED_DMG_NAME size ($VERSIONED_COPIED_SIZE) != source ($SRC_SIZE)."
+        exit 1
     fi
 
     cp "$DMG_NAME" "$DOCS_DIR/$DMG_NAME"
@@ -494,13 +534,13 @@ if [ -d "$DOCS_DIR" ]; then
     if [ "$LATEST_COPIED_SIZE" = "$SRC_SIZE" ]; then
         echo "✓ Copied $DMG_NAME → docs/$DMG_NAME (\"latest\" alias for the marketing site's download links)."
     else
-        echo "⚠ docs/$DMG_NAME size ($LATEST_COPIED_SIZE) != source ($SRC_SIZE) — investigate before deploying."
+        echo "Error: docs/$DMG_NAME size ($LATEST_COPIED_SIZE) != source ($SRC_SIZE)."
+        exit 1
     fi
     echo "  Deploy it with:  (cd docs && vercel --prod --yes)"
 else
-    echo "⚠ docs/ not found at $DOCS_DIR — skipping. Copy $DMG_NAME to your"
-    echo "  Pages/Vercel source manually (as both $DMG_NAME and $VERSIONED_DMG_NAME)"
-    echo "  so it matches the appcast signature."
+    echo "Error: docs/ disappeared during the release."
+    exit 1
 fi
 echo ""
 
@@ -522,7 +562,7 @@ echo ""
 # Done
 # ─────────────────────────────────────────────────────────────────────────────
 echo "============================================================"
-echo "  Release v${VERSION} complete!"
+echo "  Release candidate v${VERSION} baked successfully"
 echo "============================================================"
 echo ""
 echo "Artifacts:"
@@ -535,12 +575,11 @@ echo "     an old entry's url/length/signature to match a later build)"
 echo "  2. Add a v${VERSION} <article> to docs/releases.html (top of the list)"
 echo "  3. Deploy the site:  (cd docs && vercel --prod --yes)"
 echo "     (docs/$VERSIONED_DMG_NAME and docs/$DMG_NAME were both already staged in Step 12)"
-echo "  4. git commit + push the version bump, appcast, releases.html, and"
-echo "     release-notes/v${VERSION}.md"
+echo "  4. git commit + push appcast.xml, releases.html, and the staged DMGs"
 echo "  5. Verify live size matches the appcast (check the VERSIONED url — this"
 echo "     is the one Sparkle actually downloads):"
 echo "     curl -sI https://work.munyamakosa.com/$VERSIONED_DMG_NAME | grep -i content-length"
-echo "  6. If the GH release step skipped above, run the command it printed"
+echo "  6. Publish the draft GitHub release only after the live URL and appcast verify"
 echo ""
 echo "────────────────────────────────────────────────────────────"
 echo "  Keychain Profile Setup (one-time)"

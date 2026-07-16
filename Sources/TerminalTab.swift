@@ -32,10 +32,17 @@ struct TerminalTab: Identifiable {
     /// Mode-B tabs; v2 renders both surfaces depending on this field.
     var surface: Surface = .modeA
 
+    /// Native-chat runtime. Existing tabs decode/behave as Claude; Codex tabs
+    /// keep their own app-server session alongside the unchanged Claude path.
+    var provider: V2AgentProvider = .claude
+
     /// Mode-B StreamSession reference. Always non-nil while `surface == .modeB`.
     /// Reference type — the controller stores it here so callers don't have
     /// to keep a sibling dictionary.
     var streamSession: StreamSession?
+
+    /// Mode-B Codex app-server session. Non-nil when provider == .codex.
+    var codexSession: CodexSession?
 
     /// Active loop orchestrator on this tab (issue #24). Non-nil while a loop
     /// is configured or running; cleared when the loop reaches a terminal
@@ -67,7 +74,9 @@ struct TerminalTab: Identifiable {
         createdAt: Date = Date(),
         skipPermissions: Bool = false,
         surface: Surface = .modeA,
+        provider: V2AgentProvider = .claude,
         streamSession: StreamSession? = nil,
+        codexSession: CodexSession? = nil,
         loop: LoopOrchestrator? = nil,
         harness: HarnessOrchestrator? = nil
     ) {
@@ -79,7 +88,9 @@ struct TerminalTab: Identifiable {
         self.createdAt = createdAt
         self.skipPermissions = skipPermissions
         self.surface = surface
+        self.provider = provider
         self.streamSession = streamSession
+        self.codexSession = codexSession
         self.loop = loop
         self.harness = harness
     }
@@ -94,8 +105,13 @@ struct TerminalTab: Identifiable {
             if case .running = state { return true }
             return false
         case .modeB:
-            guard let s = streamSession else { return false }
-            switch s.state {
+            let lifecycle: StreamSession.LifecycleState?
+            switch provider {
+            case .claude: lifecycle = streamSession?.state
+            case .codex: lifecycle = codexSession?.state
+            }
+            guard let lifecycle else { return false }
+            switch lifecycle {
             case .terminated, .idle: return false
             default: return true
             }

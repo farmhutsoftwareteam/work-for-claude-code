@@ -10,9 +10,11 @@
 import Foundation
 import SwiftUI
 import Combine
+import OSLog
 
 @MainActor
 final class V2AppState: ObservableObject {
+    private let log = Logger(subsystem: "com.munyamakosa.work", category: "workspace")
     /// Window-local active tab id. Independent of TerminalsController's
     /// activeTabId so the v1 and v2 windows can focus different tabs.
     @Published var activeTabId: UUID? {
@@ -38,6 +40,20 @@ final class V2AppState: ObservableObject {
     /// Cached on first appear.
     @Published var claudeBinary: URL?
     @Published var claudeVersion: SemVer?
+    @Published var codexBinary: URL?
+    @Published var codexVersion: SemVer?
+
+    /// Runtime used by the plain + button / ⌘N. Menus can still explicitly
+    /// create either provider without changing this preference.
+    @AppStorage("v2.defaultAgentProvider") var defaultAgentProviderRaw = V2AgentProvider.claude.rawValue
+    @AppStorage("v2.defaultCodexModel") var defaultCodexModel = ""
+    @AppStorage("v2.defaultCodexEffort") var defaultCodexEffort = ""
+    @AppStorage("v2.defaultCodexApprovalPolicy") var defaultCodexApprovalPolicy = "on-request"
+
+    var defaultAgentProvider: V2AgentProvider {
+        get { V2AgentProvider(rawValue: defaultAgentProviderRaw) ?? .claude }
+        set { defaultAgentProviderRaw = newValue.rawValue }
+    }
 
     /// Left-rail tab — projects list or session-history timeline.
     @Published var railTab: RailTab = .projects
@@ -151,6 +167,8 @@ final class V2AppState: ObservableObject {
     /// duplicate, and close() can cancel it — the old blanket sinks leaked and
     /// duplicated.
     private var sessionStateSubs: [UUID: AnyCancellable] = [:]
+    private var codexSessionStateSubs: [UUID: AnyCancellable] = [:]
+    private var workspacePersistTask: Task<Void, Never>?
 
     /// In-flight stop-then-restart Tasks (reconnect / permission-mode change
     /// / clear conversation), keyed by tab id so close(tabId:) can cancel one
@@ -213,6 +231,24 @@ final class V2AppState: ObservableObject {
             .receive(on: RunLoop.main)
             .sink { [weak self] models in self?.updateModelCatalog(models) }
         sessionStateSubs[tabId] = AnyCancellable { stateSub.cancel(); otherSub.cancel(); catalogSub.cancel() }
+    }
+
+    /// Codex follows the same low-frequency fan-out rule as Claude: chrome
+    /// observes lifecycle/config/MCP changes, never transcript deltas.
+    private func observeCodexSessionState(_ session: CodexSession, tabId: UUID) {
+        let stateSub = session.$state
+            .receive(on: RunLoop.main)
+            .sink { [weak self] state in self?.handleStateTransition(tabId: tabId, to: state) }
+        let otherSub = Publishers.MergeMany([
+            session.$model.map { _ in () }.eraseToAnyPublisher(),
+            session.$effort.map { _ in () }.eraseToAnyPublisher(),
+            session.$permissionMode.map { _ in () }.eraseToAnyPublisher(),
+            session.$account.map { _ in () }.eraseToAnyPublisher(),
+            session.$mcpServers.map { _ in () }.eraseToAnyPublisher()
+        ])
+        .receive(on: RunLoop.main)
+        .sink { [weak self] _ in self?.objectWillChange.send() }
+        codexSessionStateSubs[tabId] = AnyCancellable { stateSub.cancel(); otherSub.cancel() }
     }
 
     /// Detect tab-status transitions and fire the matching attention cue.
@@ -384,6 +420,7 @@ final class V2AppState: ObservableObject {
     }
 
     var activeSession: StreamSession? { activeTab?.streamSession }
+    var activeCodexSession: CodexSession? { activeTab?.codexSession }
 
     /// The four-state status for a tab (shared by the tab strip + the title-bar
     /// summary). Selection is separate — that's `activeTabId`.
@@ -392,6 +429,14 @@ final class V2AppState: ObservableObject {
         case .modeA:
             return tab.isLive ? .working : .idle
         case .modeB:
+            if tab.provider == .codex {
+                guard let s = tab.codexSession else { return .idle }
+                switch s.state {
+                case .working, .spawning, .initializing: return .working
+                case .awaitingPermission: return .needsYou
+                default: return unseenDone.contains(tab.id) ? .doneUnseen : .idle
+                }
+            }
             guard let s = tab.streamSession else { return .idle }
             // Observer tabs: never .working (that implies OUR process is
             // busy) — "present, not urgent" while the observed file is
@@ -460,11 +505,20 @@ final class V2AppState: ObservableObject {
             let projectCwd: String
             let title: String
             let sessionId: String
+            /// Optional so snapshots written before multi-provider support
+            /// continue to decode as Claude.
+            let provider: V2AgentProvider?
+            let draft: String?
         }
         let tabs: [TabEntry]
         let activeSessionId: String?
     }
     private static let workspaceKey = "v2.workspace"
+    private static var workspaceFileURL: URL {
+        FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+            .appendingPathComponent("com.munyamakosa.work", isDirectory: true)
+            .appendingPathComponent("v2-workspace.json")
+    }
 
     /// Continuously persisted (every tab open/close/activate + every session
     /// state transition), not saved-on-quit — a crash or force-quit loses
@@ -477,15 +531,40 @@ final class V2AppState: ObservableObject {
             // hibernated tab would give it a wake-via-resume path into a
             // session another process owns (#76's takeover rule).
             guard tab.streamSession?.isObserving != true else { return nil }
-            guard let sid = tab.streamSession?.sessionId ?? resumeIds[tab.id] else { return nil }
-            return .init(projectCwd: tab.projectCwd, title: tab.title, sessionId: sid)
+            let sid = tab.provider == .codex
+                ? (tab.codexSession?.threadId ?? resumeIds[tab.id])
+                : (tab.streamSession?.sessionId ?? resumeIds[tab.id])
+            guard let sid else { return nil }
+            let draft = tab.provider == .codex ? tab.codexSession?.composerDraft : tab.streamSession?.composerDraft
+            return .init(projectCwd: tab.projectCwd, title: tab.title, sessionId: sid, provider: tab.provider, draft: draft)
         }
         let active = activeTabId
             .flatMap { id in tabs.first { $0.id == id } }
-            .flatMap { $0.streamSession?.sessionId ?? resumeIds[$0.id] }
+            .flatMap { tab in
+                tab.provider == .codex
+                    ? (tab.codexSession?.threadId ?? resumeIds[tab.id])
+                    : (tab.streamSession?.sessionId ?? resumeIds[tab.id])
+            }
         let snapshot = WorkspaceSnapshot(tabs: entries, activeSessionId: active)
-        if let data = try? JSONEncoder().encode(snapshot) {
+        do {
+            let data = try JSONEncoder().encode(snapshot)
             UserDefaults.standard.set(data, forKey: Self.workspaceKey)
+            let url = Self.workspaceFileURL
+            try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+            try data.write(to: url, options: .atomic)
+        } catch {
+            log.error("Workspace checkpoint failed: \(error.localizedDescription, privacy: .public)")
+        }
+    }
+
+    /// Draft edits are high-frequency; checkpoint after a short quiet window
+    /// instead of encoding and writing on every keystroke.
+    func scheduleWorkspacePersist() {
+        workspacePersistTask?.cancel()
+        workspacePersistTask = Task { [weak self] in
+            try? await Task.sleep(for: .milliseconds(600))
+            guard !Task.isCancelled else { return }
+            self?.persistWorkspace()
         }
     }
 
@@ -496,22 +575,39 @@ final class V2AppState: ObservableObject {
     /// file reads and zero of the 0.4-0.6GB processes — the performance
     /// concern that blocked this feature is what hibernation already solved.
     func restoreWorkspaceIfNeeded() {
-        guard tabs.isEmpty, let terminals, let binary = claudeBinary else { return }
-        guard let data = UserDefaults.standard.data(forKey: Self.workspaceKey),
-              let snapshot = try? JSONDecoder().decode(WorkspaceSnapshot.self, from: data),
+        guard tabs.isEmpty, let terminals else { return }
+        let candidates = [
+            UserDefaults.standard.data(forKey: Self.workspaceKey),
+            try? Data(contentsOf: Self.workspaceFileURL)
+        ].compactMap { $0 }
+        guard let snapshot = candidates.lazy.compactMap({ try? JSONDecoder().decode(WorkspaceSnapshot.self, from: $0) }).first,
               !snapshot.tabs.isEmpty else { return }
 
         var activeCandidate: UUID?
         for entry in snapshot.tabs {
+            let provider = entry.provider ?? .claude
+            if provider == .codex {
+                guard codexBinary != nil else { continue }
+                let id = terminals.openModeB(projectCwd: entry.projectCwd, title: entry.title, provider: .codex)
+                resumeIds[id] = entry.sessionId
+                if let session = terminals.tabs.first(where: { $0.id == id })?.codexSession {
+                    session.composerDraft = entry.draft ?? ""
+                    observeCodexSessionState(session, tabId: id)
+                }
+                if entry.sessionId == snapshot.activeSessionId { activeCandidate = id }
+                continue
+            }
+            guard let binary = claudeBinary else { continue }
             // Snapshot hygiene: a session whose transcript is gone (cleaned
             // up, machine changed) can't be resumed — skip it rather than
             // restoring a tab whose first message would fail.
             let transcript = SessionHistoryLoader.jsonlURL(sessionId: entry.sessionId, projectCwd: entry.projectCwd)
             guard FileManager.default.fileExists(atPath: transcript.path) else { continue }
 
-            let id = terminals.openModeB(projectCwd: entry.projectCwd, title: entry.title)
+            let id = terminals.openModeB(projectCwd: entry.projectCwd, title: entry.title, provider: .claude)
             resumeIds[id] = entry.sessionId
             if let session = terminals.tabs.first(where: { $0.id == id })?.streamSession {
+                session.composerDraft = entry.draft ?? ""
                 // Mark BEFORE the async restore is kicked off so its later,
                 // staggered .hibernated landing is recognised as part of the
                 // burst and collapsed into one republish (see
@@ -532,6 +628,13 @@ final class V2AppState: ObservableObject {
         if let tab = tabs.first(where: { $0.id == id }) {
             selectedProjectCwd = URL(fileURLWithPath: tab.projectCwd)
             selectedProjectName = (tab.projectCwd as NSString).lastPathComponent
+            if tab.provider == .codex, let session = tab.codexSession, let binary = codexBinary {
+                session.start(
+                    cwd: URL(fileURLWithPath: tab.projectCwd), codexURL: binary,
+                    resumeId: resumeIds[tab.id], model: defaultCodexModel,
+                    permissionMode: defaultCodexApprovalPolicy, effort: defaultCodexEffort
+                )
+            }
         }
         // Safety net: if any restore never lands (transcript vanished mid-
         // launch, spawn wedged), don't leave the burst permanently "in
@@ -571,30 +674,100 @@ final class V2AppState: ObservableObject {
 
     /// Create a new Mode-B tab in the selected project. Auto-activates it in
     /// the v2 window (without touching v1's activeTabId).
-    func newTab() {
+    func newTab(provider explicitProvider: V2AgentProvider? = nil) {
         guard let cwd = selectedProjectCwd, let terminals else { return }
+        let provider = explicitProvider ?? defaultAgentProvider
         let id = terminals.openModeB(
             projectCwd: cwd.path,
-            title: selectedProjectName.ifEmpty(cwd.lastPathComponent)
+            title: selectedProjectName.ifEmpty(cwd.lastPathComponent),
+            provider: provider
         )
         activeTabId = id
         mainView = .chat
 
-        // React to this tab's session state transitions (not per-token churn).
-        guard let session = terminals.tabs.first(where: { $0.id == id })?.streamSession else { return }
-        observeSessionState(session, tabId: id)
+        let tab = terminals.tabs.first(where: { $0.id == id })
+        switch provider {
+        case .claude:
+            guard let session = tab?.streamSession else { return }
+            observeSessionState(session, tabId: id)
+            if let binary = claudeBinary {
+                session.start(
+                    cwd: cwd, claudeURL: binary, model: defaultSpawnModel,
+                    permissionMode: defaultPermissionMode, effort: defaultSpawnEffort
+                )
+            }
+        case .codex:
+            guard let session = tab?.codexSession else { return }
+            observeCodexSessionState(session, tabId: id)
+            if let binary = codexBinary {
+                session.start(
+                    cwd: cwd, codexURL: binary, model: defaultCodexModel,
+                    permissionMode: defaultCodexApprovalPolicy, effort: defaultCodexEffort
+                )
+            }
+        }
+    }
 
-        // Just start it. "New session" means a session — not a tab that then
-        // makes you click a second "Start session" button.
-        if let binary = claudeBinary {
-            session.start(
-                cwd: cwd,
-                claudeURL: binary,
-                model: defaultSpawnModel,
-                permissionMode: defaultPermissionMode,
-                effort: defaultSpawnEffort
+    /// Continue the active tab with the other runtime. Provider-native thread
+    /// IDs are not portable, so the destination receives a bounded checkpoint
+    /// of the visible transcript on its next user turn.
+    func switchActiveProvider(to target: V2AgentProvider) {
+        guard let tab = activeTab, tab.surface == .modeB, tab.provider != target,
+              let terminals else { return }
+        switch target {
+        case .claude: guard claudeBinary != nil else { return }
+        case .codex: guard codexBinary != nil else { return }
+        }
+
+        let sourceTranscript: [TranscriptItem]
+        switch tab.provider {
+        case .claude:
+            guard let source = tab.streamSession else { return }
+            switch source.state {
+            case .working, .awaitingPermission, .spawning, .initializing, .closing: return
+            default: break
+            }
+            sourceTranscript = source.transcript
+            source.stop()
+        case .codex:
+            guard let source = tab.codexSession else { return }
+            switch source.state {
+            case .working, .awaitingPermission, .spawning, .initializing, .closing: return
+            default: break
+            }
+            sourceTranscript = source.transcript
+            source.stop()
+        }
+
+        let checkpoint = ProviderHandoff.checkpoint(
+            from: tab.provider, projectCwd: tab.projectCwd, transcript: sourceTranscript
+        )
+        let cwd = URL(fileURLWithPath: tab.projectCwd)
+        switch target {
+        case .claude:
+            guard let binary = claudeBinary else { return }
+            let replacement = StreamSession()
+            replacement.setProviderHandoffContext(checkpoint)
+            terminals.setClaudeSession(replacement, on: tab.id)
+            codexSessionStateSubs[tab.id] = nil
+            observeSessionState(replacement, tabId: tab.id)
+            replacement.start(
+                cwd: cwd, claudeURL: binary, model: defaultSpawnModel,
+                permissionMode: defaultPermissionMode, effort: defaultSpawnEffort
+            )
+        case .codex:
+            guard let binary = codexBinary else { return }
+            let replacement = CodexSession()
+            replacement.setProviderHandoffContext(checkpoint)
+            terminals.setCodexSession(replacement, on: tab.id)
+            sessionStateSubs[tab.id] = nil
+            observeCodexSessionState(replacement, tabId: tab.id)
+            replacement.start(
+                cwd: cwd, codexURL: binary, model: defaultCodexModel,
+                permissionMode: defaultCodexApprovalPolicy, effort: defaultCodexEffort
             )
         }
+        objectWillChange.send()
     }
 
     func activate(tabId: UUID) {
@@ -719,6 +892,7 @@ final class V2AppState: ObservableObject {
         _ = terminals?.close(tabId, force: true)
         resumeIds.removeValue(forKey: tabId)
         sessionStateSubs[tabId] = nil   // cancel the state subscription (was leaked)
+        codexSessionStateSubs[tabId] = nil
         loopSubs[tabId] = nil           // cancel any loop objectWillChange sub (was leaked)
         harnessSubs[tabId] = nil        // cancel any harness objectWillChange sub (was leaked)
         pendingRestarts[tabId]?.cancel()
@@ -742,6 +916,11 @@ final class V2AppState: ObservableObject {
     ///     (transcript stays on screen, claude reloads context) and bypass
     ///     actually takes effect instead of silently reverting.
     func changePermissionMode(_ mode: String) {
+        if let codex = activeCodexSession {
+            defaultCodexApprovalPolicy = mode
+            codex.setPermissionMode(mode)
+            return
+        }
         defaultPermissionMode = mode  // persist for next spawn (AppStorage)
         guard let tab = activeTab, let session = tab.streamSession else { return }
 
@@ -774,6 +953,11 @@ final class V2AppState: ObservableObject {
     /// bypassPermissions — conversation carries over, only the launch flag
     /// changes.
     func changeEffort(_ effort: String) {
+        if let codex = activeCodexSession {
+            defaultCodexEffort = effort
+            codex.setEffort(effort)
+            return
+        }
         defaultSpawnEffort = effort  // persist for next spawn (AppStorage)
         guard let tab = activeTab, let session = tab.streamSession, let binary = claudeBinary else { return }
         let cwd = URL(fileURLWithPath: tab.projectCwd)
@@ -791,6 +975,19 @@ final class V2AppState: ObservableObject {
     /// matching what `/clear` does in the terminal. The transcript is wiped
     /// and a fresh session spawns in the same project / model / mode.
     func clearConversation() {
+        if let tab = activeTab, let session = tab.codexSession, let binary = codexBinary {
+            session.stop()
+            let replacement = CodexSession()
+            guard let terminals else { return }
+            terminals.setCodexSession(replacement, on: tab.id)
+            observeCodexSessionState(replacement, tabId: tab.id)
+            replacement.start(
+                cwd: URL(fileURLWithPath: tab.projectCwd), codexURL: binary,
+                model: defaultCodexModel, permissionMode: defaultCodexApprovalPolicy,
+                effort: defaultCodexEffort
+            )
+            return
+        }
         guard let tab = activeTab,
               let session = tab.streamSession,
               let binary = claudeBinary else { return }
@@ -811,10 +1008,18 @@ final class V2AppState: ObservableObject {
     /// which gets passed to claude as `--resume <id>` so the previous
     /// conversation replays before new turns.
     func startActiveSession() {
-        guard let tab = activeTab,
-              tab.surface == .modeB,
-              let session = tab.streamSession,
-              let binary = claudeBinary else { return }
+        guard let tab = activeTab, tab.surface == .modeB else { return }
+        if tab.provider == .codex {
+            guard let session = tab.codexSession, let binary = codexBinary else { return }
+            switch session.state { case .idle, .terminated: break; default: return }
+            session.start(
+                cwd: URL(fileURLWithPath: tab.projectCwd), codexURL: binary,
+                resumeId: resumeIds[tab.id], model: defaultCodexModel, permissionMode: defaultCodexApprovalPolicy,
+                effort: defaultCodexEffort
+            )
+            return
+        }
+        guard let session = tab.streamSession, let binary = claudeBinary else { return }
         // Works from .idle AND .terminated — clicking Start on an ended
         // session must actually restart it (the old .idle-only guard made the
         // button a no-op after a failed resume, which felt frozen).
@@ -957,13 +1162,20 @@ final class V2AppState: ObservableObject {
     /// to that timeout. Hopping off lets the MainActor keep processing other
     /// work (e.g. rendering) while this awaits.
     func resolveBinary() async {
-        guard claudeBinary == nil else { return }
-        let resolved: (URL?, SemVer?) = await Task.detached(priority: .userInitiated) {
+        guard claudeBinary == nil || codexBinary == nil else { return }
+        async let claudeResolved: (URL?, SemVer?) = Task.detached(priority: .userInitiated) {
             let url = ClaudeBinary.locate()
             return (url, url.flatMap { ClaudeBinary.version(at: $0) })
         }.value
-        claudeBinary = resolved.0
-        claudeVersion = resolved.1
+        async let codexResolved: (URL?, SemVer?) = Task.detached(priority: .userInitiated) {
+            let url = CodexBinary.locate()
+            return (url, url.flatMap { CodexBinary.version(at: $0) })
+        }.value
+        let (claude, codex) = await (claudeResolved, codexResolved)
+        claudeBinary = claude.0
+        claudeVersion = claude.1
+        codexBinary = codex.0
+        codexVersion = codex.1
     }
 }
 

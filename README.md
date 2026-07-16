@@ -67,9 +67,11 @@ recipes/                  Marketplace recipes for one-click MCP installs
 resources/                Icons, DMG background, etc.
 ```
 
-## How Atelier talks to Claude Code
+## How Atelier talks to Claude and Codex
 
-Atelier never re-implements anything Claude Code already does. It's a UI layer over Claude Code's existing files:
+Atelier uses each provider's local runtime instead of collecting API keys or proxying conversations through a hosted service.
+
+For Claude Code it:
 
 - Reads `~/.claude/projects/<cwd-hash>/*.jsonl` for session history + token counts
 - Reads `~/.claude.json` (top-level + `projects.<cwd>.mcpServers`) for user/local MCPs
@@ -78,12 +80,14 @@ Atelier never re-implements anything Claude Code already does. It's a UI layer o
 - Spawns `claude` / `claude --resume` / `claude --continue` via embedded SwiftTerm PTYs
 - Writes back to `~/.claude.json` and `.mcp.json` through `NSFileCoordinator` so the CLI and the app cooperate cleanly
 
-When Claude Code's data model changes, Atelier follows. There is no proprietary database, no cloud service, no telemetry.
+For Codex it starts the local `codex app-server` over JSONL stdio. Account access, ChatGPT subscription authentication, model discovery, thread storage, approvals, and MCP configuration remain owned by Codex. Atelier discovers the live model catalog (including Sol when the account exposes it), can explicitly import compatible project servers from `.mcp.json` into `.codex/config.toml`, and never copies Claude credentials into Codex.
+
+When either provider's data model changes, Atelier follows its local runtime. There is no Atelier cloud service and no telemetry.
 
 ## Architecture notes
 
 - **SwiftUI + AppKit hybrid.** The embedded terminal is a `LocalProcessTerminalView` from [SwiftTerm](https://github.com/migueldeicaza/SwiftTerm) wrapped in `NSViewRepresentable`. Everything else is pure SwiftUI.
-- **No tests** at the moment. The codebase is small enough that the dogfood loop (every change ships through a live release) catches regressions quickly. Contributions to add an XCTest target are welcome.
+- **XCTest release gate.** `xcodebuild test -scheme Work -destination 'platform=macOS'` covers stream conformance, Codex model/history mapping, provider handoff, terminal security, ring-buffer eviction, and MCP terminal bridging.
 - **Self-relocates to /Applications.** First-launch from any location outside /Applications triggers an offer to move + relaunch — Sparkle can't update an app running from a translocated quarantine path, and this avoids the "Atelier can't be updated" trap.
 - **No CI yet.** Releases are built locally on the maintainer's machine because they require an Apple Developer ID signing identity. CI signing is on the roadmap.
 

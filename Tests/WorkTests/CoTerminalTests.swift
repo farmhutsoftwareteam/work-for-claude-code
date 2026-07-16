@@ -35,13 +35,13 @@ final class CoTerminalTests: XCTestCase {
     // MARK: - Echo-off redaction (the security invariant lives here, not the UI)
 
     func test_secureInput_becomesTrueDuringReadDashS() async {
-        let t = makeTerminal("read -s -p 'Password: ' x; echo done")
+        let t = makeTerminal("read -s 'x?Password: '; echo done")
         await waitUntil { t.secureInput }
         XCTAssertTrue(t.secureInput, "termios ECHO bit should read off while `read -s` is awaiting input")
     }
 
     func test_toolWrite_rejectedDuringSecureInput() async {
-        let t = makeTerminal("read -s -p 'Password: ' x; echo done")
+        let t = makeTerminal("read -s 'x?Password: '; echo done")
         await waitUntil { t.secureInput }
         XCTAssertTrue(t.secureInput, "precondition: must be in secure state before testing the write guard")
 
@@ -61,7 +61,7 @@ final class CoTerminalTests: XCTestCase {
         // the ON transition here; the OFF transition (secureInput -> false)
         // is exercised by processTerminated in the write-to-dead test below,
         // which uses a command with no secure prompt at all.
-        let t = makeTerminal("read -s -p 'Password: ' x")
+        let t = makeTerminal("read -s 'x?Password: '")
         await waitUntil { t.secureInput }
         XCTAssertTrue(t.secureInput)
     }
@@ -85,7 +85,7 @@ final class CoTerminalTests: XCTestCase {
     func test_secureInput_resetsOnProcessExit() async {
         // Exiting mid-secure-prompt (e.g. user hits ^C) must not leave a
         // terminal permanently "secure" and unreadable.
-        let t = makeTerminal("read -s -p 'Password: ' x & sleep 0.2; kill %1 2>/dev/null; exit 1")
+        let t = makeTerminal("read -s 'x?Password: ' & sleep 0.2; kill %1 2>/dev/null; exit 1")
         await waitUntil { !t.isRunning }
         XCTAssertFalse(t.secureInput, "secureInput must reset to false once the process has terminated")
     }
@@ -94,8 +94,9 @@ final class CoTerminalTests: XCTestCase {
 
     func test_manager_scopesTerminalsIndependently() {
         let manager = CoTerminalManager.shared
-        let scopeA = ObjectIdentifier(NSObject())
-        let scopeB = ObjectIdentifier(NSObject())
+        let ownerA = NSObject(), ownerB = NSObject()
+        let scopeA = ObjectIdentifier(ownerA)
+        let scopeB = ObjectIdentifier(ownerB)
         defer { manager.closeAll(scope: scopeA); manager.closeAll(scope: scopeB) }
 
         let ta = manager.run(command: "sleep 5", cwd: NSTemporaryDirectory(), scope: scopeA)
@@ -112,8 +113,9 @@ final class CoTerminalTests: XCTestCase {
 
     func test_manager_closeScope_doesNotAffectOtherScopes() {
         let manager = CoTerminalManager.shared
-        let scopeA = ObjectIdentifier(NSObject())
-        let scopeB = ObjectIdentifier(NSObject())
+        let ownerA = NSObject(), ownerB = NSObject()
+        let scopeA = ObjectIdentifier(ownerA)
+        let scopeB = ObjectIdentifier(ownerB)
         defer { manager.closeAll(scope: scopeA); manager.closeAll(scope: scopeB) }
 
         let ta = manager.run(command: "sleep 5", cwd: NSTemporaryDirectory(), scope: scopeA)
@@ -127,8 +129,9 @@ final class CoTerminalTests: XCTestCase {
 
     func test_manager_toolDispatch_terminalList_isScopeIsolated() async {
         let manager = CoTerminalManager.shared
-        let scopeA = ObjectIdentifier(NSObject())
-        let scopeB = ObjectIdentifier(NSObject())
+        let ownerA = NSObject(), ownerB = NSObject()
+        let scopeA = ObjectIdentifier(ownerA)
+        let scopeB = ObjectIdentifier(ownerB)
         defer { manager.closeAll(scope: scopeA); manager.closeAll(scope: scopeB) }
 
         _ = manager.run(command: "sleep 5", cwd: NSTemporaryDirectory(), scope: scopeA)
@@ -140,7 +143,8 @@ final class CoTerminalTests: XCTestCase {
 
     func test_manager_toolDispatch_waitSeconds_blocksUntilExitOrTimeout() async {
         let manager = CoTerminalManager.shared
-        let scope = ObjectIdentifier(NSObject())
+        let owner = NSObject()
+        let scope = ObjectIdentifier(owner)
         defer { manager.closeAll(scope: scope) }
 
         let t = manager.run(command: "sleep 0.3", cwd: NSTemporaryDirectory(), scope: scope)
@@ -157,7 +161,8 @@ final class CoTerminalTests: XCTestCase {
 
     func test_manager_toolDispatch_waitSeconds_timesOutOnLongRunningCommand() async {
         let manager = CoTerminalManager.shared
-        let scope = ObjectIdentifier(NSObject())
+        let owner = NSObject()
+        let scope = ObjectIdentifier(owner)
         defer { manager.closeAll(scope: scope) }
 
         let t = manager.run(command: "sleep 5", cwd: NSTemporaryDirectory(), scope: scope)

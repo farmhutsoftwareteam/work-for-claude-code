@@ -240,7 +240,20 @@ struct WorkApp: App {
 final class AppDelegate: NSObject, NSApplicationDelegate {
     weak static var sharedTerminals: TerminalsController?
 
+    private static var isRunningTests: Bool {
+        let environment = ProcessInfo.processInfo.environment
+        return environment["XCTestConfigurationFilePath"] != nil
+            || environment["XCTestBundlePath"] != nil
+            || environment["XCTestSessionIdentifier"] != nil
+            || NSClassFromString("XCTestCase") != nil
+            || Bundle.allBundles.contains { $0.bundleURL.pathExtension == "xctest" }
+    }
+
     func applicationDidFinishLaunching(_ notification: Notification) {
+        // Unit-test hosts instantiate the application delegate too. Process
+        // singleton enforcement and launch migrations can terminate/restart
+        // that host mid-suite, so keep application side effects out of XCTest.
+        guard !Self.isRunningTests else { return }
         // Never run two instances of this app: after a Sparkle update replaces
         // the bundle, the OLD process keeps running from the replaced bundle —
         // and LaunchServices no longer matches it to the on-disk app, so

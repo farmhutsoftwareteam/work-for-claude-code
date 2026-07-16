@@ -106,6 +106,7 @@ final class StreamSession: ObservableObject {
     /// glitches when I paste" bug). Nothing observes it; it's only read back
     /// when the composer for this session reappears. (PERFORMANCE.md rule 2.)
     var composerDraft: String = ""
+    private var pendingProviderHandoffContext: String?
 
     /// MCP servers reported by the binary on `system/init`. Populated once the
     /// session is initialized; empty before then. Drives the right-dock MCP
@@ -1047,10 +1048,17 @@ final class StreamSession: ObservableObject {
         // the session stuck in .ready and no visible error.
         turnStartedAt = Date()
         state = .working
+        let handoffContext = pendingProviderHandoffContext
+        let wireText = handoffContext.map {
+            "<atelier_provider_handoff>\n\($0)\n</atelier_provider_handoff>\n\n\(trimmed)"
+        } ?? trimmed
         Task { [weak self] in
             guard let self else { return }
             do {
-                try await inputWriter.sendUserText(trimmed)
+                try await inputWriter.sendUserText(wireText)
+                if self.pendingProviderHandoffContext == handoffContext {
+                    self.pendingProviderHandoffContext = nil
+                }
             } catch {
                 log.error("user-turn send failed: \(error.localizedDescription, privacy: .public)")
                 await MainActor.run {
@@ -1064,6 +1072,10 @@ final class StreamSession: ObservableObject {
                 }
             }
         }
+    }
+
+    func setProviderHandoffContext(_ context: String) {
+        pendingProviderHandoffContext = context
     }
 
     /// Re-send the most recent user turn. Used by the Retry button so a

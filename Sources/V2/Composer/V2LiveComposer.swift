@@ -175,6 +175,7 @@ struct V2LiveComposer: View {
                 if slashActive >= cachedSlashResults.count { slashActive = 0 }
                 // Persist the draft on the session so it survives a tab switch.
                 session.composerDraft = draft
+                appState.scheduleWorkspacePersist()
                 // Height is O(draft) to compute (newline + wrap scan) — do it
                 // once per EDIT here, not in body: the composer re-renders per
                 // streamed token, and re-scanning a big pasted draft 30×/s

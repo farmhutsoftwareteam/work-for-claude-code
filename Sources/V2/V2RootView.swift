@@ -80,6 +80,16 @@ struct V2RootView: View {
                     .transition(.opacity)
                     .zIndex(100)
             }
+            if let session = appState.activeCodexSession, session.pendingPermission != nil {
+                V2CodexPermissionModal(session: session)
+                    .transition(.opacity)
+                    .zIndex(100)
+            }
+            if let session = appState.activeCodexSession, session.pendingUserInput != nil {
+                V2CodexUserInputModal(session: session)
+                    .transition(.opacity)
+                    .zIndex(101)
+            }
 
             // Phase-4 ACP dogfood surface (⌘⌃A). Full-bleed overlay over the
             // whole window so it's a clean isolated test of the ACP path.
@@ -119,6 +129,7 @@ struct V2RootView: View {
             }
         }
         .animation(.easeOut(duration: 0.15), value: appState.activeSession?.pendingPermission?.id)
+        .animation(.easeOut(duration: 0.15), value: appState.activeCodexSession?.pendingPermission?.id)
         .background(palette.paper)
         .environment(\.v2, palette)
         .environmentObject(appState)
@@ -195,7 +206,9 @@ struct V2RootView: View {
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                     .background(Color.black)
             case .modeB:
-                if let session = tab.streamSession {
+                if tab.provider == .codex, let session = tab.codexSession {
+                    V2CodexChatView(session: session, projectCwd: tab.projectCwd)
+                } else if let session = tab.streamSession {
                     // Permission request is now a window-level modal overlay
                     // (see body's ZStack) rather than an inline card that was
                     // easy to scroll past / miss entirely.
@@ -209,6 +222,10 @@ struct V2RootView: View {
                         // Monitor watches, live off task_started/task_updated/
                         // task_notification — empty ⇒ renders nothing.
                         V2MonitorTasksStrip(session: session)
+                        // Subagent delegations (Task/Agent) — stays visible
+                        // once the inline delegation card has scrolled past;
+                        // empty ⇒ renders nothing.
+                        V2SubagentRunsStrip(session: session)
                         // Co-driven terminal panes (#56) — shared PTYs Claude
                         // and the user drive together; empty ⇒ renders nothing.
                         CoTerminalStrip(session: session)
@@ -239,7 +256,18 @@ struct V2RootView: View {
             case .modeA:
                 modeAFooter(tab: tab)
             case .modeB:
-                if let session = tab.streamSession {
+                if tab.provider == .codex, let session = tab.codexSession {
+                    if session.requiresChatGPTLogin {
+                        EmptyView()
+                    } else {
+                        switch session.state {
+                        case .idle, .terminated:
+                            codexStartCTA(tab: tab, session: session)
+                        default:
+                            V2CodexComposer(session: session).id(tab.id)
+                        }
+                    }
+                } else if let session = tab.streamSession {
                     if session.isObserving {
                         // Observer tabs REPLACE the composer, never merely
                         // disable it — read-only must read as a deliberate
@@ -446,6 +474,32 @@ struct V2RootView: View {
         .overlay(alignment: .top) {
             Rectangle().fill(palette.line).frame(height: 1)
         }
+    }
+
+    private func codexStartCTA(tab: TerminalTab, session: CodexSession) -> some View {
+        let canStart = appState.codexBinary != nil
+        return HStack(spacing: 12) {
+            Button { appState.startActiveSession() } label: {
+                HStack(spacing: 9) {
+                    Image(systemName: "play.fill").font(.system(size: 11))
+                    Text("Start Codex session in \(tab.title)")
+                        .font(.system(size: 12, design: .monospaced))
+                }
+                .foregroundColor(canStart ? palette.paper : palette.faint)
+                .padding(.horizontal, 15).padding(.vertical, 9)
+                .background(canStart ? palette.ink : palette.line2)
+            }
+            .buttonStyle(.plain).disabled(!canStart)
+            if !canStart {
+                Text("`codex` not found on PATH — install Codex CLI")
+                    .font(.system(size: 10.5, design: .monospaced)).foregroundColor(palette.del)
+            } else if let error = session.endError {
+                Text(error).font(.system(size: 10.5, design: .monospaced)).foregroundColor(palette.del).lineLimit(2)
+            }
+            Spacer()
+        }
+        .padding(.horizontal, 26).padding(.vertical, 12)
+        .overlay(alignment: .top) { Rectangle().fill(palette.line).frame(height: 1) }
     }
 }
 

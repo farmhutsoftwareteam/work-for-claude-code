@@ -84,14 +84,18 @@ struct V2SessionTabs: View {
     }
 
     private var newTabButton: some View {
-        Button { appState.newTab() } label: {
+        Menu {
+            Button("Claude") { appState.newTab(provider: .claude) }
+            Button("Codex · ChatGPT subscription") { appState.newTab(provider: .codex) }
+        } label: {
             Image(systemName: "plus")
                 .font(.system(size: 12, weight: .regular))
                 .foregroundColor(v2.faint)
                 .frame(width: 40, height: 52)
                 .contentShape(Rectangle())
         }
-        .buttonStyle(.plain)
+        .menuStyle(.borderlessButton)
+        .menuIndicator(.hidden)
         .help("New chat in \(appState.selectedProjectName.isEmpty ? "this project" : appState.selectedProjectName) (⌘N)")
     }
 

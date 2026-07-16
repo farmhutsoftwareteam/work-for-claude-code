@@ -61,21 +61,14 @@ final class ConformanceTests: XCTestCase {
         XCTAssertNotNil(sys.permissionMode)
     }
 
-    func test_v2_1_187_unknownEventTypesFallThroughToUnknown() throws {
+    func test_v2_1_187_rateLimitEventDecodesWithoutLosingForwardCompatibility() throws {
         let lines = try loadFixture("happy-path", version: "v2-1-187")
         let events = try decodeAll(lines)
 
-        // The capture includes `system/status` (unknown subtype, handled as
-        // .system but with unrecognized subtype) and `rate_limit_event`
-        // (unknown top-level type, must fall through to .unknown).
-        let unknownTypes = events.compactMap { event -> String? in
-            if case .unknown(let t) = event { return t }
-            return nil
-        }
-        XCTAssertTrue(
-            unknownTypes.contains("rate_limit_event"),
-            "rate_limit_event should fall through to .unknown for forward compat"
-        )
+        XCTAssertTrue(events.contains { event in
+            if case .rateLimitEvent = event { return true }
+            return false
+        }, "rate_limit_event is now a supported usage signal and must decode")
     }
 
     func test_v2_1_187_streamEventsCarryTextDelta() throws {

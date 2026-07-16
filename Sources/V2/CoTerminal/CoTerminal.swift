@@ -67,9 +67,10 @@ final class CoTermRing: @unchecked Sendable {
         // (never resize `buf`) so every existing absolute offset stays
         // valid — no risk to base/cursor arithmetic elsewhere in this class.
         if let boundary = secureBoundary {
-            let start = max(0, min(boundary - base, buf.count))
-            if start < buf.count {
-                buf.replaceSubrange(start..<buf.count, with: repeatElement(0x2a, count: buf.count - start))
+            let startOffset = max(0, min(boundary - base, buf.count))
+            if startOffset < buf.count {
+                let start = buf.index(buf.startIndex, offsetBy: startOffset)
+                buf.replaceSubrange(start..<buf.endIndex, with: repeatElement(0x2a, count: buf.count - startOffset))
             }
         }
         secureBoundary = nil
@@ -93,7 +94,12 @@ final class CoTermRing: @unchecked Sendable {
         var start = since ?? max(base, end - 8_192)
         let gapped = (since ?? base) < base
         start = min(max(start, base), end)
-        let slice = buf[(start - base) ..< (end - base)]
+        // `Data.removeFirst` advances `startIndex`; unlike Array, Data is not
+        // guaranteed to remain zero-based after cap eviction. Translate the
+        // absolute cursor offsets through the collection's real indices.
+        let lower = buf.index(buf.startIndex, offsetBy: start - base)
+        let upper = buf.index(buf.startIndex, offsetBy: end - base)
+        let slice = buf[lower..<upper]
         return (String(decoding: slice, as: UTF8.self), end, gapped)
     }
 }

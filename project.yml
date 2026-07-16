@@ -6,8 +6,8 @@ options:
 
 settings:
   PRODUCT_NAME: Work
-  MARKETING_VERSION: "2.9.17"
-  CURRENT_PROJECT_VERSION: "66"
+  MARKETING_VERSION: "2.10.0"
+  CURRENT_PROJECT_VERSION: "67"
   SWIFT_VERSION: "6.0"
   SWIFT_STRICT_CONCURRENCY: minimal
   MACOSX_DEPLOYMENT_TARGET: "15.0"
@@ -66,6 +66,10 @@ targets:
         Release:
           PRODUCT_BUNDLE_IDENTIFIER: com.munyamakosa.work
           BUNDLE_DISPLAY_NAME: Atelier
+          # Distribution builds must never carry get-task-allow. Xcode adds
+          # that development entitlement when base-entitlement injection is
+          # left enabled, even when signing with Developer ID.
+          CODE_SIGN_INJECT_BASE_ENTITLEMENTS: NO
     info:
       path: Sources/Info.plist
       properties:
@@ -148,7 +152,8 @@ targets:
     platform: macOS
     sources:
       - AtelierSpikeACP
-      - Sources/V2/ACP/ACPClient.swift
+      - path: Sources/V2/ACP/ACPClient.swift
+        group: Sources/V2/ACP
     settings:
       PRODUCT_NAME: AtelierSpikeACP
       SKIP_INSTALL: YES

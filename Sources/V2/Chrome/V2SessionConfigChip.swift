@@ -51,16 +51,26 @@ struct V2SessionConfigChip: View {
     let isCompact: Bool
     let isTight: Bool
 
+    private var isCodex: Bool { appState.activeTab?.provider == .codex }
+
     private var chipModelLabel: String {
+        if let m = appState.activeCodexSession?.model, !m.isEmpty { return m }
         if let m = appState.activeSession?.model { return V2ModelOption.displayLabel(for: m) }
         let d = appState.defaultSpawnModel
         return d.isEmpty ? "default" : V2ModelOption.displayLabel(for: d)
     }
     private var chipEffortLabel: String {
+        if isCodex {
+            let value = appState.activeCodexSession?.effort ?? appState.defaultCodexEffort
+            return value.isEmpty ? "default" : value
+        }
         let e = appState.activeSession?.effort ?? appState.defaultSpawnEffort
         return e.isEmpty ? "default" : e
     }
     private var chipPermissionLabel: String {
+        if isCodex {
+            return appState.activeCodexSession?.permissionMode ?? appState.defaultCodexApprovalPolicy
+        }
         let mode = appState.activeSession?.permissionMode ?? appState.defaultPermissionMode
         return V2PermissionMode(rawValue: mode)?.shortLabel ?? mode
     }
@@ -115,12 +125,115 @@ struct V2SessionConfigChip: View {
         // Usable without a session once a catalog is known — picking then
         // sets the defaults for future spawns (same as the old model-only
         // chip's behavior, now true of all three sections).
-        .disabled(appState.activeSession == nil && appState.modelCatalog.isEmpty)
+        .disabled(!isCodex && appState.activeSession == nil && appState.modelCatalog.isEmpty)
         .help("\(chipModelLabel) · \(chipEffortLabel) · \(chipPermissionLabel)")
         .popover(isPresented: $open, arrowEdge: .bottom) {
-            V2SessionConfigPanel()
-                .environmentObject(appState)
+            if let session = appState.activeCodexSession {
+                V2CodexSessionConfigPanel(session: session)
+                    .environmentObject(appState)
+            } else {
+                V2SessionConfigPanel()
+                    .environmentObject(appState)
+            }
         }
+    }
+}
+
+private struct V2CodexSessionConfigPanel: View {
+    @Environment(\.v2) private var v2
+    @EnvironmentObject private var appState: V2AppState
+    @ObservedObject var session: CodexSession
+
+    private let approvalPolicies = [
+        ("untrusted", "Ask before commands outside the trusted set"),
+        ("on-request", "Let Codex request elevated actions"),
+        ("never", "Never ask; blocked actions stay blocked")
+    ]
+
+    var body: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 0) {
+                sectionHeader("PROVIDER")
+                HStack {
+                    Circle().fill(v2.ink).frame(width: 7, height: 7)
+                    Text("Codex · \(session.account?.label ?? "local app-server")")
+                        .font(.system(size: 12.5)).foregroundColor(v2.ink)
+                }.padding(.horizontal, 13).padding(.bottom, 10)
+                Button("Continue this work with Claude") { appState.switchActiveProvider(to: .claude) }
+                    .buttonStyle(.plain)
+                    .font(.system(size: 11, design: .monospaced)).foregroundColor(v2.ink)
+                    .padding(.horizontal, 13).padding(.bottom, 10)
+                    .disabled(session.state == .working || session.state == .awaitingPermission || appState.claudeBinary == nil)
+
+                sectionHeader("OPENAI MODEL")
+                    .overlay(alignment: .top) { Rectangle().fill(v2.line).frame(height: 1) }
+                if session.availableModels.isEmpty {
+                    Text(session.requiresChatGPTLogin ? "Sign in to load your model catalog." : "Loading models from Codex…")
+                        .font(.system(size: 11, design: .monospaced)).foregroundColor(v2.faint).padding(13)
+                }
+                ForEach(session.availableModels) { model in
+                    Button {
+                        session.setModel(model.id)
+                        appState.defaultCodexModel = model.id
+                        appState.defaultCodexEffort = session.effort
+                    } label: {
+                        HStack(spacing: 8) {
+                            Circle().fill(session.model == model.id || session.model == model.model ? v2.ink : Color.clear)
+                                .overlay(Circle().stroke(v2.line2, lineWidth: 1)).frame(width: 7, height: 7)
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(model.displayName).font(.system(size: 12.5, weight: .medium)).foregroundColor(v2.ink)
+                                Text(model.description).font(.system(size: 9.5, design: .monospaced)).foregroundColor(v2.faint).lineLimit(2)
+                            }
+                            Spacer()
+                            if model.id.lowercased().contains("sol") { Text("SOL").font(.system(size: 9, design: .monospaced)).foregroundColor(v2.ink) }
+                        }.padding(.horizontal, 13).padding(.vertical, 8).contentShape(Rectangle())
+                    }.buttonStyle(.plain)
+                }
+
+                sectionHeader("REASONING EFFORT")
+                    .overlay(alignment: .top) { Rectangle().fill(v2.line).frame(height: 1) }
+                let efforts = session.selectedModel?.supportedReasoningEfforts ?? []
+                HStack(spacing: 0) {
+                    ForEach(efforts) { effort in
+                        Button {
+                            session.setEffort(effort.id)
+                            appState.defaultCodexEffort = effort.id
+                        } label: {
+                            Text(effort.id).font(.system(size: 10, design: .monospaced))
+                                .foregroundColor(session.effort == effort.id ? v2.paper : v2.mute)
+                                .frame(maxWidth: .infinity).padding(.vertical, 7)
+                                .background(session.effort == effort.id ? v2.ink : v2.paper2)
+                        }.buttonStyle(.plain)
+                    }
+                }.overlay(Rectangle().stroke(v2.line2, lineWidth: 1)).padding(.horizontal, 13).padding(.bottom, 12)
+
+                sectionHeader("APPROVAL POLICY")
+                    .overlay(alignment: .top) { Rectangle().fill(v2.line).frame(height: 1) }
+                ForEach(approvalPolicies, id: \.0) { policy in
+                    Button {
+                        session.setPermissionMode(policy.0)
+                        appState.defaultCodexApprovalPolicy = policy.0
+                    } label: {
+                        HStack(alignment: .top, spacing: 8) {
+                            Circle().fill(session.permissionMode == policy.0 ? v2.ink : Color.clear)
+                                .overlay(Circle().stroke(v2.line2, lineWidth: 1)).frame(width: 7, height: 7).padding(.top, 3)
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(policy.0).font(.system(size: 12.5)).foregroundColor(v2.ink)
+                                Text(policy.1).font(.system(size: 9.5, design: .monospaced)).foregroundColor(v2.faint)
+                            }
+                        }.padding(.horizontal, 13).padding(.vertical, 8).frame(maxWidth: .infinity, alignment: .leading)
+                    }.buttonStyle(.plain)
+                }
+            }
+        }
+        .frame(width: 370, height: 560)
+        .background(v2.paper2)
+        .overlay(Rectangle().stroke(v2.line2, lineWidth: 1))
+    }
+
+    private func sectionHeader(_ text: String) -> some View {
+        Text(text).font(.system(size: 9.5, design: .monospaced)).kerning(1.1).foregroundColor(v2.faint)
+            .padding(.horizontal, 13).padding(.top, 10).padding(.bottom, 6)
     }
 }
 
@@ -191,6 +304,13 @@ private struct V2SessionConfigPanel: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
+            sectionHeader("PROVIDER")
+            Button("Continue this work with Codex") { appState.switchActiveProvider(to: .codex) }
+                .buttonStyle(.plain)
+                .font(.system(size: 11, design: .monospaced)).foregroundColor(v2.ink)
+                .padding(.horizontal, 13).padding(.bottom, 10)
+                .disabled(appState.activeSession?.state == .working || appState.activeSession?.state == .awaitingPermission || appState.codexBinary == nil)
+                .overlay(alignment: .bottom) { Rectangle().fill(v2.line).frame(height: 1) }
             sectionHeader("MODEL")
             if models.isEmpty {
                 Text("No model catalog yet — start one session to populate it.")

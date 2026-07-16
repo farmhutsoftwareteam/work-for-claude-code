@@ -103,7 +103,12 @@ struct V2RightDock: View {
                 case .loop:    V2LoopPanel()
                 case .harness: V2HarnessPanel()
                 case .agents:  V2AgentsPanel()
-                case .mcp:     V2McpPanel()
+                case .mcp:
+                    if let session = appState.activeCodexSession {
+                        V2CodexMcpPanel(session: session)
+                    } else {
+                        V2McpPanel()
+                    }
                 case .skills:  V2SkillsPanel()
                 }
             }
@@ -163,8 +168,8 @@ struct V2RightDock: View {
             """
         case .mcp:
             return """
-            MCP servers — Model Context Protocol tool providers claude
-            loads at session start (filesystem, github, linear, etc.).
+            MCP servers — Model Context Protocol tool providers the active
+            Claude or Codex runtime loads (filesystem, github, linear, etc.).
             This panel shows what's connected for the active session
             and lets you add new ones to your global config.
             """

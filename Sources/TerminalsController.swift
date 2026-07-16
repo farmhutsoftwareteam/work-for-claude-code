@@ -187,14 +187,17 @@ final class TerminalsController: ObservableObject {
     /// tab carries a fresh `StreamSession` which the v2 UI starts on demand.
     /// Returns the tab id so the caller can route activation / focus.
     @discardableResult
-    func openModeB(projectCwd: String, title: String) -> UUID {
-        let session = StreamSession()
+    func openModeB(projectCwd: String, title: String, provider: V2AgentProvider = .claude) -> UUID {
+        let claudeSession = provider == .claude ? StreamSession() : nil
+        let codexSession = provider == .codex ? CodexSession() : nil
         let tab = TerminalTab(
             projectCwd: projectCwd,
             title: title,
             state: .running, // Mode-B isLive defers to streamSession.state
             surface: .modeB,
-            streamSession: session
+            provider: provider,
+            streamSession: claudeSession,
+            codexSession: codexSession
         )
         tabs.append(tab)
         activeTabId = tab.id
@@ -213,6 +216,20 @@ final class TerminalsController: ObservableObject {
     func setHarness(_ harness: HarnessOrchestrator?, on tabId: UUID) {
         guard let idx = tabs.firstIndex(where: { $0.id == tabId }) else { return }
         tabs[idx].harness = harness
+    }
+
+    func setCodexSession(_ session: CodexSession, on tabId: UUID) {
+        guard let idx = tabs.firstIndex(where: { $0.id == tabId }) else { return }
+        tabs[idx].provider = .codex
+        tabs[idx].streamSession = nil
+        tabs[idx].codexSession = session
+    }
+
+    func setClaudeSession(_ session: StreamSession, on tabId: UUID) {
+        guard let idx = tabs.firstIndex(where: { $0.id == tabId }) else { return }
+        tabs[idx].provider = .claude
+        tabs[idx].streamSession = session
+        tabs[idx].codexSession = nil
     }
 
     /// Flip a tab between Mode-A (SwiftTerm) and Mode-B (StreamSession).
@@ -239,7 +256,9 @@ final class TerminalsController: ObservableObject {
             busyTabIds.remove(tabId)
 
             tabs[idx].surface = .modeB
+            tabs[idx].provider = .claude
             tabs[idx].streamSession = StreamSession()
+            tabs[idx].codexSession = nil
             tabs[idx].state = .running
             viewsEpoch += 1
 
@@ -255,7 +274,9 @@ final class TerminalsController: ObservableObject {
                 CoTerminalManager.shared.closeAll(scope: ObjectIdentifier(session))
             }
             tab.streamSession?.stop()
+            tab.codexSession?.stop()
             tabs[idx].streamSession = nil
+            tabs[idx].codexSession = nil
             tabs[idx].surface = .modeA
             tabs[idx].state = .running
             viewsEpoch += 1
@@ -411,6 +432,7 @@ final class TerminalsController: ObservableObject {
             tab.loop?.stop()
             tab.harness?.stop()
             tab.streamSession?.stop()
+            tab.codexSession?.stop()
         }
 
         if tab.isLive, let view = views[id] {
@@ -508,6 +530,7 @@ final class TerminalsController: ObservableObject {
         // may never get scheduled before the app actually exits.
         for tab in tabs where tab.surface == .modeB {
             tab.streamSession?.terminateNow()
+            tab.codexSession?.terminateNow()
         }
     }
 

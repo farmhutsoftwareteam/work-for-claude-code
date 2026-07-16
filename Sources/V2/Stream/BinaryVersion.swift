@@ -60,8 +60,13 @@ enum ClaudeBinary {
         process.standardOutput = pipe
         process.standardError = Pipe()
         do {
+            let semaphore = DispatchSemaphore(value: 0)
+            process.terminationHandler = { _ in semaphore.signal() }
             try process.run()
-            process.waitUntilExit()
+            guard semaphore.wait(timeout: .now() + 2) == .success else {
+                if process.isRunning { process.terminate() }
+                return nil
+            }
             let data = pipe.fileHandleForReading.readDataToEndOfFile()
             guard let raw = String(data: data, encoding: .utf8) else { return nil }
             return SemVer.parse(raw)
