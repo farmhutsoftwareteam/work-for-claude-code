@@ -392,14 +392,17 @@ struct V2RootView: View {
                 Text("Pick a project on the left, then ⌘N for a new tab.")
                     .font(.system(size: 13, design: .monospaced))
                     .foregroundColor(palette.mute)
-                if let v = appState.claudeVersion {
-                    Text("claude v\(v) ready")
-                        .font(.system(size: 10.5, design: .monospaced))
-                        .foregroundColor(palette.faint)
-                } else if appState.claudeBinary == nil {
-                    Text("`claude` not found on PATH — install Claude Code")
-                        .font(.system(size: 10.5, design: .monospaced))
-                        .foregroundColor(palette.del)
+                HStack(spacing: 10) {
+                    providerAvailability(
+                        .claude,
+                        version: appState.claudeVersion,
+                        isAvailable: appState.claudeBinary != nil
+                    )
+                    providerAvailability(
+                        .codex,
+                        version: appState.codexVersion,
+                        isAvailable: appState.codexBinary != nil
+                    )
                 }
             }
             // (A selected project now routes to V2ProjectHome, which carries
@@ -409,6 +412,27 @@ struct V2RootView: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(palette.paper)
+    }
+
+    private func providerAvailability(
+        _ provider: V2AgentProvider,
+        version: SemVer?,
+        isAvailable: Bool
+    ) -> some View {
+        let status = isAvailable
+            ? version.map { "v\($0.description) ready" } ?? "ready"
+            : "not found"
+        return HStack(spacing: 6) {
+            V2ProviderMark(provider: provider, size: 11)
+            Text(status)
+                .font(.system(size: 10.5, design: .monospaced))
+                .foregroundColor(isAvailable ? palette.faint : palette.del)
+        }
+        .padding(.horizontal, 7)
+        .padding(.vertical, 4)
+        .background(palette.providerBackground(provider))
+        .overlay(Rectangle().stroke(palette.providerAccent(provider).opacity(0.60), lineWidth: 1))
+        .help("\(provider.displayName) \(isAvailable ? "is ready" : "was not found on PATH")")
     }
 
     private func closeActiveTabOrWindow() {
@@ -482,7 +506,7 @@ struct V2RootView: View {
             Button { appState.startActiveSession() } label: {
                 HStack(spacing: 9) {
                     Image(systemName: "play.fill").font(.system(size: 11))
-                    Text("Start Codex session in \(tab.title)")
+                    Text("Start session in \(tab.title)")
                         .font(.system(size: 12, design: .monospaced))
                 }
                 .foregroundColor(canStart ? palette.paper : palette.faint)

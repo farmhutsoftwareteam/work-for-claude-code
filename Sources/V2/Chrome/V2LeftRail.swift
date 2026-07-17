@@ -235,7 +235,7 @@ struct V2LeftRail: View {
                     }
                 }
                 if filtered.isEmpty {
-                    Text(store.projects.isEmpty ? "No Claude projects yet." : "No matches.")
+                    Text(store.projects.isEmpty ? "No projects yet." : "No matches.")
                         .font(.system(size: 11, design: .monospaced))
                         .foregroundColor(v2.faint)
                         .padding(.vertical, 24)

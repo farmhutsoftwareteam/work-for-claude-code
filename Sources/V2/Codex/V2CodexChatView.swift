@@ -1,6 +1,14 @@
 import SwiftUI
 import UniformTypeIdentifiers
 
+/// Codex's transcript is V2LiveTranscript, the identical view Claude uses —
+/// not a lookalike copy. Fix design §1/§3 in .agents/research/2026-07-16-
+/// bug-codex-transcript-parity.md: "one shared transcript, not further
+/// styling of a second Codex transcript." CodexSession conforms to
+/// V2TranscriptSource (see that protocol's doc comment for which concepts
+/// it has no equivalent for and what neutral default it supplies instead).
+/// Only the login gate is Codex-specific chrome, since Claude has no
+/// equivalent screen.
 struct V2CodexChatView: View {
     @Environment(\.v2) private var v2
     @ObservedObject var session: CodexSession
@@ -11,7 +19,7 @@ struct V2CodexChatView: View {
             if session.requiresChatGPTLogin {
                 loginView
             } else {
-                transcriptView
+                V2LiveTranscript(session: session, projectCwd: projectCwd)
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -20,9 +28,10 @@ struct V2CodexChatView: View {
 
     private var loginView: some View {
         VStack(spacing: 15) {
-            Image(systemName: "bubble.left.and.bubble.right")
-                .font(.system(size: 28, weight: .light))
-                .foregroundColor(v2.mute)
+            V2ProviderMark(provider: .codex, size: 30)
+                .padding(14)
+                .background(v2.providerBackground(.codex))
+                .overlay(Rectangle().stroke(v2.providerAccent(.codex).opacity(0.72), lineWidth: 1))
             Text("Connect your ChatGPT subscription")
                 .font(.system(size: 17, weight: .medium))
                 .foregroundColor(v2.ink)
@@ -31,111 +40,23 @@ struct V2CodexChatView: View {
                 .foregroundColor(v2.mute)
                 .multilineTextAlignment(.center)
                 .frame(maxWidth: 480)
-            Button { session.beginChatGPTLogin() } label: {
-                Text(session.loginInProgress ? "Waiting for browser sign-in…" : "Sign in with ChatGPT")
+            // While a browser sign-in is in flight this is a cancel button,
+            // not a disabled label — closing the OAuth tab without
+            // finishing it used to strand this permanently on "Waiting…"
+            // with no way back short of restarting the whole session.
+            Button {
+                if session.loginInProgress { session.cancelChatGPTLogin() }
+                else { session.beginChatGPTLogin() }
+            } label: {
+                Text(session.loginInProgress ? "Waiting for browser sign-in… (cancel)" : "Sign in with ChatGPT")
                     .font(.system(size: 12, design: .monospaced))
                     .foregroundColor(v2.paper)
                     .padding(.horizontal, 18).padding(.vertical, 9)
                     .background(v2.ink)
             }
             .buttonStyle(.plain)
-            .disabled(session.loginInProgress)
         }
         .padding(32)
-    }
-
-    private var transcriptView: some View {
-        ScrollViewReader { proxy in
-            ScrollView {
-                LazyVStack(alignment: .leading, spacing: 24) {
-                    if session.transcript.isEmpty {
-                        VStack(alignment: .leading, spacing: 8) {
-                            Text("Codex is ready")
-                                .font(.system(size: 18, weight: .medium))
-                                .foregroundColor(v2.ink)
-                            Text("\(session.account?.label ?? "Codex") · \(session.model.isEmpty ? "loading models" : session.model)")
-                                .font(.system(size: 11, design: .monospaced))
-                                .foregroundColor(v2.faint)
-                            Text(projectCwd)
-                                .font(.system(size: 10.5, design: .monospaced))
-                                .foregroundColor(v2.faint)
-                        }
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                    }
-                    // Positional ids are stable for this append-only live list.
-                    // Iterating indices avoids allocating a complete
-                    // Array(enumerated()) on every coalesced streaming update.
-                    ForEach(session.transcript.indices, id: \.self) { index in
-                        row(session.transcript[index])
-                    }
-                    if session.state == .working {
-                        HStack(spacing: 8) {
-                            ProgressView().controlSize(.small)
-                            Text("Codex is working…")
-                                .font(.system(size: 10.5, design: .monospaced))
-                                .foregroundColor(v2.mute)
-                        }
-                    }
-                    Color.clear.frame(height: 1).id("codex-bottom")
-                }
-                .padding(.horizontal, 36).padding(.vertical, 30)
-            }
-            .onChange(of: session.transcript.count) { _, _ in
-                withAnimation(.easeOut(duration: 0.12)) { proxy.scrollTo("codex-bottom", anchor: .bottom) }
-            }
-        }
-    }
-
-    @ViewBuilder
-    private func row(_ item: TranscriptItem) -> some View {
-        switch item {
-        case .userText(let text):
-            VStack(alignment: .leading, spacing: 6) {
-                Text("YOU").font(.system(size: 9.5, design: .monospaced)).foregroundColor(v2.faint)
-                Text(text).font(.system(size: 14)).foregroundColor(v2.ink).textSelection(.enabled)
-            }
-            .frame(maxWidth: .infinity, alignment: .leading)
-        case .assistantBlock(let block):
-            assistantBlock(block)
-        case .compactBoundary:
-            Text("context compacted").font(.system(size: 10, design: .monospaced)).foregroundColor(v2.faint)
-        case .systemNote(let kind, let text):
-            Text(text)
-                .font(.system(size: 11.5, design: .monospaced))
-                .foregroundColor(kind == .error ? v2.del : v2.mute)
-                .padding(10)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .overlay(Rectangle().stroke(kind == .error ? v2.del : v2.line2, lineWidth: 1))
-        }
-    }
-
-    @ViewBuilder
-    private func assistantBlock(_ block: ContentBlock) -> some View {
-        switch block {
-        case .text(let text):
-            Text(text).font(.system(size: 14)).foregroundColor(v2.ink)
-                .textSelection(.enabled).frame(maxWidth: .infinity, alignment: .leading)
-        case .thinking(let text, _):
-            DisclosureGroup("Reasoning") {
-                Text(text).font(.system(size: 11.5, design: .monospaced)).foregroundColor(v2.mute).textSelection(.enabled)
-            }
-        case .toolUse(_, let name, let input):
-            VStack(alignment: .leading, spacing: 6) {
-                Text(name.uppercased()).font(.system(size: 9.5, design: .monospaced)).foregroundColor(v2.faint)
-                Text(input.preview).font(.system(size: 11.5, design: .monospaced)).foregroundColor(v2.ink).textSelection(.enabled)
-            }
-            .padding(11).frame(maxWidth: .infinity, alignment: .leading)
-            .background(v2.card).overlay(Rectangle().stroke(v2.line2, lineWidth: 1))
-        case .toolResult(_, let content, let isError):
-            Text(content.asString).font(.system(size: 11.5, design: .monospaced))
-                .foregroundColor(isError == true ? v2.del : v2.mute)
-        case .image:
-            Label("Image", systemImage: "photo").foregroundColor(v2.mute)
-        case .fallback(let from, let to):
-            Text("Model changed: \(from ?? "?") → \(to ?? "?")").foregroundColor(v2.mute)
-        case .unknown(let type):
-            Text(type).foregroundColor(v2.faint)
-        }
     }
 }
 
@@ -220,7 +141,7 @@ struct V2CodexComposer: View {
         HStack(spacing: 14) {
             V2ProviderBadge(
                 provider: .codex,
-                density: helperTight ? .compact : .full
+                density: .compact
             )
             .layoutPriority(2)
 
@@ -290,11 +211,11 @@ struct V2CodexComposer: View {
 
     private var placeholder: String {
         switch session.state {
-        case .idle, .terminated:  return "Ask Codex…"
-        case .ready:              return "Reply to Codex…"
+        case .idle, .terminated:  return "Ask anything…"
+        case .ready:              return "Reply…"
         case .hibernated:         return "Reply to wake this session…"
-        case .spawning:           return "Spawning Codex…"
-        case .initializing:       return "Initializing Codex…"
+        case .spawning:           return "Starting…"
+        case .initializing:       return "Preparing…"
         case .working:            return "Reply, or ⎋ to interrupt…"
         case .awaitingPermission: return "Resolve permission above to continue"
         case .closing:            return "Closing…"
@@ -330,7 +251,14 @@ struct V2CodexPermissionModal: View {
             ZStack {
                 Color.black.opacity(0.28).ignoresSafeArea()
                 VStack(alignment: .leading, spacing: 14) {
-                    Text(request.title).font(.system(size: 17, weight: .medium)).foregroundColor(v2.ink)
+                    HStack(spacing: 8) {
+                        Text(request.title).font(.system(size: 17, weight: .medium)).foregroundColor(v2.ink)
+                        if session.queuedRequestCount > 0 {
+                            Text("· \(session.queuedRequestCount) more waiting")
+                                .font(.system(size: 11, design: .monospaced))
+                                .foregroundColor(v2.faint)
+                        }
+                    }
                     Text(request.previewText).font(.system(size: 11.5, design: .monospaced))
                         .foregroundColor(v2.mute).textSelection(.enabled)
                         .padding(11).frame(maxWidth: .infinity, alignment: .leading)
@@ -360,7 +288,14 @@ struct V2CodexUserInputModal: View {
             ZStack {
                 Color.black.opacity(0.28).ignoresSafeArea()
                 VStack(alignment: .leading, spacing: 14) {
-                    Text(request.title).font(.system(size: 17, weight: .medium)).foregroundColor(v2.ink)
+                    HStack(spacing: 8) {
+                        Text(request.title).font(.system(size: 17, weight: .medium)).foregroundColor(v2.ink)
+                        if session.queuedRequestCount > 0 {
+                            Text("· \(session.queuedRequestCount) more waiting")
+                                .font(.system(size: 11, design: .monospaced))
+                                .foregroundColor(v2.faint)
+                        }
+                    }
                     ForEach(request.questions) { question in
                         VStack(alignment: .leading, spacing: 6) {
                             Text(question.header.uppercased())

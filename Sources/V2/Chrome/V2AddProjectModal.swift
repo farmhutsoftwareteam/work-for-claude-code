@@ -397,7 +397,7 @@ struct V2AddProjectModal: View {
                 Text(err).font(.system(size: 10.5, design: .monospaced)).foregroundColor(v2.del)
                     .lineLimit(2).truncationMode(.middle)
             } else {
-                Text("Registers the folder so Claude can run rooted there.")
+                Text("Registers the folder so the selected provider can run rooted there.")
                     .font(.system(size: 10.5, design: .monospaced)).foregroundColor(v2.faint)
                     .lineLimit(1).truncationMode(.tail)
             }

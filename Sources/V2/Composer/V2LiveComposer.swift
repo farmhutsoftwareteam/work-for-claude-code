@@ -683,7 +683,7 @@ struct V2LiveComposer: View {
         HStack(spacing: 14) {
             V2ProviderBadge(
                 provider: .claude,
-                density: helperTight ? .compact : .full
+                density: .compact
             )
             .layoutPriority(2)
 

@@ -85,8 +85,20 @@ struct V2SessionTabs: View {
 
     private var newTabButton: some View {
         Menu {
-            Button("Claude") { appState.newTab(provider: .claude) }
-            Button("Codex · ChatGPT subscription") { appState.newTab(provider: .codex) }
+            Button { appState.newTab(provider: .claude) } label: {
+                Label {
+                    Text("Claude")
+                } icon: {
+                    Image("LogoClaude").renderingMode(.template)
+                }
+            }
+            Button { appState.newTab(provider: .codex) } label: {
+                Label {
+                    Text("Codex · ChatGPT subscription")
+                } icon: {
+                    Image("LogoChatGPT").renderingMode(.template)
+                }
+            }
         } label: {
             Image(systemName: "plus")
                 .font(.system(size: 12, weight: .regular))
@@ -147,8 +159,6 @@ private struct V2TabChip: View {
     /// title at all) shows title always wins what little room is left.
     private static let projectLabelFloor: CGFloat = 150
     private var isNarrow: Bool { width < 120 }
-    private var badgeDensity: V2ProviderBadgeDensity { width >= 180 ? .full : .compact }
-
     var body: some View {
         HStack(spacing: isNarrow ? 6 : 10) {
             statusGlyph
@@ -162,7 +172,7 @@ private struct V2TabChip: View {
                 HStack(spacing: 6) {
                     V2ProviderBadge(
                         provider: tab.provider,
-                        density: badgeDensity,
+                        density: .compact,
                         style: isNarrow ? .plain : .outlined
                     )
                     if showProject, width >= Self.projectLabelFloor {
@@ -249,12 +259,14 @@ private struct V2TabChip: View {
     private var trailing: some View {
         if let started = activeTurnStartedAt {
             TimelineView(.periodic(from: started, by: 1)) { ctx in
-                Text(Self.elapsed(since: started, now: ctx.date))
+                Text(isNarrow
+                     ? Self.compactElapsed(since: started, now: ctx.date)
+                     : Self.elapsed(since: started, now: ctx.date))
                     .font(.system(size: 10, design: .monospaced))
                     .foregroundColor(v2.mute)
                     .monospacedDigit()
             }
-            .frame(minWidth: 30, alignment: .trailing)
+            .frame(width: 30, alignment: .trailing)
         } else {
             Button(action: onClose) {
                 Image(systemName: "xmark")
@@ -303,6 +315,15 @@ private struct V2TabChip: View {
     static func elapsed(since: Date, now: Date) -> String {
         let s = max(0, Int(now.timeIntervalSince(since)))
         return "\(s / 60):" + String(format: "%02d", s % 60)
+    }
+
+    /// Fixed-width timer for 84pt tabs. Once minutes would grow beyond two
+    /// digits, switch to a compact hour form instead of widening the tab.
+    static func compactElapsed(since: Date, now: Date) -> String {
+        let s = max(0, Int(now.timeIntervalSince(since)))
+        guard s >= 3_600 else { return elapsed(since: since, now: now) }
+        let hours = s / 3_600
+        return hours >= 100 ? "\(hours)h" : "\(hours)h\((s % 3_600) / 60)"
     }
 }
 

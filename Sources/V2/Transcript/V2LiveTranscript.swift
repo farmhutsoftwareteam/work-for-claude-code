@@ -1,14 +1,49 @@
-// Live transcript driven off a real StreamSession. Replaces V2TranscriptView's
-// mock content. Each TranscriptItem maps to a SwiftUI row; assistant text
-// blocks render token-by-token as deltas arrive.
+// Live transcript driven off a real session. Replaces V2TranscriptView's mock
+// content. Each TranscriptItem maps to a SwiftUI row; assistant text blocks
+// render token-by-token as deltas arrive.
 
 import SwiftUI
 import Inject
 
-struct V2LiveTranscript: View {
+/// Provider-neutral surface this view renders against. StreamSession
+/// (Claude) and CodexSession both conform, so Codex renders through this
+/// EXACT view — not a lookalike copy — per fix design §1/§3 in
+/// .agents/research/2026-07-16-bug-codex-transcript-parity.md: "one shared
+/// transcript, not further styling of a second Codex transcript." Every
+/// requirement here is something the body below actually reads; a provider
+/// with no equivalent concept (Codex has no retry banner, no session-dir
+/// peek) just supplies the neutral default (nil/empty/false) and the
+/// relevant branch never renders — no special-casing inside the view itself.
+@MainActor
+protocol V2TranscriptSource: ObservableObject {
+    var transcript: [TranscriptItem] { get }
+    var endError: String? { get }
+    var preloadOmittedTurns: Int { get }
+    var subagentRuns: [V2SubagentRun] { get }
+    var sessionDir: URL? { get }
+    var state: StreamSession.LifecycleState { get }
+    var toolOutcomes: [String: Bool] { get }
+    var toolLiveStatus: [String: String] { get }
+    var toolStartTimes: [String: Date] { get }
+    var taskItems: [V2TaskItem] { get }
+    var baseDir: String? { get }
+    var isRetrying: Bool { get }
+    var lastRetry: StreamSession.RetryInfo? { get }
+    var latestResult: ResultEvent? { get }
+    var sessionId: String? { get }
+    var isResuming: Bool { get }
+    var instanceId: UUID { get }
+    var lastStreamActivityAt: Date { get }
+    var turnStartedAt: Date? { get }
+    var provider: V2AgentProvider { get }
+
+    func retryLastTurn()
+}
+
+struct V2LiveTranscript<Session: V2TranscriptSource>: View {
     @ObserveInjection private var inject
     @Environment(\.v2) private var v2
-    @ObservedObject var session: StreamSession
+    @ObservedObject var session: Session
     /// Project cwd — resolves relative file mentions in prose to Quick Look
     /// links. Falls back to what the session reports (nil until system/init).
     var projectCwd: String? = nil
@@ -23,7 +58,9 @@ struct V2LiveTranscript: View {
     /// a capped window, a month-old conversation scrolls exactly like a new
     /// one; "show earlier" extends the window on demand. Data is untouched —
     /// this bounds LAYOUT, not history.
-    private static let renderWindow = 120
+    // Static STORED properties aren't allowed in a generic type — computed
+    // instead, same constant value either way.
+    private static var renderWindow: Int { 120 }
 
     /// The window's start index — set ONCE per conversation (init, or the
     /// session-switch handler below), never continuously recomputed from
@@ -39,7 +76,7 @@ struct V2LiveTranscript: View {
     /// its start out from under an active scroll.
     @State private var firstVisibleIndex: Int
 
-    init(session: StreamSession, projectCwd: String? = nil) {
+    init(session: Session, projectCwd: String? = nil) {
         self.session = session
         self.projectCwd = projectCwd
         _firstVisibleIndex = State(initialValue: max(0, session.transcript.count - Self.renderWindow))
@@ -239,7 +276,7 @@ struct V2LiveTranscript: View {
     /// How long a streaming reply can go quiet before the stall cue kicks
     /// in. Short enough to reassure before the user gets anxious; long
     /// enough that normal inter-token/inter-sentence gaps never flash it.
-    private static let stallThreshold: TimeInterval = 4
+    private static var stallThreshold: TimeInterval { 4 }
 
     @ViewBuilder
     private var workingIndicator: some View {
@@ -302,11 +339,13 @@ struct V2LiveTranscript: View {
             V2UserTurn(text: text)
         case .assistantBlock(let block):
             V2AssistantBlock(block: block, toolOutcomes: session.toolOutcomes,
-                             baseDir: session.cwd ?? projectCwd,
+                             baseDir: session.baseDir ?? projectCwd,
                              subagentRuns: runs, sessionDir: sessionDir,
                              toolStartTimes: session.toolStartTimes,
+                             toolLiveStatus: session.toolLiveStatus,
                              taskItems: session.taskItems,
-                             isStreaming: isStreaming)
+                             isStreaming: isStreaming,
+                             provider: session.provider)
         case .compactBoundary:
             V2CompactBoundary()
         case .systemNote(let kind, let text):
@@ -364,7 +403,10 @@ struct V2LiveTranscript: View {
                     .font(.system(size: 11.5, design: .monospaced))
                     .foregroundColor(v2.faint)
             } else {
-                V2DovetailMark(size: 28).foregroundColor(v2.faint)
+                // Provider is a visual cue here (accent-colored mark), not a
+                // second rendering path — same component Chrome uses for
+                // both providers' badges elsewhere in the app.
+                V2ProviderMark(provider: session.provider, size: 28)
                 Text(emptyHint)
                     .font(.system(size: 13, design: .monospaced))
                     .foregroundColor(v2.faint)
@@ -376,7 +418,7 @@ struct V2LiveTranscript: View {
     private var emptyHint: String {
         switch session.state {
         case .idle:               return "Type a message to start the session."
-        case .spawning:           return "Spawning claude…"
+        case .spawning:           return "Spawning \(session.provider.displayName)…"
         case .initializing:      return "Initializing — waiting for system/init…"
         case .terminated(let r):  return "Session ended: \(r)"
         default:                  return "…"
@@ -425,19 +467,23 @@ struct V2AssistantBlock: View {
     var sessionDir: URL? = nil
     /// toolUseId → call start, for the in-flight elapsed readout.
     var toolStartTimes: [String: Date] = [:]
+    /// toolUseId → latest live progress message (Codex MCP calls only).
+    var toolLiveStatus: [String: String] = [:]
     /// Session task checklist, current as of now — every TaskCreate/
     /// TaskUpdate row shows the SAME live list rather than a per-call
     /// historical snapshot (see V2LiveTaskChecklist's doc comment).
     var taskItems: [V2TaskItem] = []
     /// This row's text is still growing — see V2MarkdownText.isStreaming.
     var isStreaming: Bool = false
+    /// Visual cue only — every row renders through this identical component
+    /// regardless of provider; only the leading mark's asset/accent differs.
+    var provider: V2AgentProvider = .claude
     @State private var buttonHover = false
     @State private var copied = false
 
     var body: some View {
         HStack(alignment: .top, spacing: 13) {
-            V2DovetailMark(size: 18)
-                .foregroundColor(v2.ink)
+            V2ProviderMark(provider: provider, size: 18)
                 .frame(width: 54, alignment: .leading)
                 .padding(.top, 2)
 
@@ -523,7 +569,7 @@ struct V2AssistantBlock: View {
                 V2LiveTaskChecklist(items: taskItems)
             } else {
                 V2LiveToolWidget(name: name, input: input, outcome: toolOutcomes[id],
-                                 startedAt: toolStartTimes[id])
+                                 startedAt: toolStartTimes[id], liveStatus: toolLiveStatus[id])
             }
         case .toolResult(_, let content, let isError):
             V2LiveToolResult(content: content, isError: isError ?? false)
@@ -621,6 +667,10 @@ struct V2LiveToolWidget: View {
     /// test run rendered identically to second five, and identically to a
     /// hung command ("I can't see this or its progress").
     var startedAt: Date? = nil
+    /// Latest human-readable progress message while still running (Codex's
+    /// mcpToolCall/progress notifications carry these; Claude's MCP protocol
+    /// doesn't surface an equivalent today, so this stays nil there).
+    var liveStatus: String? = nil
 
     var body: some View {
         // Agent vocabulary: uppercase tag · target as a token (path/ref) or an
@@ -650,10 +700,14 @@ struct V2LiveToolWidget: View {
                     let secs = Int(ctx.date.timeIntervalSince(startedAt))
                     HStack(spacing: 6) {
                         V2Spinner(size: 11)
+                        if let liveStatus {
+                            Text(liveStatus)
+                                .foregroundColor(v2.faint)
+                                .lineLimit(1).truncationMode(.tail)
                         // Quiet for quick calls — the timer only fades in
                         // once a call has run long enough (≥3s) that "is it
                         // stuck or working?" becomes a real question.
-                        if secs >= 3 {
+                        } else if secs >= 3 {
                             Text("\(secs / 60):" + String(format: "%02d", secs % 60))
                                 .foregroundColor(v2.faint)
                                 .monospacedDigit()

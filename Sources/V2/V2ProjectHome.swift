@@ -75,8 +75,20 @@ struct V2ProjectHome: View {
             Spacer(minLength: 12)
             HStack(spacing: 8) {
                 Menu {
-                    Button("Claude") { appState.newTab(provider: .claude) }
-                    Button("Codex · ChatGPT subscription") { appState.newTab(provider: .codex) }
+                    Button { appState.newTab(provider: .claude) } label: {
+                        Label {
+                            Text("Claude")
+                        } icon: {
+                            Image("LogoClaude").renderingMode(.template)
+                        }
+                    }
+                    Button { appState.newTab(provider: .codex) } label: {
+                        Label {
+                            Text("Codex · ChatGPT subscription")
+                        } icon: {
+                            Image("LogoChatGPT").renderingMode(.template)
+                        }
+                    }
                 } label: {
                     HStack(spacing: 7) {
                         Text("+ New session")

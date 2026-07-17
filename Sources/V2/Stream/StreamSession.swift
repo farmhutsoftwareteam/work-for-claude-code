@@ -30,7 +30,7 @@ struct V2TaskItem: Identifiable, Equatable {
 }
 
 @MainActor
-final class StreamSession: ObservableObject {
+final class StreamSession: ObservableObject, V2TranscriptSource {
 
     // MARK: - Public state
 
@@ -119,6 +119,14 @@ final class StreamSession: ObservableObject {
 
     /// Project cwd reported by `system/init`. Useful for UI breadcrumbs.
     @Published private(set) var cwd: String?
+    /// V2TranscriptSource conformance — trivial passthrough; `cwd` itself
+    /// stays the real property name everywhere else in this file.
+    var baseDir: String? { cwd }
+    /// V2TranscriptSource conformance — Claude's MCP protocol doesn't
+    /// surface progress messages into Atelier the way Codex's does, so this
+    /// is always empty for a Claude session.
+    var toolLiveStatus: [String: String] { [:] }
+    var provider: V2AgentProvider { .claude }
 
     /// This session's real slash-command list, straight off `system/init` —
     /// skills, project commands, everything the binary itself supports.
@@ -214,8 +222,20 @@ final class StreamSession: ObservableObject {
     /// transcript view; zero when nothing was trimmed.
     @Published private(set) var preloadOmittedTurns: Int = 0
 
-    /// Latest queued permission request — the inline permission card binds here.
+    /// The permission request currently shown in the inline card. When claude
+    /// fires multiple tool calls in one turn (e.g. two parallel read-only
+    /// calls), it can send several `can_use_tool` requests before the user
+    /// has answered the first — those queue in `permissionQueue` rather than
+    /// overwriting this, which used to silently orphan the earlier request
+    /// (Atelier forgot its requestId, so claude sat blocked forever waiting
+    /// on a control_response that would never come).
     @Published private(set) var pendingPermission: PendingPermission?
+    private var permissionQueue: [PendingPermission] = []
+
+    /// Requests queued behind the one currently shown. Always mutated in the
+    /// same call as pendingPermission, so views observing that via
+    /// @ObservedObject see this update in lockstep without its own @Published.
+    var queuedPermissionCount: Int { permissionQueue.count }
 
     /// File paths the user has implicitly authorised by attaching them to a
     /// composer message. When claude asks `can_use_tool` for `Read` against
@@ -690,6 +710,7 @@ final class StreamSession: ObservableObject {
         isRetrying = false
         lastRetry = nil
         pendingPermission = nil
+        permissionQueue.removeAll()
         state = .spawning
         // Reset the "saw a live event" tracker + any prior error for this spawn.
         sawLiveEvent = false
@@ -945,6 +966,7 @@ final class StreamSession: ObservableObject {
             isRetrying = false
             lastRetry = nil
             pendingPermission = nil
+            permissionQueue.removeAll()
             orphanRunningBackgroundTasks()
             state = .terminated(reason: "stream closed")
         }
@@ -1122,9 +1144,18 @@ final class StreamSession: ObservableObject {
         guard let pending = pendingPermission, let inputWriter else { return }
         // Clear the card immediately so it doesn't get stuck on screen if
         // the write throws — the user has already made their call. If the
-        // write does throw, we surface it in the transcript.
-        pendingPermission = nil
-        state = .working
+        // write does throw, we surface it in the transcript. If another
+        // request queued up behind this one (claude fired parallel tool
+        // calls in one turn), promote it straight to the card instead of
+        // dropping back to .working — otherwise it sits invisibly in the
+        // queue and the session looks idle while still awaiting an answer.
+        if permissionQueue.isEmpty {
+            pendingPermission = nil
+            state = .working
+        } else {
+            pendingPermission = permissionQueue.removeFirst()
+            state = .awaitingPermission
+        }
         Task { [weak self] in
             guard let self else { return }
             do {
@@ -1207,6 +1238,7 @@ final class StreamSession: ObservableObject {
         tokensUsed = 0
         contextTokens = 0
         pendingPermission = nil
+        permissionQueue.removeAll()
         // Drop any open streaming block — its index now points into a cleared
         // transcript.
         flushPending = false
@@ -1587,7 +1619,10 @@ final class StreamSession: ObservableObject {
             if state == .working || state == .awaitingPermission {
                 // A result arriving while a permission card is up means the
                 // turn finished — clear the stale card so it can't get stuck.
-                if state == .awaitingPermission { pendingPermission = nil }
+                if state == .awaitingPermission {
+                    pendingPermission = nil
+                    permissionQueue.removeAll()
+                }
                 state = .ready
             }
         case .controlRequest(let req):
@@ -1857,13 +1892,18 @@ final class StreamSession: ObservableObject {
            InteractiveCommandDetector.looksInteractive(cmd) {
             interactive = cmd
         }
-        pendingPermission = PendingPermission(
+        let request = PendingPermission(
             requestId: req.requestId,
             toolName: req.request.toolName ?? "unknown",
             previewText: preview,
             interactiveCommand: interactive
         )
-        state = .awaitingPermission
+        if pendingPermission == nil {
+            pendingPermission = request
+            state = .awaitingPermission
+        } else {
+            permissionQueue.append(request)
+        }
     }
 
     private func makePermissionPreview(toolName: String?, input: JSONValue?) -> String {

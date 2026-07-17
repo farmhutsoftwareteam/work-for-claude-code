@@ -50,6 +50,11 @@ struct V2LivePermissionCard: View {
                     Text("Claude wants to use \(pending.toolName)")
                         .font(.system(size: 11, design: .monospaced))
                         .foregroundColor(v2.mute)
+                    if session.queuedPermissionCount > 0 {
+                        Text("· \(session.queuedPermissionCount) more waiting")
+                            .font(.system(size: 11, design: .monospaced))
+                            .foregroundColor(v2.faint)
+                    }
                 }
 
                 Text(pending.previewText)

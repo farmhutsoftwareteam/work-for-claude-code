@@ -262,7 +262,7 @@ private struct V2HistoryRow: View {
             .contentShape(Rectangle())
             .overlay(alignment: .leading) {
                 if entry.isActive {
-                    Rectangle().fill(v2.ink).frame(width: 2)
+                    Rectangle().fill(v2.providerAccent(entry.provider)).frame(width: 2)
                 }
             }
         }

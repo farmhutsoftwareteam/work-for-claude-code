@@ -34,8 +34,15 @@ struct PendingCodexUserInput: Identifiable, Equatable {
 }
 
 @MainActor
-final class CodexSession: ObservableObject {
+final class CodexSession: ObservableObject, V2TranscriptSource {
     private let log = Logger(subsystem: "com.munyamakosa.work", category: "codex-session")
+
+    /// Stable per-instance identity — mirrors StreamSession.instanceId. A
+    /// freshly-`start()`ed session is a new object, but tab-switch/render-
+    /// window resets in the shared transcript view key off this rather than
+    /// ObjectIdentifier, which malloc can alias onto a just-deallocated
+    /// session's address (see StreamSession.instanceId's own doc comment).
+    nonisolated let instanceId = UUID()
 
     @Published private(set) var state: StreamSession.LifecycleState = .idle
     @Published private(set) var transcript: [TranscriptItem] = []
@@ -52,6 +59,28 @@ final class CodexSession: ObservableObject {
     @Published private(set) var loginInProgress = false
     @Published private(set) var totalTokens = 0
     @Published private(set) var contextWindow: Int?
+    /// nil = still running, true = failed, false = succeeded — same valence
+    /// convention V2LiveToolWidget/StreamSession.toolOutcomes already use.
+    /// Keyed by ThreadItem id (commandExecution/fileChange/mcpToolCall/
+    /// dynamicToolCall/collabAgentToolCall).
+    @Published private(set) var toolOutcomes: [String: Bool] = [:]
+    /// itemId → call start, for V2LiveToolWidget's in-flight elapsed readout.
+    private(set) var toolStartTimes: [String: Date] = [:]
+    /// Live task checklist sourced from turn/plan/updated — routed through
+    /// the exact same V2LiveTaskChecklist Claude's TaskCreate/TaskUpdate
+    /// tool calls render, via one synthetic TaskUpdate toolUse block (see
+    /// handlePlanUpdated).
+    @Published private(set) var taskItems: [V2TaskItem] = []
+    /// Touched on every reasoning/agentMessage delta — drives the shared
+    /// transcript's "still working / stalled" TimelineView the same way
+    /// StreamSession.lastStreamActivityAt does.
+    private(set) var lastStreamActivityAt = Date()
+    /// Cumulative unified diff for the in-flight turn (turn/diff/updated).
+    /// Not rendered as its own row today — per-file diffs already surface
+    /// through completed fileChange items — but tracked (rather than
+    /// silently dropped) so a future "review all changes" surface has
+    /// something real to read.
+    @Published private(set) var latestTurnDiff: String?
 
     private(set) var threadId: String?
     private(set) var turnId: String?
@@ -61,12 +90,39 @@ final class CodexSession: ObservableObject {
     private(set) var cwd: URL?
     var composerDraft = ""
 
+    // MARK: - V2TranscriptSource conformance
+    //
+    // CodexSession has no equivalent yet for a handful of Claude-only
+    // concepts (delegation cards, session-dir peek, the retry banner,
+    // preloaded-turn windowing at the transport layer) — each supplies the
+    // neutral default below rather than a fake implementation, so the
+    // corresponding branch in V2LiveTranscript's shared body just never
+    // renders for a Codex session instead of rendering something wrong.
+    var baseDir: String? { cwd?.path }
+    var subagentRuns: [V2SubagentRun] { [] }
+    var sessionDir: URL? { nil }
+    var preloadOmittedTurns: Int { 0 }
+    var isRetrying: Bool { false }
+    var lastRetry: StreamSession.RetryInfo? { nil }
+    var latestResult: ResultEvent? { nil }
+    /// V2TranscriptSource's provider-neutral name for the native identifier
+    /// StreamSession calls sessionId — Codex's own is threadId.
+    var sessionId: String? { threadId }
+    var isResuming: Bool { state == .initializing && resumeThreadId != nil }
+    var provider: V2AgentProvider { .codex }
+    func retryLastTurn() {}
+
     private var client: CodexAppServerClient?
     private var binary: URL?
     private var resumeThreadId: String?
     private var streamBuffer = ""
     private var streamingIndex: Int?
     private var streamingItemId: String?
+    /// True while the open streaming block is `.thinking` rather than
+    /// `.text` — agentMessage/plan deltas and reasoning deltas both stream
+    /// through the same buffer, so finalizing/flushing must know which
+    /// ContentBlock case to commit into.
+    private var streamingIsThinking = false
     private var flushPending = false
     private let streamFlushInterval: TimeInterval = 0.033
     private var renderedItemIDs: Set<String> = []
@@ -74,6 +130,34 @@ final class CodexSession: ObservableObject {
     private var pendingProviderHandoffContext: String?
     private var mcpRefreshInFlight = false
     private var mcpRefreshQueued = false
+    /// itemId → transcript index, for items shown eagerly on item/started
+    /// (commandExecution/fileChange/mcpToolCall/dynamicToolCall/
+    /// collabAgentToolCall) so item/completed can append the paired result
+    /// instead of re-appending the call itself.
+    private var startedItemIndex: [String: Int] = [:]
+    /// itemId → accumulated live output, a safety net for outputDelta/
+    /// progress notifications in case a completed item's own aggregated
+    /// field is ever missing — not rendered live (see handleNotification's
+    /// case comment for why not: Claude's own Bash tool_result isn't
+    /// streamed live either, so holding off here is parity, not a gap).
+    private var liveItemOutput: [String: String] = [:]
+    /// itemId → latest MCP progress message, shown next to the spinner via
+    /// V2LiveToolWidget's liveStatus.
+    @Published private(set) var toolLiveStatus: [String: String] = [:]
+    private var sawPlanUpdate = false
+
+    /// Same bug class as StreamSession.permissionQueue (#49), found by
+    /// checking this file specifically after that fix: Codex's app-server
+    /// can fire multiple concurrent approval/input requests within one turn
+    /// (parallel tool calls), and pendingPermission/pendingUserInput were
+    /// single scalars a second arrival silently overwrote — orphaning the
+    /// first request's requestId forever, identical to the real munga-ai
+    /// deadlock that motivated #49.
+    private enum PendingCodexRequest {
+        case permission(PendingCodexApproval, grant: [String: Any]?)
+        case userInput(PendingCodexUserInput)
+    }
+    private var codexRequestQueue: [PendingCodexRequest] = []
 
     var selectedModel: CodexModel? {
         availableModels.first { $0.id == model || $0.model == model }
@@ -120,8 +204,18 @@ final class CodexSession: ObservableObject {
             do {
                 try await client.start()
                 self.state = .initializing
-                await self.refreshAccount()
+                let accountChecked = await self.refreshAccount()
                 await self.refreshModels()
+                guard accountChecked else {
+                    // Unknown auth state — do NOT fall through to
+                    // openThreadIfNeeded() on the unverified assumption
+                    // that requiresChatGPTLogin's stale/default value means
+                    // "authenticated". Surface a real, retryable error
+                    // instead of either silently guessing or showing the
+                    // sign-in screen to someone who's actually logged in.
+                    self.fail("Couldn't verify your Codex account — check your connection and try again.")
+                    return
+                }
                 if !self.requiresChatGPTLogin { try await self.openThreadIfNeeded() }
                 else { self.state = .idle }
                 // MCP discovery must never gate thread creation or history
@@ -139,6 +233,7 @@ final class CodexSession: ObservableObject {
         guard client != nil else { state = .terminated(reason: "Stopped"); return }
         state = .closing
         finalizeStreamingText()
+        clearPendingRequests()
         client?.stop()
         client = nil
         state = .terminated(reason: "Stopped")
@@ -148,9 +243,21 @@ final class CodexSession: ObservableObject {
     /// an asynchronous cleanup task may never get another run-loop turn.
     func terminateNow() {
         finalizeStreamingText()
+        clearPendingRequests()
         client?.terminateNow()
         client = nil
         state = .terminated(reason: "Stopped")
+    }
+
+    /// A dead/dying process can't receive a control_response for any
+    /// request — currently-shown or queued — so every requestId still held
+    /// here is moot. Drop them rather than leave a stale permission card
+    /// (or an invisibly queued one) hovering over a session that's gone.
+    private func clearPendingRequests() {
+        pendingPermission = nil
+        pendingUserInput = nil
+        requestedPermissionGrant = nil
+        codexRequestQueue.removeAll()
     }
 
     func beginChatGPTLogin() {
@@ -177,8 +284,30 @@ final class CodexSession: ObservableObject {
         }
     }
 
-    func refreshAccount() async {
-        guard let client else { return }
+    /// Returns whether the check actually completed. Callers that gate
+    /// real actions on `requiresChatGPTLogin` (start()'s decision to open a
+    /// thread) must check this — on failure requiresChatGPTLogin is left at
+    /// its previous value, which for a first-ever call is the type's
+    /// `false` default, i.e. UNKNOWN reads as "authenticated". A transient
+    /// account/read failure during startup must not silently fall through
+    /// to openThreadIfNeeded() on that unverified assumption.
+    @discardableResult
+    /// Recovers from an abandoned browser sign-in — closing the OAuth tab
+    /// without finishing it left loginInProgress stuck true forever (no
+    /// timeout, no server-pushed "you gave up" notification exists), so
+    /// the "Sign in with ChatGPT" button stayed permanently disabled on
+    /// "Waiting for browser sign-in…" with no way back short of restarting
+    /// the whole session. account/login/cancel is a real RPC the app-server
+    /// already supports; this just calls it and clears the local flag so a
+    /// fresh attempt is possible either way even if the cancel itself fails.
+    func cancelChatGPTLogin() {
+        guard loginInProgress else { return }
+        loginInProgress = false
+        Task { [weak self] in try? await self?.client?.requestWithNullParams("account/login/cancel") }
+    }
+
+    func refreshAccount() async -> Bool {
+        guard let client else { return false }
         do {
             let response = try await client.request("account/read", params: ["refreshToken": false])
             let requires = response["requiresOpenaiAuth"] as? Bool ?? true
@@ -192,8 +321,10 @@ final class CodexSession: ObservableObject {
                 account = nil
             }
             requiresChatGPTLogin = requires && account == nil
+            return true
         } catch {
             log.error("account/read failed: \(error.localizedDescription, privacy: .public)")
+            return false
         }
     }
 
@@ -369,26 +500,69 @@ final class CodexSession: ObservableObject {
         }
     }
 
+    /// Show a request immediately if nothing is currently up, otherwise
+    /// queue it — the fix for the clobber bug described on codexRequestQueue.
+    private func presentOrQueue(_ request: PendingCodexRequest) {
+        guard pendingPermission == nil, pendingUserInput == nil else {
+            codexRequestQueue.append(request)
+            return
+        }
+        show(request)
+    }
+
+    private func show(_ request: PendingCodexRequest) {
+        switch request {
+        case .permission(let approval, let grant):
+            pendingPermission = approval
+            requestedPermissionGrant = grant
+        case .userInput(let input):
+            pendingUserInput = input
+        }
+        state = .awaitingPermission
+    }
+
+    /// Called after either respondTo* below clears its slot — promotes the
+    /// next queued request (of either kind) instead of dropping straight to
+    /// .working, so a second concurrent request never sits invisibly queued
+    /// forever the way the pre-fix single-scalar version could.
+    private func promoteNextPendingRequest() {
+        guard !codexRequestQueue.isEmpty else { state = .working; return }
+        show(codexRequestQueue.removeFirst())
+    }
+
+    /// Requests queued behind whichever one is currently shown — mirrors
+    /// StreamSession.queuedPermissionCount so both permission modals can
+    /// show the same "N more waiting" hint.
+    var queuedRequestCount: Int { codexRequestQueue.count }
+
     func respondToPermission(allow: Bool) {
         guard let pending = pendingPermission, let client else { return }
+        // Captured BEFORE promoting the next queued request — promotion can
+        // overwrite requestedPermissionGrant with a DIFFERENT queued
+        // .permissions request's grant, which must never leak into this
+        // reply for the request actually being answered right now.
+        let grantForThisReply = requestedPermissionGrant
         pendingPermission = nil
-        state = .working
+        promoteNextPendingRequest()
         let result: [String: Any]
         switch pending.kind {
         case .command, .fileChange:
             result = ["decision": allow ? "accept" : "decline"]
         case .permissions:
             result = [
-                "permissions": allow ? (requestedPermissionGrant ?? [:]) : [:],
+                "permissions": allow ? (grantForThisReply ?? [:]) : [:],
                 "scope": "turn"
             ]
-            requestedPermissionGrant = nil
         case .mcp:
             result = ["action": allow ? "accept" : "decline"]
         }
         do { try client.respond(id: pending.requestId, result: result) }
         catch {
-            state = .ready
+            // Only roll back to .ready if nothing else took over the slot —
+            // promoteNextPendingRequest() may have legitimately moved state
+            // to .awaitingPermission for an unrelated queued request, which
+            // this reply's failure must not clobber.
+            if pendingPermission == nil, pendingUserInput == nil { state = .ready }
             appendError("Approval reply failed: \(error.localizedDescription)")
         }
     }
@@ -396,7 +570,7 @@ final class CodexSession: ObservableObject {
     func respondToUserInput(answers: [String: String], cancelled: Bool = false) {
         guard let pending = pendingUserInput, let client else { return }
         pendingUserInput = nil
-        state = .working
+        promoteNextPendingRequest()
         do {
             switch pending.kind {
             case .tool:
@@ -421,7 +595,7 @@ final class CodexSession: ObservableObject {
                 try client.respond(id: pending.requestId, result: ["action": "accept", "content": content])
             }
         } catch {
-            state = .ready
+            if pendingPermission == nil, pendingUserInput == nil { state = .ready }
             appendError("Input reply failed: \(error.localizedDescription)")
         }
     }
@@ -593,7 +767,13 @@ final class CodexSession: ObservableObject {
         state = .ready
     }
 
-    private func handleNotification(method: String, params: [String: Any]) {
+    /// Internal, not private: exercised directly by CodexSessionMappingTests
+    /// with synthetic wire payloads so the live notification path (reasoning
+    /// deltas, item/started pairing, turn/plan/updated → taskItems,
+    /// structured warnings) is regression-tested without a real app-server
+    /// process — the same reasoning turnStartParams already documents for
+    /// staying a pure builder.
+    func handleNotification(method: String, params: [String: Any]) {
         switch method {
         case "account/login/completed", "account/updated":
             loginInProgress = false
@@ -615,22 +795,63 @@ final class CodexSession: ObservableObject {
             if let error = turn?["error"] as? [String: Any] {
                 appendError(error["message"] as? String ?? "Codex turn failed.")
             }
+            // A turn genuinely finishing means every approval it could have
+            // needed is settled — any card still up (or anything still
+            // queued behind it) belongs to this now-dead turn.
             pendingPermission = nil
             pendingUserInput = nil
             requestedPermissionGrant = nil
+            codexRequestQueue.removeAll()
             turnId = nil
             turnStartedAt = nil
             state = .ready
         case "item/agentMessage/delta":
             if let delta = params["delta"] as? String,
                let itemId = params["itemId"] as? String {
-                appendTextDelta(delta, itemId: itemId)
+                appendTextDelta(delta, itemId: itemId, thinking: false)
             }
         case "item/plan/delta":
             if let delta = params["delta"] as? String,
                let itemId = params["itemId"] as? String {
-                appendTextDelta(delta, itemId: itemId)
+                appendTextDelta(delta, itemId: itemId, thinking: false)
             }
+        // Live reasoning — the schema splits it three ways (summary parts,
+        // summary text, raw content text); all three stream into the same
+        // .thinking block so Codex gets a genuinely live disclosure like
+        // Claude's, not just the completed-item summary.
+        case "item/reasoning/summaryTextDelta", "item/reasoning/textDelta":
+            if let delta = params["delta"] as? String,
+               let itemId = params["itemId"] as? String {
+                appendTextDelta(delta, itemId: itemId, thinking: true)
+            }
+        case "item/reasoning/summaryPartAdded":
+            if let itemId = params["itemId"] as? String, streamingItemId == itemId {
+                appendTextDelta("\n\n", itemId: itemId, thinking: true)
+            }
+        case "item/started":
+            if let item = params["item"] as? [String: Any] { handleStartedItem(item) }
+        // Output/progress deltas for in-progress items. Buffered as a
+        // fallback for the completed item's own aggregated field, not
+        // rendered live token-by-token — Atelier doesn't stream Bash
+        // tool_result live for Claude either, so this matches existing
+        // behavior rather than inventing a new live surface.
+        case "item/commandExecution/outputDelta", "item/fileChange/outputDelta":
+            if let itemId = params["itemId"] as? String, let delta = params["delta"] as? String {
+                liveItemOutput[itemId, default: ""] += delta
+            }
+        case "item/mcpToolCall/progress":
+            if let itemId = params["itemId"] as? String, let message = params["message"] as? String {
+                toolLiveStatus[itemId] = message
+            }
+        case "item/fileChange/patchUpdated":
+            if let itemId = params["itemId"] as? String,
+               let changes = params["changes"] as? [[String: Any]] {
+                liveItemOutput[itemId] = Self.diffSummary(changes)
+            }
+        case "turn/diff/updated":
+            latestTurnDiff = params["diff"] as? String
+        case "turn/plan/updated":
+            if let steps = params["plan"] as? [[String: Any]] { handlePlanUpdated(steps) }
         case "thread/tokenUsage/updated":
             if let usage = params["tokenUsage"] as? [String: Any] {
                 contextWindow = usage["modelContextWindow"] as? Int
@@ -646,12 +867,55 @@ final class CodexSession: ObservableObject {
             if let to { model = to }
         case "item/completed":
             if let item = params["item"] as? [String: Any] { handleCompletedItem(item) }
+        // Structured warnings/errors the schema exposes independently of
+        // turn/completed's own inline error field — surfaced as system
+        // notes so they're seen rather than logged at debug level only.
+        case "warning", "guardianWarning":
+            if let message = params["message"] as? String { appendWarning(message) }
+        case "configWarning", "deprecationNotice":
+            if let summary = params["summary"] as? String {
+                let details = params["details"] as? String
+                appendWarning(details.map { "\(summary) — \($0)" } ?? summary)
+            }
+        case "error":
+            if let error = params["error"] as? [String: Any], let message = error["message"] as? String {
+                let willRetry = params["willRetry"] as? Bool ?? false
+                appendError(willRetry ? "\(message) (retrying)" : message)
+            }
         default:
             log.debug("Unhandled Codex notification: \(method, privacy: .public)")
         }
     }
 
-    private func handleServerRequest(id: String, method: String, params: [String: Any]) {
+    /// One synthetic TaskUpdate call the first time a plan arrives — the
+    /// shared V2AssistantBlock TaskCreate/TaskUpdate branch always renders
+    /// the session's CURRENT taskItems regardless of which row triggered
+    /// it (see its doc comment), so one anchor row is enough for the
+    /// checklist to stay live across every subsequent update.
+    private func handlePlanUpdated(_ steps: [[String: Any]]) {
+        taskItems = steps.map { step in
+            let rawStatus = step["status"] as? String ?? "pending"
+            let status = rawStatus == "inProgress" ? "in_progress" : rawStatus
+            let text = step["step"] as? String ?? ""
+            return V2TaskItem(id: "plan-\(text.hashValue)", subject: text, status: status)
+        }
+        if !sawPlanUpdate {
+            sawPlanUpdate = true
+            transcript.append(.assistantBlock(.toolUse(id: "codex-plan", name: "TaskUpdate", input: .object([:]))))
+        }
+    }
+
+    private func appendWarning(_ text: String) {
+        transcript.append(.systemNote(kind: .info, text: text))
+    }
+
+    /// Internal, not private — same reasoning as handleNotification: lets
+    /// CodexSessionMappingTests drive concurrent approval requests directly
+    /// without a real app-server client (respondToPermission/
+    /// respondToUserInput both need a live client to go further, so the
+    /// promote-on-respond half isn't unit-testable here, but the
+    /// queue-rather-than-clobber half — the actual bug — is).
+    func handleServerRequest(id: String, method: String, params: [String: Any]) {
         switch method {
         case "item/tool/requestUserInput":
             let questions = (params["questions"] as? [[String: Any]] ?? []).compactMap(Self.decodeToolQuestion)
@@ -659,28 +923,25 @@ final class CodexSession: ObservableObject {
                 try? client?.respond(id: id, result: ["answers": [:]])
                 return
             }
-            pendingUserInput = PendingCodexUserInput(
+            presentOrQueue(.userInput(PendingCodexUserInput(
                 requestId: id, kind: .tool, title: "Codex needs your input", questions: questions
-            )
-            state = .awaitingPermission
+            )))
             return
         case "mcpServer/elicitation/request":
             if params["mode"] as? String == "url" {
                 let url = params["url"] as? String ?? ""
-                pendingPermission = PendingCodexApproval(
+                presentOrQueue(.permission(PendingCodexApproval(
                     requestId: id, kind: .mcp, title: "MCP authorization",
                     previewText: [params["message"] as? String, url].compactMap { $0 }.joined(separator: "\n")
-                )
-                state = .awaitingPermission
+                ), grant: nil))
                 return
             }
             let questions = Self.decodeMCPQuestions(params["requestedSchema"] as? [String: Any] ?? [:])
-            pendingUserInput = PendingCodexUserInput(
+            presentOrQueue(.userInput(PendingCodexUserInput(
                 requestId: id, kind: .mcp,
                 title: params["message"] as? String ?? "MCP server needs information",
                 questions: questions
-            )
-            state = .awaitingPermission
+            )))
             return
         case "currentTime/read":
             try? client?.respond(id: id, result: ["currentTimeAt": Int(Date().timeIntervalSince1970)])
@@ -696,7 +957,7 @@ final class CodexSession: ObservableObject {
         let preview: String
         let kind: PendingCodexApproval.Kind
         let title: String
-        requestedPermissionGrant = nil
+        var grant: [String: Any]?
         if lower.contains("commandexecution") || params["command"] != nil {
             kind = .command; title = "Run command"
             preview = params["command"] as? String ?? params["reason"] as? String ?? "Command execution"
@@ -706,13 +967,15 @@ final class CodexSession: ObservableObject {
         } else if lower.contains("permission") {
             kind = .permissions; title = "Grant permissions"
             preview = params["reason"] as? String ?? params["cwd"] as? String ?? "Additional permissions"
-            requestedPermissionGrant = params["permissions"] as? [String: Any]
+            grant = params["permissions"] as? [String: Any]
         } else {
             kind = .mcp; title = "MCP request"
             preview = params["message"] as? String ?? "An MCP server needs confirmation"
         }
-        pendingPermission = PendingCodexApproval(requestId: id, kind: kind, title: title, previewText: preview)
-        state = .awaitingPermission
+        presentOrQueue(.permission(
+            PendingCodexApproval(requestId: id, kind: kind, title: title, previewText: preview),
+            grant: grant
+        ))
     }
 
     private static func decodeToolQuestion(_ raw: [String: Any]) -> CodexInputQuestion? {
@@ -742,15 +1005,22 @@ final class CodexSession: ObservableObject {
         }
     }
 
-    private func appendTextDelta(_ delta: String, itemId: String) {
+    private func appendTextDelta(_ delta: String, itemId: String, thinking: Bool) {
+        // A reasoning item and its eventual agentMessage never share an
+        // itemId, so switching FROM thinking TO text (or vice versa) for a
+        // genuinely new itemId still finalizes the previous block correctly
+        // via the itemId check below — the thinking flag only matters for
+        // which ContentBlock case the CURRENT stream commits into.
         if streamingItemId != itemId {
             finalizeStreamingText()
             streamingItemId = itemId
+            streamingIsThinking = thinking
             streamBuffer = ""
-            transcript.append(.assistantBlock(.text("")))
+            transcript.append(.assistantBlock(thinking ? .thinking(text: "", signature: nil) : .text("")))
             streamingIndex = transcript.count - 1
         }
         streamBuffer.append(delta)
+        lastStreamActivityAt = Date()
         guard !flushPending else { return }
         flushPending = true
         DispatchQueue.main.asyncAfter(deadline: .now() + streamFlushInterval) { [weak self] in
@@ -761,7 +1031,7 @@ final class CodexSession: ObservableObject {
     private func flushStreamingText() {
         flushPending = false
         guard let index = streamingIndex, transcript.indices.contains(index) else { return }
-        transcript[index] = .assistantBlock(.text(streamBuffer))
+        transcript[index] = .assistantBlock(streamingIsThinking ? .thinking(text: streamBuffer, signature: nil) : .text(streamBuffer))
     }
 
     private func finalizeStreamingText() {
@@ -769,15 +1039,88 @@ final class CodexSession: ObservableObject {
         if let streamingItemId { renderedItemIDs.insert(streamingItemId) }
         streamingIndex = nil
         streamingItemId = nil
+        streamingIsThinking = false
         streamBuffer = ""
+    }
+
+    /// Item lifecycle start — shown immediately for calls that take real
+    /// time (command/file/MCP/dynamic-tool/collab-agent), mirroring how
+    /// Claude's tool_use block appears before its tool_result. Text-bearing
+    /// types (userMessage/agentMessage/plan/reasoning) are intentionally
+    /// skipped here — those stream in via their own delta notifications and
+    /// would otherwise double-render an empty row.
+    private func handleStartedItem(_ item: [String: Any]) {
+        guard let id = item["id"] as? String, !renderedItemIDs.contains(id),
+              startedItemIndex[id] == nil else { return }
+        let type = item["type"] as? String ?? ""
+        let liveTypes: Set<String> = [
+            "commandExecution", "fileChange", "mcpToolCall", "dynamicToolCall", "collabAgentToolCall",
+        ]
+        guard liveTypes.contains(type), let call = Self.toolUseItem(from: item, type: type) else { return }
+        transcript.append(.assistantBlock(call))
+        startedItemIndex[id] = transcript.count - 1
+        toolStartTimes[id] = Date()
     }
 
     private func handleCompletedItem(_ item: [String: Any]) {
         guard let id = item["id"] as? String, !renderedItemIDs.contains(id) else { return }
         if id == streamingItemId { finalizeStreamingText(); return }
-        if let mapped = Self.transcriptItem(from: item) {
-            transcript.append(mapped)
-            renderedItemIDs.insert(id)
+        let mapped = Self.transcriptItem(
+            from: item,
+            alreadyStarted: startedItemIndex[id] != nil,
+            liveOutput: liveItemOutput[id]
+        )
+        guard !mapped.isEmpty else { return }
+        transcript.append(contentsOf: mapped)
+        renderedItemIDs.insert(id)
+        startedItemIndex.removeValue(forKey: id)
+        liveItemOutput.removeValue(forKey: id)
+        toolLiveStatus.removeValue(forKey: id)
+        if let outcome = Self.terminalOutcome(for: item) {
+            toolOutcomes[id] = outcome
+        } else {
+            toolStartTimes.removeValue(forKey: id)
+        }
+    }
+
+    /// true = failed, false = succeeded, nil = this item type has no
+    /// pass/fail concept (e.g. userMessage) — callers treat nil as "clear
+    /// the running-state timer without recording an outcome".
+    private static func terminalOutcome(for item: [String: Any]) -> Bool? {
+        switch item["type"] as? String ?? "" {
+        case "commandExecution":
+            switch item["status"] as? String {
+            case "completed": return false
+            case "failed", "declined": return true
+            default: return nil
+            }
+        case "fileChange":
+            switch item["status"] as? String {
+            case "completed": return false
+            case "failed", "declined": return true
+            default: return nil
+            }
+        case "mcpToolCall", "dynamicToolCall":
+            switch item["status"] as? String {
+            case "completed": return false
+            case "failed": return true
+            default: return nil
+            }
+        case "collabAgentToolCall":
+            switch item["status"] as? String {
+            case "completed": return false
+            case "failed": return true
+            default: return nil
+            }
+        // These three ThreadItem types have no in-progress phase surfaced to
+        // us (no item/started handling, no status field) — they arrive via
+        // item/completed already finished, so V2LiveToolWidget must see a
+        // resolved outcome immediately or it renders a spinner that can
+        // never resolve.
+        case "webSearch", "imageView", "imageGeneration":
+            return false
+        default:
+            return nil
         }
     }
 
@@ -818,41 +1161,194 @@ final class CodexSession: ObservableObject {
 
     static func transcript(from turns: [[String: Any]]) -> [TranscriptItem] {
         turns.flatMap { turn in
-            (turn["items"] as? [[String: Any]] ?? []).compactMap(transcriptItem)
+            (turn["items"] as? [[String: Any]] ?? []).flatMap { transcriptItem(from: $0) }
         }
     }
 
-    static func transcriptItem(from item: [String: Any]) -> TranscriptItem? {
+    /// Maps a completed ThreadItem to zero or more transcript rows. Two-item
+    /// results (toolUse + toolResult) mirror Claude's own tool_use/
+    /// tool_result pairing so they render through the identical
+    /// V2LiveToolWidget/V2LiveToolResult path. `alreadyStarted`/`liveOutput`
+    /// let a live session skip re-appending a call already shown via
+    /// item/started and fall back to buffered deltas when a field the
+    /// completed item was expected to carry is missing.
+    ///
+    /// Every one of the schema's 18 ThreadItem variants is handled — no
+    /// known type may silently return nil (regression coverage below tests
+    /// this directly against the installed app-server's discriminators).
+    static func transcriptItem(
+        from item: [String: Any], alreadyStarted: Bool = false, liveOutput: String? = nil
+    ) -> [TranscriptItem] {
         let type = item["type"] as? String ?? ""
+        let id = item["id"] as? String ?? UUID().uuidString
+
+        func call() -> TranscriptItem? {
+            guard !alreadyStarted, let block = toolUseItem(from: item, type: type) else { return nil }
+            return .assistantBlock(block)
+        }
+        func result(content: String, isError: Bool) -> TranscriptItem {
+            .assistantBlock(.toolResult(toolUseId: id, content: .text(content), isError: isError))
+        }
+
         switch type {
         case "userMessage":
             let text = (item["content"] as? [[String: Any]] ?? [])
                 .compactMap { $0["text"] as? String }.joined(separator: "\n")
-            return text.isEmpty ? nil : .userText(text)
+            return text.isEmpty ? [] : [.userText(text)]
+
+        case "hookPrompt":
+            let text = (item["fragments"] as? [[String: Any]] ?? [])
+                .compactMap { $0["text"] as? String ?? $0["content"] as? String }
+                .joined(separator: "\n")
+            return text.isEmpty ? [] : [.systemNote(kind: .hook, text: text)]
+
         case "agentMessage", "plan":
-            guard let text = item["text"] as? String, !text.isEmpty else { return nil }
-            return .assistantBlock(.text(text))
+            guard let text = item["text"] as? String, !text.isEmpty else { return [] }
+            return [.assistantBlock(.text(text))]
+
         case "reasoning":
-            let text = ((item["summary"] as? [String]) ?? []).joined(separator: "\n")
-            return text.isEmpty ? nil : .assistantBlock(.thinking(text: text, signature: nil))
+            let summary = ((item["summary"] as? [String]) ?? []).joined(separator: "\n")
+            let content = ((item["content"] as? [String]) ?? []).joined(separator: "\n")
+            let text = summary.isEmpty ? content : summary
+            return text.isEmpty ? [] : [.assistantBlock(.thinking(text: text, signature: nil))]
+
         case "commandExecution":
-            let id = item["id"] as? String ?? UUID().uuidString
+            let status = item["status"] as? String
+            guard status == "completed" || status == "failed" || status == "declined" else {
+                return [call()].compactMap { $0 }
+            }
+            let output = item["aggregatedOutput"] as? String ?? liveOutput ?? ""
+            let exitCode = (item["exitCode"] as? NSNumber)?.intValue
+            let text = exitCode.map { "\(output)\n\nexit code \($0)" } ?? output
+            return [call(), result(content: text, isError: status != "completed")].compactMap { $0 }
+
+        case "fileChange":
+            let status = item["status"] as? String
+            guard status == "completed" || status == "failed" || status == "declined" else {
+                return [call()].compactMap { $0 }
+            }
+            let changes = item["changes"] as? [[String: Any]] ?? []
+            let text = liveOutput ?? diffSummary(changes)
+            return [call(), result(content: text, isError: status != "completed")].compactMap { $0 }
+
+        case "mcpToolCall":
+            let status = item["status"] as? String
+            guard status == "completed" || status == "failed" else {
+                return [call()].compactMap { $0 }
+            }
+            if let error = item["error"] as? [String: Any], let message = error["message"] as? String {
+                return [call(), result(content: message, isError: true)].compactMap { $0 }
+            }
+            let resultPayload = item["result"] as? [String: Any]
+            let contentBlocks = resultPayload?["content"] as? [[String: Any]] ?? []
+            let text = contentBlocks.compactMap { $0["text"] as? String }.joined(separator: "\n")
+            return [call(), result(content: text.isEmpty ? liveOutput ?? "(no output)" : text, isError: status == "failed")]
+                .compactMap { $0 }
+
+        case "dynamicToolCall":
+            let status = item["status"] as? String
+            guard status == "completed" || status == "failed" else {
+                return [call()].compactMap { $0 }
+            }
+            let items = item["contentItems"] as? [[String: Any]] ?? []
+            let text = items.compactMap { $0["text"] as? String }.joined(separator: "\n")
+            let success = item["success"] as? Bool ?? (status == "completed")
+            return [call(), result(content: text.isEmpty ? "(no output)" : text, isError: !success)].compactMap { $0 }
+
+        case "collabAgentToolCall":
+            let status = item["status"] as? String
+            guard status == "completed" || status == "failed" else {
+                return [call()].compactMap { $0 }
+            }
+            let states = item["agentsStates"] as? [String: [String: Any]] ?? [:]
+            let text = states.map { threadId, state in
+                "\(threadId): \(state["status"] as? String ?? "?")" +
+                    (state["message"].flatMap { $0 as? String }.map { " — \($0)" } ?? "")
+            }.joined(separator: "\n")
+            return [call(), result(content: text.isEmpty ? "(no agent state)" : text, isError: status == "failed")]
+                .compactMap { $0 }
+
+        case "subAgentActivity":
+            let kind = item["kind"] as? String ?? "activity"
+            let path = item["agentPath"] as? String ?? "sub-agent"
+            return [.systemNote(kind: .info, text: "\(path) \(kind)")]
+
+        case "webSearch":
+            let query = item["query"] as? String ?? ""
+            return [.assistantBlock(.toolUse(id: id, name: "WebSearch", input: .object(["query": .string(query)])))]
+
+        case "imageView":
+            let path = item["path"] as? String ?? ""
+            return [.assistantBlock(.toolUse(id: id, name: "Read", input: .object(["file_path": .string(path)])))]
+
+        case "sleep":
+            let ms = (item["durationMs"] as? NSNumber)?.intValue ?? 0
+            return [.systemNote(kind: .info, text: "waited \(ms)ms")]
+
+        case "imageGeneration":
+            var input: [String: JSONValue] = ["result": .string(item["result"] as? String ?? "")]
+            if let prompt = item["revisedPrompt"] as? String { input["revisedPrompt"] = .string(prompt) }
+            if let saved = item["savedPath"] as? String { input["savedPath"] = .string(saved) }
+            return [.assistantBlock(.toolUse(id: id, name: "ImageGeneration", input: .object(input)))]
+
+        case "enteredReviewMode":
+            return [.systemNote(kind: .info, text: "entered review mode: \(item["review"] as? String ?? "")")]
+        case "exitedReviewMode":
+            return [.systemNote(kind: .info, text: "exited review mode: \(item["review"] as? String ?? "")")]
+
+        case "contextCompaction":
+            return [.compactBoundary]
+
+        default:
+            // Genuinely unknown future variant — an honest fallback row
+            // beats silently vanishing (fix design §2's explicit rule).
+            return [.systemNote(kind: .info, text: "[\(type.isEmpty ? "unknown item" : type)]")]
+        }
+    }
+
+    /// The initial toolUse block for a live or completed call — factored out
+    /// of transcriptItem so item/started (call-only) and item/completed
+    /// (call+result) build the identical call representation.
+    private static func toolUseItem(from item: [String: Any], type: String) -> ContentBlock? {
+        let id = item["id"] as? String ?? UUID().uuidString
+        switch type {
+        case "commandExecution":
             let input: JSONValue = .object([
                 "command": .string(item["command"] as? String ?? ""),
-                "cwd": .string(item["cwd"] as? String ?? "")
+                "cwd": .string(item["cwd"] as? String ?? ""),
             ])
-            return .assistantBlock(.toolUse(id: id, name: "Bash", input: input))
+            return .toolUse(id: id, name: "Bash", input: input)
         case "fileChange":
-            let id = item["id"] as? String ?? UUID().uuidString
-            return .assistantBlock(.toolUse(id: id, name: "Edit", input: jsonValue(item["changes"] ?? [])))
+            return .toolUse(id: id, name: "Edit", input: jsonValue(item["changes"] ?? []))
         case "mcpToolCall":
-            let id = item["id"] as? String ?? UUID().uuidString
             let server = item["server"] as? String ?? "mcp"
             let tool = item["tool"] as? String ?? "tool"
-            return .assistantBlock(.toolUse(id: id, name: "\(server).\(tool)", input: jsonValue(item["arguments"] ?? [:])))
+            return .toolUse(id: id, name: "mcp__\(server)__\(tool)", input: jsonValue(item["arguments"] ?? [:]))
+        case "dynamicToolCall":
+            let tool = item["tool"] as? String ?? "tool"
+            return .toolUse(id: id, name: tool, input: jsonValue(item["arguments"] ?? [:]))
+        case "collabAgentToolCall":
+            let tool = item["tool"] as? String ?? "collab"
+            var input: [String: JSONValue] = [:]
+            if let prompt = item["prompt"] as? String { input["prompt"] = .string(prompt) }
+            if let model = item["model"] as? String { input["model"] = .string(model) }
+            return .toolUse(id: id, name: "collab.\(tool)", input: .object(input))
         default:
             return nil
         }
+    }
+
+    /// Compact multi-file diff summary — path + change kind + the diff body,
+    /// rendered through V2LiveToolResult's plain monospaced text exactly
+    /// like Claude's own tool_result content.
+    private static func diffSummary(_ changes: [[String: Any]]) -> String {
+        changes.map { change in
+            let path = change["path"] as? String ?? "?"
+            let kindRaw = change["kind"] as? [String: Any]
+            let kind = kindRaw?["type"] as? String ?? "update"
+            let diff = change["diff"] as? String ?? ""
+            return "\(kind) \(path)\n\(diff)"
+        }.joined(separator: "\n\n")
     }
 
     private static func jsonValue(_ any: Any) -> JSONValue {

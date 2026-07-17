@@ -82,7 +82,7 @@ struct V2SessionConfigChip: View {
                 HStack(spacing: 6) {
                     V2ProviderBadge(
                         provider: provider,
-                        density: isCompact ? .compact : .full,
+                        density: .compact,
                         style: .plain
                     )
                     // Model name is the one thing that stays even at the
@@ -123,8 +123,8 @@ struct V2SessionConfigChip: View {
             .foregroundColor(v2.ink)
             .padding(.horizontal, isTight ? 8 : 12)
             .padding(.vertical, 7)
-            .background(v2.card)
-            .overlay(Rectangle().stroke(v2.ink, lineWidth: 1))
+            .background(v2.providerBackground(provider))
+            .overlay(Rectangle().stroke(v2.providerAccent(provider).opacity(0.72), lineWidth: 1))
         }
         .buttonStyle(.plain)
         // Usable without a session once a catalog is known — picking then
@@ -312,7 +312,7 @@ private struct V2SessionConfigPanel: View {
             sectionHeader("PROVIDER")
             HStack(spacing: 8) {
                 V2ProviderBadge(provider: .claude)
-                Text("Claude Code subscription")
+                Text("Code subscription")
                     .font(.system(size: 12.5))
                     .foregroundColor(v2.ink)
             }
