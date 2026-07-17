@@ -6,6 +6,28 @@
         <description>Updates for Work</description>
         <language>en</language>
         <item>
+            <title>Version 2.10.2</title>
+            <pubDate>Fri, 17 Jul 2026 13:45:23 +0400</pubDate>
+            <sparkle:version>69</sparkle:version>
+            <sparkle:shortVersionString>2.10.2</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>15.0</sparkle:minimumSystemVersion>
+            <description><![CDATA[
+                <h3>Atelier 2.10.2 — Codex transcript parity, and a real permission deadlock fixed</h3>
+                <ul>
+                    <li><b>Fixed a real deadlock.</b> When a turn fired two tool calls needing permission at once, the second silently overwrote the first in Atelier's UI, orphaning it — the session waited forever for an answer it could never receive. Fixed for both Claude and Codex sessions.</li>
+                    <li><b>Codex now renders through the exact same transcript surface Claude uses.</b> Full markdown, tables, code fences, file links, and tool cards, instead of a separate, simplified view.</li>
+                    <li><b>Codex's event handling now covers all 18 of the app-server's item types</b> (was 7), including live reasoning disclosure, command output, file-change diffs, MCP tool results and live progress, and a live task checklist from turn plans.</li>
+                    <li><b>Fixed Codex silently proceeding as authenticated</b> when its account check failed, instead of showing the sign-in screen.</li>
+                    <li><b>Fixed the "Sign in with ChatGPT" button getting permanently stuck</b> if the browser sign-in was closed without finishing — it's now a working cancel/retry control.</li>
+                </ul>
+            ]]></description>
+            <enclosure
+                url="https://work.munyamakosa.com/Work-2.10.2.dmg"
+                length="14561825"
+                type="application/octet-stream"
+                sparkle:edSignature="hG6gbz1hz+ydZnJEAnTS3havUUEch+0fQSNy/dZi5+y7te98yHedCm7clIv0CeAcTUhyAo1Pdsj7aDC+7Vr3Bw==" />
+        </item>
+        <item>
             <title>Version 2.10.1</title>
             <pubDate>Thu, 16 Jul 2026 15:31:09 +0400</pubDate>
             <sparkle:version>68</sparkle:version>
