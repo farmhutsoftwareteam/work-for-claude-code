@@ -301,8 +301,14 @@ final class StreamSession: ObservableObject, V2TranscriptSource {
 
     /// Most recent rate_limit_event — a standalone top-level event (not a
     /// `system` subtype), previously undecoded entirely (fell to `.unknown`
-    /// and was dropped). Stored, not yet surfaced anywhere in the UI.
+    /// and was dropped). Doubles as the refresh trigger for `usageLimits`.
     @Published private(set) var rateLimitInfo: RateLimitInfo?
+
+    /// Typed plan-usage meters (5h/weekly utilization %, reset times, plan)
+    /// from the zero-cost get_usage control request — refreshed on init,
+    /// after each turn's result, and on every rate_limit_event push. Drives
+    /// the composer's compact meter + the session-config LIMITS section.
+    @Published private(set) var usageLimits: V2UsageLimits?
 
     // MARK: - Internals
 
@@ -1039,6 +1045,18 @@ final class StreamSession: ObservableObject, V2TranscriptSource {
         }
     }
 
+    /// Ask for fresh plan-usage meters (the get_usage control request).
+    /// Cheap and local — the binary answers from its own account state, no
+    /// model turn — but only serviced post-init, hence the state gate.
+    func refreshUsage() {
+        guard !isObserving else { return }
+        switch state { case .working, .ready, .awaitingPermission: break; default: return }
+        Task {
+            do { try await inputWriter?.requestUsage() }
+            catch { log.error("get_usage request failed: \(error.localizedDescription, privacy: .public)") }
+        }
+    }
+
     /// Send a user turn. Triggers a new assistant cycle from the binary.
     func send(text: String) {
         // The hard observer rule: watching must never become writing. A
@@ -1625,6 +1643,9 @@ final class StreamSession: ObservableObject, V2TranscriptSource {
                 }
                 state = .ready
             }
+            // Usage only moves when turns run — turn end is the natural
+            // refresh point for the plan meters (no timers needed).
+            refreshUsage()
         case .controlRequest(let req):
             handleControlRequest(req)
         case .controlResponse(let cr):
@@ -1654,6 +1675,9 @@ final class StreamSession: ObservableObject, V2TranscriptSource {
                 if state == .spawning || state == .initializing {
                     state = .ready
                 }
+                // First usage snapshot — get_usage is only serviced once
+                // the session is initialized, which this reply proves.
+                refreshUsage()
             }
             // Reply to refreshMCPStatus() — swap in the LIVE per-server
             // statuses (init's snapshot goes stale the moment a "pending"
@@ -1666,8 +1690,20 @@ final class StreamSession: ObservableObject, V2TranscriptSource {
                     return MCPServerInfo(name: name, status: m.dig("status")?.asString)
                 }
             }
+            // Reply to refreshUsage() — the typed plan-usage meters. A nil
+            // parse (API-key auth reports rate_limits_available: false)
+            // leaves the previous value; the meter simply doesn't render
+            // when there's never been one.
+            if cr.response.requestId.hasPrefix("usage"),
+               cr.response.subtype == "success",
+               let parsed = V2UsageLimits.fromClaude(cr.response.response) {
+                usageLimits = parsed
+            }
         case .rateLimitEvent(let evt):
             rateLimitInfo = evt.rateLimitInfo
+            // The push has status/reset but no percent — treat it as the
+            // signal to fetch the full typed snapshot.
+            refreshUsage()
         case .unknown(let t):
             log.notice("unknown event type: \(t, privacy: .public)")
         }

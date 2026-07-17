@@ -133,14 +133,128 @@ struct V2SessionConfigChip: View {
         .disabled(!isCodex && appState.activeSession == nil && appState.modelCatalog.isEmpty)
         .help("\(provider.displayName) · \(chipModelLabel) · \(chipEffortLabel) · \(chipPermissionLabel)")
         .popover(isPresented: $open, arrowEdge: .bottom) {
-            if let session = appState.activeCodexSession {
-                V2CodexSessionConfigPanel(session: session)
-                    .environmentObject(appState)
-            } else {
-                V2SessionConfigPanel()
-                    .environmentObject(appState)
+            V2SessionConfigPopover()
+                .environmentObject(appState)
+        }
+    }
+}
+
+// MARK: - Popover shell
+
+/// The provider switcher lives HERE, above the per-provider panel swap —
+/// hoisted inside either panel it would be torn down mid-switch and the
+/// pill's slide animation could never play. Width/background/border are
+/// unified here too, so the surface doesn't visibly resize when the panels
+/// (previously 340pt vs 370pt) swap under the tabs.
+private struct V2SessionConfigPopover: View {
+    @Environment(\.v2) private var v2
+    @EnvironmentObject private var appState: V2AppState
+
+    /// Switching restarts session plumbing, so it's blocked mid-turn — the
+    /// same condition the old per-panel text links disabled on. Live while
+    /// the popover is open: both providers' $state feed appState republish.
+    private var busy: Bool {
+        if let codex = appState.activeCodexSession {
+            return codex.state == .working || codex.state == .awaitingPermission
+        }
+        if let claude = appState.activeSession {
+            return claude.state == .working || claude.state == .awaitingPermission
+        }
+        return false
+    }
+
+    private var accountCaption: String {
+        if let codex = appState.activeCodexSession {
+            return codex.account?.label ?? "local app-server"
+        }
+        return "Code subscription"
+    }
+
+    private var usageLimits: V2UsageLimits? {
+        if let codex = appState.activeCodexSession { return codex.usageLimits }
+        return appState.activeSession?.usageLimits
+    }
+
+    private var captionWithPlan: String {
+        guard let plan = usageLimits?.planLabel, !plan.isEmpty else { return accountCaption }
+        return "\(accountCaption) · \(plan) plan"
+    }
+
+    /// The full quota breakdown — every window the provider reports, with
+    /// its bar, percent, and reset time. Provider-neutral: same rows for
+    /// Claude's session/weekly/model-scoped limits and Codex's primary/
+    /// secondary windows.
+    private func limitsSection(_ limits: V2UsageLimits) -> some View {
+        VStack(alignment: .leading, spacing: 0) {
+            Text("LIMITS")
+                .font(.system(size: 9.5, design: .monospaced))
+                .kerning(1.1)
+                .foregroundColor(v2.faint)
+                .padding(.horizontal, 13).padding(.top, 10).padding(.bottom, 6)
+                .overlay(alignment: .top) { Rectangle().fill(v2.line).frame(height: 1) }
+            ForEach(limits.windows) { window in
+                HStack(spacing: 9) {
+                    Text(window.label)
+                        .foregroundColor(v2.mute)
+                        .frame(width: 84, alignment: .leading)
+                        .lineLimit(1).truncationMode(.tail)
+                    ZStack(alignment: .leading) {
+                        Rectangle().fill(v2.line2).frame(width: 70, height: 4)
+                        Rectangle()
+                            .fill(window.severity == .normal ? v2.ink : v2.del)
+                            .frame(width: 70 * min(1, Double(window.percent) / 100), height: 4)
+                    }
+                    Text("\(window.percent)%")
+                        .foregroundColor(window.severity == .normal ? v2.ink : v2.del)
+                        .frame(width: 36, alignment: .trailing)
+                        .monospacedDigit()
+                    Spacer(minLength: 4)
+                    if let resets = window.resetsAt {
+                        Text("resets \(V2ComposerUsageMeter.resetFormatter.string(from: resets))")
+                            .foregroundColor(v2.faint)
+                            .lineLimit(1)
+                    }
+                }
+                .font(.system(size: 10.5, design: .monospaced))
+                .padding(.horizontal, 13)
+                .padding(.vertical, 4)
             }
         }
+        .padding(.bottom, 8)
+    }
+
+    var body: some View {
+        VStack(spacing: 0) {
+            V2ProviderTabs(
+                selected: appState.activeTab?.provider ?? appState.defaultAgentProvider,
+                isAvailable: { provider in
+                    provider == .claude ? appState.claudeBinary != nil : appState.codexBinary != nil
+                },
+                busy: busy
+            ) { appState.switchActiveProvider(to: $0) }
+                .padding(.horizontal, 13)
+                .padding(.top, 13)
+                .padding(.bottom, 7)
+
+            Text(captionWithPlan)
+                .font(.system(size: 10, design: .monospaced))
+                .foregroundColor(v2.faint)
+                .frame(maxWidth: .infinity, alignment: .center)
+                .padding(.bottom, 10)
+
+            if let limits = usageLimits {
+                limitsSection(limits)
+            }
+
+            if let session = appState.activeCodexSession {
+                V2CodexSessionConfigPanel(session: session)
+            } else {
+                V2SessionConfigPanel()
+            }
+        }
+        .frame(width: 370)
+        .background(v2.paper2)
+        .overlay(Rectangle().stroke(v2.line2, lineWidth: 1))
     }
 }
 
@@ -158,18 +272,8 @@ private struct V2CodexSessionConfigPanel: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 0) {
-                sectionHeader("PROVIDER")
-                HStack(spacing: 8) {
-                    V2ProviderBadge(provider: .codex)
-                    Text(session.account?.label ?? "local app-server")
-                        .font(.system(size: 12.5)).foregroundColor(v2.ink)
-                }.padding(.horizontal, 13).padding(.bottom, 10)
-                Button("Continue this work with Claude") { appState.switchActiveProvider(to: .claude) }
-                    .buttonStyle(.plain)
-                    .font(.system(size: 11, design: .monospaced)).foregroundColor(v2.ink)
-                    .padding(.horizontal, 13).padding(.bottom, 10)
-                    .disabled(session.state == .working || session.state == .awaitingPermission || appState.claudeBinary == nil)
-
+                // Provider identity/switching lives in V2SessionConfigPopover's
+                // pill tabs above this panel — not repeated here.
                 sectionHeader("OPENAI MODEL")
                     .overlay(alignment: .top) { Rectangle().fill(v2.line).frame(height: 1) }
                 if session.availableModels.isEmpty {
@@ -231,9 +335,9 @@ private struct V2CodexSessionConfigPanel: View {
                 }
             }
         }
-        .frame(width: 370, height: 560)
-        .background(v2.paper2)
-        .overlay(Rectangle().stroke(v2.line2, lineWidth: 1))
+        // Height only — width/background/border belong to the popover shell
+        // now, so the surface stays constant while panels swap.
+        .frame(height: 520)
     }
 
     private func sectionHeader(_ text: String) -> some View {
@@ -309,22 +413,10 @@ private struct V2SessionConfigPanel: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            sectionHeader("PROVIDER")
-            HStack(spacing: 8) {
-                V2ProviderBadge(provider: .claude)
-                Text("Code subscription")
-                    .font(.system(size: 12.5))
-                    .foregroundColor(v2.ink)
-            }
-            .padding(.horizontal, 13)
-            .padding(.bottom, 10)
-            Button("Continue this work with Codex") { appState.switchActiveProvider(to: .codex) }
-                .buttonStyle(.plain)
-                .font(.system(size: 11, design: .monospaced)).foregroundColor(v2.ink)
-                .padding(.horizontal, 13).padding(.bottom, 10)
-                .disabled(appState.activeSession?.state == .working || appState.activeSession?.state == .awaitingPermission || appState.codexBinary == nil)
-                .overlay(alignment: .bottom) { Rectangle().fill(v2.line).frame(height: 1) }
+            // Provider identity/switching lives in V2SessionConfigPopover's
+            // pill tabs above this panel — not repeated here.
             sectionHeader("MODEL")
+                .overlay(alignment: .top) { Rectangle().fill(v2.line).frame(height: 1) }
             if models.isEmpty {
                 Text("No model catalog yet — start one session to populate it.")
                     .font(.system(size: 11.5, design: .monospaced))
@@ -360,9 +452,9 @@ private struct V2SessionConfigPanel: View {
 
             footer
         }
-        .frame(width: 340)
-        .background(v2.paper2)
-        .overlay(Rectangle().stroke(v2.line2, lineWidth: 1))
+        // Width/background/border belong to the popover shell now — this
+        // panel previously fixed 340pt while Codex's fixed 370pt, so every
+        // provider switch visibly resized the popover under the cursor.
         .enableInjection()
     }
 

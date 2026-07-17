@@ -163,6 +163,9 @@ struct V2CodexComposer: View {
 
             Spacer(minLength: 8)
 
+            V2ComposerUsageMeter(limits: session.usageLimits, isTight: helperTight)
+                .layoutPriority(1)
+
             V2ComposerContextMeter(
                 model: session.model,
                 used: session.totalTokens,

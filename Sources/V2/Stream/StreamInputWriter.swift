@@ -95,6 +95,19 @@ actor StreamInputWriter {
         ))
     }
 
+    /// Ask claude for the account's plan usage/rate-limit standing — the
+    /// reply carries typed rate_limits (five_hour/seven_day utilization %,
+    /// per-limit severity + reset times, subscription type). Verified live
+    /// against the real binary 2026-07-17: zero-cost (no model turn), and
+    /// only serviced AFTER the session has initialized — a request sent
+    /// before init gets no response at all, so callers gate on ready state.
+    func requestUsage() throws {
+        try writeLine(ControlRequestEnvelope(
+            requestId: nextRequestId(prefix: "usage"),
+            request: .init(subtype: "get_usage")
+        ))
+    }
+
     // MARK: - Lifecycle
 
     func close() throws {

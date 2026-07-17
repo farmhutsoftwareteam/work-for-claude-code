@@ -48,6 +48,75 @@ struct V2ProviderMark: View {
     }
 }
 
+/// Segmented provider switcher: both providers always visible in a shared
+/// track, the selected one carried by a filled segment that slides between
+/// positions on switch. The MECHANIC is the user-supplied Apple Music
+/// reference (2026-07-17: both options visible, filled sliding selection);
+/// the GEOMETRY is Atelier's own — sharp rectangles and hairline strokes,
+/// flat, no capsules or shadows (explicitly confirmed over the rounded
+/// literal reading of the reference).
+struct V2ProviderTabs: View {
+    @Environment(\.v2) private var v2
+    let selected: V2AgentProvider
+    /// Target availability — a provider whose binary isn't installed stays
+    /// visible but inert (dimmed), same rule the old text link enforced.
+    var isAvailable: (V2AgentProvider) -> Bool = { _ in true }
+    /// Switching restarts session plumbing — blocked mid-turn, same
+    /// condition the old "Continue this work with…" link disabled on.
+    var busy: Bool = false
+    let onSelect: (V2AgentProvider) -> Void
+    @Namespace private var selectionNS
+
+    var body: some View {
+        HStack(spacing: 0) {
+            segment(.claude)
+            segment(.codex)
+        }
+        .padding(3)
+        .background(Rectangle().fill(v2.paper3))
+        .overlay(Rectangle().stroke(v2.line, lineWidth: 1))
+        .animation(.easeOut(duration: 0.18), value: selected)
+    }
+
+    @ViewBuilder
+    private func segment(_ provider: V2AgentProvider) -> some View {
+        let isSelected = provider == selected
+        let enabled = isSelected || (!busy && isAvailable(provider))
+        Button {
+            guard !isSelected, enabled else { return }
+            onSelect(provider)
+        } label: {
+            HStack(spacing: 7) {
+                V2ProviderMark(provider: provider, size: 12)
+                Text(provider.displayName)
+                    .font(.system(size: 12.5, weight: .medium))
+            }
+            .foregroundColor(isSelected ? v2.ink : (enabled ? v2.mute : v2.faint))
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 8)
+            .background {
+                if isSelected {
+                    Rectangle()
+                        .fill(v2.paper)
+                        .overlay(Rectangle().stroke(v2.line2, lineWidth: 1))
+                        .matchedGeometryEffect(id: "provider-pill", in: selectionNS)
+                }
+            }
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .help(helpText(provider, isSelected: isSelected, enabled: enabled))
+        .accessibilityAddTraits(isSelected ? .isSelected : [])
+    }
+
+    private func helpText(_ provider: V2AgentProvider, isSelected: Bool, enabled: Bool) -> String {
+        if isSelected { return "\(provider.displayName) is active" }
+        if busy { return "Finish or interrupt the current turn to switch providers" }
+        if !enabled { return "\(provider.displayName) was not found on PATH" }
+        return "Continue this work with \(provider.displayName)"
+    }
+}
+
 /// Persistent provider identity for tabs, header controls, composers, and
 /// overflow rows. Compact surfaces use the recognizable mark without repeating
 /// the provider name; full badges retain text for selection and account views.

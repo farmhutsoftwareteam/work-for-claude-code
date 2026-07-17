@@ -716,6 +716,11 @@ struct V2LiveComposer: View {
 
             Spacer(minLength: 8)
 
+            // Plan-usage meter (5h/weekly quota %) — real state, hidden
+            // entirely until the first get_usage reply lands.
+            V2ComposerUsageMeter(limits: session.usageLimits, isTight: helperTight)
+                .layoutPriority(1)
+
             // The context meter is the one thing that always stays — it carries
             // real state (how full the window is), not a static hint.
             contextMeter

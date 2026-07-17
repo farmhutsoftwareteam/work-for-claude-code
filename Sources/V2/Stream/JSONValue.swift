@@ -98,4 +98,9 @@ enum JSONValue: Codable, Sendable, Equatable {
         if case .bool(let v) = self { return v }
         return nil
     }
+
+    var asDouble: Double? {
+        if case .number(let v) = self { return v }
+        return nil
+    }
 }

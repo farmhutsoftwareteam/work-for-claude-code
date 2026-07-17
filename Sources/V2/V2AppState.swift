@@ -232,6 +232,9 @@ final class V2AppState: ObservableObject {
             // unrelated re-render coincidentally fires (M17).
             session.$backgroundTasks.map { _ in () }.eraseToAnyPublisher(),
             session.$subagentRuns.map { _ in () }.eraseToAnyPublisher(),
+            // Plan-usage meters land at turn-end cadence — low-frequency by
+            // construction, safe to fan into chrome republish (perf §2).
+            session.$usageLimits.map { _ in () }.eraseToAnyPublisher(),
         ]
         let otherSub = Publishers.MergeMany(otherSignals)
             .receive(on: RunLoop.main)
@@ -257,7 +260,8 @@ final class V2AppState: ObservableObject {
             session.$effort.map { _ in () }.eraseToAnyPublisher(),
             session.$permissionMode.map { _ in () }.eraseToAnyPublisher(),
             session.$account.map { _ in () }.eraseToAnyPublisher(),
-            session.$mcpServers.map { _ in () }.eraseToAnyPublisher()
+            session.$mcpServers.map { _ in () }.eraseToAnyPublisher(),
+            session.$usageLimits.map { _ in () }.eraseToAnyPublisher()
         ])
         .receive(on: RunLoop.main)
         .sink { [weak self] _ in self?.objectWillChange.send() }

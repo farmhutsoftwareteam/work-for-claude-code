@@ -59,6 +59,11 @@ final class CodexSession: ObservableObject, V2TranscriptSource {
     @Published private(set) var loginInProgress = false
     @Published private(set) var totalTokens = 0
     @Published private(set) var contextWindow: Int?
+    /// Plan-usage meters (window usedPercent, reset times, plan type) from
+    /// account/rateLimits/read + the account/rateLimits/updated push —
+    /// same surface the ChatGPT app's meter reads. Drives the composer's
+    /// compact meter + the session-config LIMITS section.
+    @Published private(set) var usageLimits: V2UsageLimits?
     /// nil = still running, true = failed, false = succeeded — same valence
     /// convention V2LiveToolWidget/StreamSession.toolOutcomes already use.
     /// Keyed by ThreadItem id (commandExecution/fileChange/mcpToolCall/
@@ -221,6 +226,9 @@ final class CodexSession: ObservableObject, V2TranscriptSource {
                 // MCP discovery must never gate thread creation or history
                 // restore. Slow/startup-heavy servers update independently.
                 Task { [weak self] in await self?.refreshMCPStatus() }
+                // Seed the plan-usage meters once; the account/rateLimits/
+                // updated push keeps them fresh from here without polling.
+                Task { [weak self] in await self?.refreshRateLimits() }
             } catch {
                 client.stop()
                 if self.client === client { self.client = nil }
@@ -292,6 +300,23 @@ final class CodexSession: ObservableObject, V2TranscriptSource {
     /// account/read failure during startup must not silently fall through
     /// to openThreadIfNeeded() on that unverified assumption.
     @discardableResult
+    /// One-time seed read of the plan meters; live updates arrive via the
+    /// account/rateLimits/updated notification. Failure is non-fatal — an
+    /// unauthenticated or API-key account may simply not have limits, and
+    /// the meter not rendering is the correct representation of that.
+    func refreshRateLimits() async {
+        guard let client else { return }
+        do {
+            let response = try await client.requestWithNullParams("account/rateLimits/read")
+            if let snapshot = response["rateLimits"] as? [String: Any],
+               let parsed = V2UsageLimits.fromCodex(snapshot) {
+                usageLimits = parsed
+            }
+        } catch {
+            log.debug("account/rateLimits/read failed: \(error.localizedDescription, privacy: .public)")
+        }
+    }
+
     /// Recovers from an abandoned browser sign-in — closing the OAuth tab
     /// without finishing it left loginInProgress stuck true forever (no
     /// timeout, no server-pushed "you gave up" notification exists), so
@@ -785,6 +810,11 @@ final class CodexSession: ObservableObject, V2TranscriptSource {
             }
         case "mcpServer/oauthLogin/completed", "mcpServer/startupStatus/updated":
             Task { [weak self] in await self?.refreshMCPStatus() }
+        case "account/rateLimits/updated":
+            if let snapshot = params["rateLimits"] as? [String: Any],
+               let parsed = V2UsageLimits.fromCodex(snapshot) {
+                usageLimits = parsed
+            }
         case "turn/started":
             turnId = (params["turn"] as? [String: Any])?["id"] as? String
             if turnStartedAt == nil { turnStartedAt = Date() }
