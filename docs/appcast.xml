@@ -6,6 +6,26 @@
         <description>Updates for Work</description>
         <language>en</language>
         <item>
+            <title>Version 2.10.5</title>
+            <pubDate>Sun, 19 Jul 2026 09:14:22 +0400</pubDate>
+            <sparkle:version>72</sparkle:version>
+            <sparkle:shortVersionString>2.10.5</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>15.0</sparkle:minimumSystemVersion>
+            <description><![CDATA[
+                <h3>Atelier 2.10.5 — the provider switcher is readable again</h3>
+                <ul>
+                    <li><b>Fixed the provider switcher rendering the active provider as a solid black slab with an unreadable label.</b> 2.10.4 filled the selected segment with the same color as its text, so the name of the provider you were actually talking to was invisible.</li>
+                    <li><b>Restored the Claude and ChatGPT product marks in the switcher</b> — 2.10.4 had dropped them, leaving two words in a grey box.</li>
+                    <li><b>The active segment now carries that provider's own accent color</b> — the same terracotta and teal used by the badges and transcript — so the switcher shows which agent you're talking to, not just which half is on.</li>
+                </ul>
+            ]]></description>
+            <enclosure
+                url="https://work.munyamakosa.com/Work-2.10.5.dmg"
+                length="14839358"
+                type="application/octet-stream"
+                sparkle:edSignature="J+8RCWlrJjUkHgacEpHllZTZ4pras5ZoQ4z/YUgVZGYbcOJyY7IlB4iTK4RRFztxCUBXpIps1Q3R9XmjRxETBQ==" />
+        </item>
+        <item>
             <title>Version 2.10.4</title>
             <pubDate>Sat, 18 Jul 2026 21:30:41 +0400</pubDate>
             <sparkle:version>71</sparkle:version>
