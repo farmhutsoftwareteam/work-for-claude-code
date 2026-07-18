@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Changelog - Atelier</title>
-    <meta name="description" content="Every release of Atelier, dated and itemised. Latest: v2.10.2 (july 17, 2026).">
+    <meta name="description" content="Every release of Atelier, dated and itemised. Latest: v2.10.3 (july 18, 2026).">
     <link rel="canonical" href="https://work.munyamakosa.com/releases.html">
     <link rel="alternate" type="application/rss+xml" title="Atelier appcast" href="https://work.munyamakosa.com/appcast.xml">
 
@@ -184,13 +184,33 @@
         </div>
 
 
+    <article id="v2-10-3" class="release-article" style="display:grid;grid-template-columns:200px 1fr;gap:40px;padding:38px 0;border-bottom:1px solid var(--line);">
+      <div>
+        <div style="font-family:var(--helv);font-weight:500;font-size:22px;letter-spacing:-.01em;">
+          <a href="#v2-10-3" style="color:var(--ink);text-decoration:none;">v2.10.3</a>
+        </div>
+        <div style="font-family:var(--mono);font-size:11px;color:var(--mute);margin-top:6px;">2026 · jul 18</div>
+        <div style="display:inline-block;font-family:var(--mono);font-size:10px;letter-spacing:.08em;text-transform:uppercase;border:1px solid var(--line2);padding:3px 8px;margin-top:12px;">latest</div>
+        <div style="font-family:var(--mono);font-size:10px;color:var(--mute);margin-top:10px;">macOS 15.0+</div>
+      </div>
+      <div class="release-body" style="font-family:var(--helv);font-size:16px;line-height:1.6;color:rgba(27,28,30,.82);">
+        <h3>Plan meters and a real provider switcher</h3>
+        <ul>
+          <li><b>Your Claude and Codex plan limits are now visible in Atelier.</b> A compact gauge in the composer tracks session/weekly usage, and the session-config popover shows every window in full: percentage, severity, and reset time.</li>
+          <li><b>Claude limits come from the CLI's own zero-cost usage surface</b>, refreshed on session start, after every turn, and on rate-limit pushes — including model-scoped weekly limits.</li>
+          <li><b>Codex limits come from the app-server's rate-limit surface</b> with live push updates and plan type.</li>
+          <li><b>Provider switching is now a segmented control</b> — both providers always visible, the selection slides between them, in Atelier's sharp-cornered language. The popover no longer resizes when you switch.</li>
+          <li><b>An unavailable provider or a switch mid-turn now dims with an explanatory tooltip</b> instead of silently doing nothing.</li>
+        </ul>
+      </div>
+    </article>
+
     <article id="v2-10-2" class="release-article" style="display:grid;grid-template-columns:200px 1fr;gap:40px;padding:38px 0;border-bottom:1px solid var(--line);">
       <div>
         <div style="font-family:var(--helv);font-weight:500;font-size:22px;letter-spacing:-.01em;">
           <a href="#v2-10-2" style="color:var(--ink);text-decoration:none;">v2.10.2</a>
         </div>
         <div style="font-family:var(--mono);font-size:11px;color:var(--mute);margin-top:6px;">2026 · jul 17</div>
-        <div style="display:inline-block;font-family:var(--mono);font-size:10px;letter-spacing:.08em;text-transform:uppercase;border:1px solid var(--line2);padding:3px 8px;margin-top:12px;">latest</div>
         <div style="font-family:var(--mono);font-size:10px;color:var(--mute);margin-top:10px;">macOS 15.0+</div>
       </div>
       <div class="release-body" style="font-family:var(--helv);font-size:16px;line-height:1.6;color:rgba(27,28,30,.82);">

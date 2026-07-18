@@ -6,6 +6,28 @@
         <description>Updates for Work</description>
         <language>en</language>
         <item>
+            <title>Version 2.10.3</title>
+            <pubDate>Sat, 18 Jul 2026 12:08:20 +0400</pubDate>
+            <sparkle:version>70</sparkle:version>
+            <sparkle:shortVersionString>2.10.3</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>15.0</sparkle:minimumSystemVersion>
+            <description><![CDATA[
+                <h3>Atelier 2.10.3 — plan meters and a real provider switcher</h3>
+                <ul>
+                    <li><b>Your Claude and Codex plan limits are now visible in Atelier</b> — the same meters claude.ai and the ChatGPT app show. A compact gauge sits next to the composer's context meter for session/weekly usage, and the session-config popover shows every window in full: percentage bar, severity, and reset time.</li>
+                    <li><b>Claude limits come from the CLI's own zero-cost usage surface</b> — refreshed at session start, after every turn, and whenever the stream pushes a rate-limit change, including model-scoped weekly limits.</li>
+                    <li><b>Codex limits come from the app-server's rate-limit surface</b> with live push updates, including plan type.</li>
+                    <li><b>Switching between Claude and Codex is now a proper segmented switcher</b> at the top of the session-config popover — both providers always visible, the selected one slides between them, in Atelier's sharp-cornered visual language. The popover no longer changes size when you switch.</li>
+                    <li><b>A provider that isn't installed, or a switch attempted mid-turn, now dims with an explanatory tooltip</b> instead of silently doing nothing.</li>
+                </ul>
+            ]]></description>
+            <enclosure
+                url="https://work.munyamakosa.com/Work-2.10.3.dmg"
+                length="14630655"
+                type="application/octet-stream"
+                sparkle:edSignature="at6tfqCncwcI2KxF0vITqYIBNEAOrRIdudx/cblwRwyJuMJE985isPibjcdHKE4p/hjK3LY0kZM30gZNynFZDw==" />
+        </item>
+        <item>
             <title>Version 2.10.2</title>
             <pubDate>Fri, 17 Jul 2026 13:45:23 +0400</pubDate>
             <sparkle:version>69</sparkle:version>
