@@ -209,60 +209,68 @@ struct V2ComposerContextMeter: View {
 }
 
 /// Compact plan-usage meter for the composer helper row — the quota the
-/// browser/apps show ("5h 16% · wk 39%"), sourced from each provider's real
-/// limit surface (see V2UsageLimits). Renders nothing when no data has ever
-/// arrived (API-key auth, network fail) — an empty meter would be a lie.
-/// Same visual atoms as V2ComposerContextMeter beside it: sharp 4pt bar,
-/// monospace caption, del-tint when a window runs hot.
+/// browser/apps show, sourced from each provider's real limit surface (see
+/// V2UsageLimits). Renders nothing when no data has ever arrived (API-key
+/// auth, network fail) — an empty meter would be a lie.
+///
+/// Per "Provider switcher and limits.dc.html" option 1e (Claude Design
+/// project 923827b0-…): shows the SESSION window only, normally — weekly
+/// stays out of the row entirely until it crosses into warning, at which
+/// point it REPLACES the session meter rather than sitting alongside it
+/// ("the tighter constraint is the one worth glancing at"). Same visual
+/// atoms as V2ComposerContextMeter beside it: sharp 4pt bar, monospace
+/// label, del-tint when the shown window runs hot.
 struct V2ComposerUsageMeter: View {
     @Environment(\.v2) private var v2
     let limits: V2UsageLimits?
     let isTight: Bool
 
+    /// The session window (label "5h"), or the worst non-session window
+    /// once one of them is warning/exceeded — never both at once.
+    private var shown: V2UsageLimits.Window? {
+        guard let limits else { return nil }
+        let session = limits.windows.first { $0.label == "5h" }
+        let worstOther = limits.windows
+            .filter { $0.label != "5h" }
+            .max { ($0.severity.rank, $0.percent) < ($1.severity.rank, $1.percent) }
+        if let worstOther, worstOther.severity != .normal { return worstOther }
+        return session ?? limits.windows.first
+    }
+
     var body: some View {
-        if let limits, let headline = limits.headline {
-            HStack(spacing: 8) {
-                bar(for: headline)
-                if isTight {
-                    Text("\(headline.percent)%")
-                        .foregroundColor(color(for: headline.severity))
-                        .lineLimit(1)
-                } else {
-                    Text(caption(limits, headline: headline))
-                        .foregroundColor(color(for: headline.severity))
-                        .lineLimit(1)
-                }
+        if let limits, let window = shown {
+            let tint = color(for: window.severity)
+            HStack(spacing: 6) {
+                Text(shortLabel(window))
+                    .foregroundColor(tint)
+                bar(for: window, tint: tint)
+                Text(window.severity == .exceeded ? "limit" : "\(window.percent)%")
+                    .foregroundColor(window.severity == .normal ? v2.mute : tint)
+                    .fontWeight(window.severity == .normal ? .regular : .semibold)
             }
+            .lineLimit(1)
             .fixedSize(horizontal: true, vertical: false)
             .help(helpText(limits))
         }
     }
 
-    private func bar(for window: V2UsageLimits.Window) -> some View {
+    /// "5h" for the session window, "wk" for anything else (weekly,
+    /// weekly-scoped-to-a-model) — matches the design's compact labels.
+    private func shortLabel(_ window: V2UsageLimits.Window) -> String {
+        window.label == "5h" ? "5h" : "wk"
+    }
+
+    private func bar(for window: V2UsageLimits.Window, tint: Color) -> some View {
         let fraction = min(1, Double(window.percent) / 100)
         return ZStack(alignment: .leading) {
             Rectangle().fill(v2.line2).frame(width: 34, height: 4)
-            Rectangle().fill(color(for: window.severity, filled: true))
+            Rectangle().fill(window.severity == .normal ? v2.ink : tint)
                 .frame(width: 34 * max(0, fraction), height: 4)
         }
     }
 
-    private func caption(_ limits: V2UsageLimits, headline: V2UsageLimits.Window) -> String {
-        // Headline window + the weekly companion when the headline is the
-        // session window — the two numbers people actually track.
-        var parts = ["\(headline.label) \(headline.percent)%"]
-        if headline.label == "5h",
-           let weekly = limits.windows.first(where: { $0.label == "week" }) {
-            parts.append("wk \(weekly.percent)%")
-        }
-        return parts.joined(separator: " · ")
-    }
-
-    private func color(for severity: V2UsageLimits.Severity, filled: Bool = false) -> Color {
-        switch severity {
-        case .normal: return filled ? v2.ink : v2.faint
-        case .warning, .exceeded: return v2.del
-        }
+    private func color(for severity: V2UsageLimits.Severity) -> Color {
+        severity == .normal ? v2.faint : v2.del
     }
 
     private func helpText(_ limits: V2UsageLimits) -> String {

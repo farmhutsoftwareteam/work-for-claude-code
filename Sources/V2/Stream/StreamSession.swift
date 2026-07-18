@@ -1697,6 +1697,12 @@ final class StreamSession: ObservableObject, V2TranscriptSource {
             if cr.response.requestId.hasPrefix("usage"),
                cr.response.subtype == "success",
                let parsed = V2UsageLimits.fromClaude(cr.response.response) {
+                // Design 1h: a crossing prints once into the transcript,
+                // not a toast — computed against the PREVIOUS snapshot
+                // before it's overwritten below.
+                for window in V2UsageLimits.crossings(from: usageLimits, to: parsed) {
+                    transcript.append(.systemNote(kind: .info, text: V2UsageLimits.crossingMessage(for: window)))
+                }
                 usageLimits = parsed
             }
         case .rateLimitEvent(let evt):

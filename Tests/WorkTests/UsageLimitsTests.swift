@@ -32,8 +32,9 @@ final class UsageLimitsTests: XCTestCase {
         for window in limits.windows {
             XCTAssertNotNil(window.resetsAt, "\(window.label) lost its reset date")
         }
-        // The active scoped window wins the headline slot.
-        XCTAssertEqual(limits.headline?.label, "week · Fable")
+        // is_active is parsed faithfully even though nothing currently
+        // reads it for display — real API data, not a speculative field.
+        XCTAssertEqual(limits.windows.filter(\.isActive).map(\.label), ["week · Fable"])
     }
 
     func testClaudePayloadWithoutRateLimitsReturnsNilRatherThanAnEmptyMeter() throws {
@@ -69,5 +70,56 @@ final class UsageLimitsTests: XCTestCase {
     func testCodexEmptySnapshotReturnsNil() {
         XCTAssertNil(V2UsageLimits.fromCodex([:]))
         XCTAssertNil(V2UsageLimits.fromCodex(nil))
+    }
+
+    // MARK: - Threshold crossings (design 1h)
+
+    private func snapshot(_ windows: [(String, Int, V2UsageLimits.Severity)]) -> V2UsageLimits {
+        V2UsageLimits(
+            windows: windows.map { .init(label: $0.0, percent: $0.1, resetsAt: nil, severity: $0.2, isActive: false) },
+            planLabel: nil, updatedAt: Date(timeIntervalSince1970: 0)
+        )
+    }
+
+    func testFirstSnapshotEverNeverFiresACrossing() {
+        let first = snapshot([("week", 82, .warning)])
+        XCTAssertTrue(V2UsageLimits.crossings(from: nil, to: first).isEmpty,
+                       "the first snapshot a session ever sees is where things stand, not a crossing")
+    }
+
+    func testNormalToWarningFires() {
+        let before = snapshot([("week", 74, .normal)])
+        let after = snapshot([("week", 81, .warning)])
+        let crossed = V2UsageLimits.crossings(from: before, to: after)
+        XCTAssertEqual(crossed.map(\.label), ["week"])
+    }
+
+    func testWarningToExceededFiresAgain() {
+        let before = snapshot([("week", 81, .warning)])
+        let after = snapshot([("week", 100, .exceeded)])
+        XCTAssertEqual(V2UsageLimits.crossings(from: before, to: after).map(\.label), ["week"])
+    }
+
+    func testStayingInTheSameSeverityDoesNotRefire() {
+        let before = snapshot([("week", 81, .warning)])
+        let after = snapshot([("week", 88, .warning)])
+        XCTAssertTrue(V2UsageLimits.crossings(from: before, to: after).isEmpty,
+                       "still warning, not a new crossing — must not spam a note per refresh")
+    }
+
+    func testRecoveringToNormalNeverFires() {
+        let before = snapshot([("week", 100, .exceeded)])
+        let after = snapshot([("week", 3, .normal)])
+        XCTAssertTrue(V2UsageLimits.crossings(from: before, to: after).isEmpty,
+                       "a reset dropping severity is good news, not an event")
+    }
+
+    func testExceededMessageDoesNotClaimSendsArePaused() {
+        // Atelier doesn't itself block sending at the limit — the message
+        // must not claim behavior the app doesn't actually have.
+        let window = V2UsageLimits.Window(label: "week", percent: 100, resetsAt: nil, severity: .exceeded, isActive: false)
+        let message = V2UsageLimits.crossingMessage(for: window)
+        XCTAssertTrue(message.contains("limit reached"))
+        XCTAssertFalse(message.lowercased().contains("paused"))
     }
 }

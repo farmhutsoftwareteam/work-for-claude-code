@@ -47,6 +47,12 @@ final class V2AppState: ObservableObject {
     @Published var codexBinary: URL?
     @Published var codexVersion: SemVer?
 
+    /// Claude's real sign-in status/flow — see ClaudeAuthManager's header
+    /// for why this exists as its own object rather than living on
+    /// StreamSession: auth has to be checkable/fixable BEFORE any session
+    /// spawn is attempted, not discovered from one failing.
+    let claudeAuth = ClaudeAuthManager()
+
     /// Runtime used by the plain + button / ⌘N. Menus can still explicitly
     /// create either provider without changing this preference.
     @AppStorage("v2.defaultAgentProvider") var defaultAgentProviderRaw = V2AgentProvider.claude.rawValue
@@ -1330,6 +1336,11 @@ final class V2AppState: ObservableObject {
         claudeVersion = claude.1
         codexBinary = codex.0
         codexVersion = codex.1
+        // Known BEFORE any session spawn is attempted — the whole point
+        // is not discovering "not authenticated" from a failed launch.
+        if let claudeBinary {
+            Task { await claudeAuth.checkStatus(binary: claudeBinary) }
+        }
     }
 }
 

@@ -38,14 +38,6 @@ struct V2UsageLimits: Equatable {
     /// "max" / "pro" (Claude) or "plus" / "pro" / "team"… (Codex).
     var planLabel: String?
     var updatedAt: Date
-
-    /// The single window worth showing when there's room for only one:
-    /// the active one, else the worst by severity-then-percent.
-    var headline: Window? {
-        windows.first(where: \.isActive) ?? windows.max { a, b in
-            (a.severity.rank, a.percent) < (b.severity.rank, b.percent)
-        }
-    }
 }
 
 extension V2UsageLimits.Severity {
@@ -54,6 +46,40 @@ extension V2UsageLimits.Severity {
         case .normal: return 0
         case .warning: return 1
         case .exceeded: return 2
+        }
+    }
+}
+
+// MARK: - Threshold crossings (design 1h: a transcript line, once, not a toast)
+
+extension V2UsageLimits {
+    /// Windows whose severity just got WORSE compared to `previous` — never
+    /// fires on the way back down (a reset dropping a window from exceeded
+    /// to normal is good news, not an event), never fires for a window
+    /// already sitting at its current tier (only a rank INCREASE counts),
+    /// and never fires against a nil `previous` (the very first snapshot a
+    /// session ever sees isn't a "crossing", it's just where things stand —
+    /// firing there would announce a pre-existing condition as if it just
+    /// happened).
+    static func crossings(from previous: V2UsageLimits?, to current: V2UsageLimits) -> [Window] {
+        guard let previous else { return [] }
+        return current.windows.filter { window in
+            let previousRank = previous.windows.first(where: { $0.label == window.label })?.severity.rank ?? 0
+            return window.severity != .normal && window.severity.rank > previousRank
+        }
+    }
+
+    /// The transcript line for a single crossing. Deliberately doesn't
+    /// claim Atelier blocks sends at the limit — it doesn't enforce that
+    /// itself; the provider's own API will reject requests once truly
+    /// exhausted. Stating only what's actually true: the window, its
+    /// state, and when it recovers.
+    static func crossingMessage(for window: Window) -> String {
+        let resetSuffix = window.resetsAt.map { " — resets \(V2ComposerUsageMeter.resetFormatter.string(from: $0))" } ?? ""
+        switch window.severity {
+        case .exceeded: return "\(window.label) limit reached\(resetSuffix)"
+        case .warning:  return "\(window.label) usage crossed \(window.percent)%\(resetSuffix)"
+        case .normal:   return "\(window.label) usage" // unreachable — crossings() excludes .normal
         }
     }
 }

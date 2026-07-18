@@ -163,21 +163,9 @@ private struct V2SessionConfigPopover: View {
         return false
     }
 
-    private var accountCaption: String {
-        if let codex = appState.activeCodexSession {
-            return codex.account?.label ?? "local app-server"
-        }
-        return "Code subscription"
-    }
-
     private var usageLimits: V2UsageLimits? {
         if let codex = appState.activeCodexSession { return codex.usageLimits }
         return appState.activeSession?.usageLimits
-    }
-
-    private var captionWithPlan: String {
-        guard let plan = usageLimits?.planLabel, !plan.isEmpty else { return accountCaption }
-        return "\(accountCaption) · \(plan) plan"
     }
 
     /// The full quota breakdown — every window the provider reports, with
@@ -193,34 +181,75 @@ private struct V2SessionConfigPopover: View {
                 .padding(.horizontal, 13).padding(.top, 10).padding(.bottom, 6)
                 .overlay(alignment: .top) { Rectangle().fill(v2.line).frame(height: 1) }
             ForEach(limits.windows) { window in
-                HStack(spacing: 9) {
-                    Text(window.label)
-                        .foregroundColor(v2.mute)
-                        .frame(width: 84, alignment: .leading)
-                        .lineLimit(1).truncationMode(.tail)
-                    ZStack(alignment: .leading) {
-                        Rectangle().fill(v2.line2).frame(width: 70, height: 4)
-                        Rectangle()
-                            .fill(window.severity == .normal ? v2.ink : v2.del)
-                            .frame(width: 70 * min(1, Double(window.percent) / 100), height: 4)
-                    }
-                    Text("\(window.percent)%")
-                        .foregroundColor(window.severity == .normal ? v2.ink : v2.del)
-                        .frame(width: 36, alignment: .trailing)
-                        .monospacedDigit()
-                    Spacer(minLength: 4)
-                    if let resets = window.resetsAt {
-                        Text("resets \(V2ComposerUsageMeter.resetFormatter.string(from: resets))")
-                            .foregroundColor(v2.faint)
-                            .lineLimit(1)
-                    }
-                }
-                .font(.system(size: 10.5, design: .monospaced))
-                .padding(.horizontal, 13)
-                .padding(.vertical, 4)
+                limitRow(window)
             }
         }
         .padding(.bottom, 8)
+    }
+
+    /// A single window's row. Exceeded gets the design's distinct
+    /// treatment — full-red fill (not proportional; there's nothing left
+    /// to show as "remaining"), "exceeded" replaces the bare percent, and
+    /// the footer trades the reset time for what the exceeded window
+    /// actually blocks, in red rather than the quiet faint used elsewhere.
+    private func limitRow(_ window: V2UsageLimits.Window) -> some View {
+        let exceeded = window.severity == .exceeded
+        let tint = window.severity == .normal ? v2.ink : v2.del
+        return VStack(alignment: .leading, spacing: 3) {
+            HStack(spacing: 9) {
+                Text(window.label)
+                    .foregroundColor(v2.mute)
+                    .frame(width: 84, alignment: .leading)
+                    .lineLimit(1).truncationMode(.tail)
+                ZStack(alignment: .leading) {
+                    Rectangle().fill(v2.line2).frame(width: 70, height: 4)
+                    Rectangle()
+                        .fill(tint)
+                        .frame(width: exceeded ? 70 : 70 * min(1, Double(window.percent) / 100), height: 4)
+                }
+                Text(exceeded ? "exceeded" : "\(window.percent)%")
+                    .foregroundColor(tint)
+                    .fontWeight(window.severity == .normal ? .regular : .semibold)
+                    .frame(width: 48, alignment: .trailing)
+                    .monospacedDigit()
+                    .lineLimit(1)
+                Spacer(minLength: 4)
+                if !exceeded, let resets = window.resetsAt {
+                    Text("resets \(V2ComposerUsageMeter.resetFormatter.string(from: resets))")
+                        .foregroundColor(v2.faint)
+                        .lineLimit(1)
+                }
+            }
+            if exceeded {
+                Text(exceededImpactText(window))
+                    .foregroundColor(v2.del)
+                    .lineLimit(2)
+                    .padding(.leading, 93)
+            }
+        }
+        .font(.system(size: 10.5, design: .monospaced))
+        .padding(.horizontal, 13)
+        .padding(.vertical, 4)
+    }
+
+    /// "week · opus" → "opus limit reached — resets {time}"; a window
+    /// without a model-scoped label just states the reset.
+    private func exceededImpactText(_ window: V2UsageLimits.Window) -> String {
+        let scope = window.label.split(separator: "·").last.map { $0.trimmingCharacters(in: .whitespaces) }
+        let subject = (scope?.isEmpty == false && scope != window.label) ? scope! : window.label
+        guard let resets = window.resetsAt else { return "\(subject) limit reached" }
+        return "\(subject) limit reached — resets \(V2ComposerUsageMeter.resetFormatter.string(from: resets))"
+    }
+
+    /// Both provider slots persist on a tab independent of which is active
+    /// (TerminalTab.streamSession / .codexSession both exist regardless of
+    /// TerminalTab.provider) — so the inactive segment can show real plan
+    /// data too, not just the active one.
+    private func planSubtitle(_ provider: V2AgentProvider) -> String? {
+        switch provider {
+        case .claude: return appState.activeTab?.streamSession?.usageLimits?.planLabel
+        case .codex: return appState.activeTab?.codexSession?.usageLimits?.planLabel
+        }
     }
 
     var body: some View {
@@ -230,16 +259,11 @@ private struct V2SessionConfigPopover: View {
                 isAvailable: { provider in
                     provider == .claude ? appState.claudeBinary != nil : appState.codexBinary != nil
                 },
-                busy: busy
+                busy: busy,
+                subtitle: planSubtitle
             ) { appState.switchActiveProvider(to: $0) }
                 .padding(.horizontal, 13)
                 .padding(.top, 13)
-                .padding(.bottom, 7)
-
-            Text(captionWithPlan)
-                .font(.system(size: 10, design: .monospaced))
-                .foregroundColor(v2.faint)
-                .frame(maxWidth: .infinity, alignment: .center)
                 .padding(.bottom, 10)
 
             if let limits = usageLimits {

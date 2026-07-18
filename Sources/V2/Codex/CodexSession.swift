@@ -310,6 +310,9 @@ final class CodexSession: ObservableObject, V2TranscriptSource {
             let response = try await client.requestWithNullParams("account/rateLimits/read")
             if let snapshot = response["rateLimits"] as? [String: Any],
                let parsed = V2UsageLimits.fromCodex(snapshot) {
+                for window in V2UsageLimits.crossings(from: usageLimits, to: parsed) {
+                    transcript.append(.systemNote(kind: .info, text: V2UsageLimits.crossingMessage(for: window)))
+                }
                 usageLimits = parsed
             }
         } catch {
@@ -813,6 +816,9 @@ final class CodexSession: ObservableObject, V2TranscriptSource {
         case "account/rateLimits/updated":
             if let snapshot = params["rateLimits"] as? [String: Any],
                let parsed = V2UsageLimits.fromCodex(snapshot) {
+                for window in V2UsageLimits.crossings(from: usageLimits, to: parsed) {
+                    transcript.append(.systemNote(kind: .info, text: V2UsageLimits.crossingMessage(for: window)))
+                }
                 usageLimits = parsed
             }
         case "turn/started":

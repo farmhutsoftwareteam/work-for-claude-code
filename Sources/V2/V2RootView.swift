@@ -19,6 +19,9 @@ struct V2RootView: View {
     /// as an overlay. Off by default; the shipping StreamSession chat is
     /// untouched whether this is open or not.
     @State private var showACPPreview = false
+    @State private var showClaudeInstall = false
+    @State private var showCodexInstall = false
+    @State private var showClaudeSignIn = false
 
     private var theme: V2ThemeChoice {
         V2ThemeChoice(rawValue: themeRaw) ?? .system
@@ -412,6 +415,12 @@ struct V2RootView: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(palette.paper)
+        .sheet(isPresented: $showClaudeInstall) {
+            V2ProviderInstallSheet(provider: .claude).environmentObject(appState)
+        }
+        .sheet(isPresented: $showCodexInstall) {
+            V2ProviderInstallSheet(provider: .codex).environmentObject(appState)
+        }
     }
 
     private func providerAvailability(
@@ -422,17 +431,42 @@ struct V2RootView: View {
         let status = isAvailable
             ? version.map { "v\($0.description) ready" } ?? "ready"
             : "not found"
-        return HStack(spacing: 6) {
-            V2ProviderMark(provider: provider, size: 11)
-            Text(status)
-                .font(.system(size: 10.5, design: .monospaced))
-                .foregroundColor(isAvailable ? palette.faint : palette.del)
+        return Button {
+            guard !isAvailable else { return }
+            if provider == .claude { showClaudeInstall = true } else { showCodexInstall = true }
+        } label: {
+            HStack(spacing: 6) {
+                V2ProviderMark(provider: provider, size: 11)
+                Text(status)
+                    .font(.system(size: 10.5, design: .monospaced))
+                    .foregroundColor(isAvailable ? palette.faint : palette.del)
+            }
+            .padding(.horizontal, 7)
+            .padding(.vertical, 4)
+            .background(palette.providerBackground(provider))
+            .overlay(Rectangle().stroke(palette.providerAccent(provider).opacity(0.60), lineWidth: 1))
         }
-        .padding(.horizontal, 7)
-        .padding(.vertical, 4)
-        .background(palette.providerBackground(provider))
-        .overlay(Rectangle().stroke(palette.providerAccent(provider).opacity(0.60), lineWidth: 1))
-        .help("\(provider.displayName) \(isAvailable ? "is ready" : "was not found on PATH")")
+        .buttonStyle(.plain)
+        .disabled(isAvailable)
+        .help("\(provider.displayName) \(isAvailable ? "is ready" : "was not found — click to install")")
+    }
+
+    /// Replaces a plain, unclickable "not found" sentence with an actual
+    /// next step — the whole point of this pass (user report, 2026-07-18:
+    /// a fresh user with no binary or no auth had nowhere to go from here).
+    private func actionableNotice(_ text: String, action: String, onTap: @escaping () -> Void) -> some View {
+        HStack(spacing: 8) {
+            Text(text)
+                .font(.system(size: 10.5, design: .monospaced))
+                .foregroundColor(palette.del)
+            Button(action: onTap) {
+                Text(action)
+                    .font(.system(size: 10.5, weight: .medium, design: .monospaced))
+                    .foregroundColor(palette.ink)
+                    .underline()
+            }
+            .buttonStyle(.plain)
+        }
     }
 
     private func closeActiveTabOrWindow() {
@@ -484,14 +518,24 @@ struct V2RootView: View {
                     .font(.system(size: 10.5, design: .monospaced))
                     .foregroundColor(palette.faint)
             } else if appState.claudeBinary == nil {
-                Text("Couldn't find `claude`. Install Claude Code or set ~/.claude/local/claude.")
-                    .font(.system(size: 10.5, design: .monospaced))
-                    .foregroundColor(palette.del)
+                actionableNotice("Claude Code isn't installed.", action: "Install") { showClaudeInstall = true }
             } else if !canStart {
                 Text("Mode-B needs ≥ \(ClaudeBinary.minimumSupported.description). Update Claude Code.")
                     .font(.system(size: 10.5, design: .monospaced))
                     .foregroundColor(palette.del)
+            } else if case .loggedOut = appState.claudeAuth.status {
+                actionableNotice("Not signed in to Claude.", action: "Sign in") { showClaudeSignIn = true }
+            } else if case .checkFailed(let message) = appState.claudeAuth.status {
+                Text(message)
+                    .font(.system(size: 10.5, design: .monospaced))
+                    .foregroundColor(palette.del)
             }
+        }
+        .sheet(isPresented: $showClaudeInstall) {
+            V2ProviderInstallSheet(provider: .claude).environmentObject(appState)
+        }
+        .sheet(isPresented: $showClaudeSignIn) {
+            V2ClaudeSignInSheet(auth: appState.claudeAuth).environmentObject(appState)
         }
         .padding(.horizontal, 26)
         .padding(.vertical, 14)
@@ -515,8 +559,7 @@ struct V2RootView: View {
             }
             .buttonStyle(.plain).disabled(!canStart)
             if !canStart {
-                Text("`codex` not found on PATH — install Codex CLI")
-                    .font(.system(size: 10.5, design: .monospaced)).foregroundColor(palette.del)
+                actionableNotice("Codex CLI isn't installed.", action: "Install") { showCodexInstall = true }
             } else if let error = session.endError {
                 Text(error).font(.system(size: 10.5, design: .monospaced)).foregroundColor(palette.del).lineLimit(2)
             }
@@ -524,6 +567,9 @@ struct V2RootView: View {
         }
         .padding(.horizontal, 26).padding(.vertical, 12)
         .overlay(alignment: .top) { Rectangle().fill(palette.line).frame(height: 1) }
+        .sheet(isPresented: $showCodexInstall) {
+            V2ProviderInstallSheet(provider: .codex).environmentObject(appState)
+        }
     }
 }
 
