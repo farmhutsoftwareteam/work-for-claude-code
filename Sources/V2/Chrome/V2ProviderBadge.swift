@@ -36,6 +36,10 @@ struct V2ProviderMark: View {
     @Environment(\.v2) private var v2
     let provider: V2AgentProvider
     var size: CGFloat = 13
+    /// Overrides the accent tint. A mark sitting ON an accent-filled
+    /// surface must not also be drawn in that accent — it disappears.
+    /// Callers on a filled surface pass that surface's contrasting ink.
+    var tint: Color?
 
     var body: some View {
         Image(provider.logoAssetName)
@@ -43,7 +47,7 @@ struct V2ProviderMark: View {
             .renderingMode(.template)
             .aspectRatio(contentMode: .fit)
             .frame(width: size, height: size)
-            .foregroundColor(v2.providerAccent(provider))
+            .foregroundColor(tint ?? v2.providerAccent(provider))
             .accessibilityLabel("\(provider.displayName) provider")
     }
 }
@@ -103,6 +107,7 @@ struct V2ProviderTabs: View {
     private func segment(_ provider: V2AgentProvider) -> some View {
         let isSelected = provider == selected
         let enabled = isSelected || (!busy && isAvailable(provider))
+        let accent = v2.providerAccent(provider)
         Button {
             if isSelected {
                 // Clicking the active segment while something is armed is
@@ -113,21 +118,37 @@ struct V2ProviderTabs: View {
             guard enabled else { return }
             armed = provider
         } label: {
-            VStack(spacing: 1) {
-                Text(provider.displayName)
-                    .font(.system(size: 12.5, weight: .medium))
-                if let subtitle = subtitle(provider) {
-                    Text(subtitle)
-                        .font(.system(size: 9.5, design: .monospaced))
-                        .opacity(0.62)
+            HStack(spacing: 7) {
+                // The product marks carry the recognition — a name-only
+                // switcher reads as two words in a grey box.
+                V2ProviderMark(
+                    provider: provider,
+                    size: 13,
+                    tint: isSelected ? v2.paper : (enabled ? accent : v2.faint)
+                )
+                VStack(alignment: .leading, spacing: 0) {
+                    Text(provider.displayName)
+                        .font(.system(size: 12.5, weight: .medium))
+                        .foregroundColor(isSelected ? v2.paper : (enabled ? v2.mute : v2.faint))
+                        .lineLimit(1)
+                    if let subtitle = subtitle(provider) {
+                        Text(subtitle)
+                            .font(.system(size: 9.5, design: .monospaced))
+                            .foregroundColor(isSelected ? v2.paper.opacity(0.82) : v2.faint)
+                            .lineLimit(1)
+                    }
                 }
             }
-            .foregroundColor(isSelected ? v2.ink : (enabled ? v2.mute : v2.faint))
             .frame(maxWidth: .infinity)
             .padding(.vertical, 7)
             .background {
                 if isSelected {
-                    Rectangle().fill(v2.ink)
+                    // The selection carries the PROVIDER's accent, not a
+                    // flat ink slab — same terracotta/teal identity the
+                    // badges and transcript already use, so the control
+                    // says which agent you're talking to, not just which
+                    // half is on.
+                    Rectangle().fill(accent)
                         .matchedGeometryEffect(id: "provider-pill", in: selectionNS)
                 } else if armed == provider {
                     Rectangle().fill(v2.delBg)
@@ -137,7 +158,6 @@ struct V2ProviderTabs: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .foregroundColor(isSelected ? v2.paper : nil)
         .help(helpText(provider, isSelected: isSelected, enabled: enabled))
         .accessibilityAddTraits(isSelected ? .isSelected : [])
     }
