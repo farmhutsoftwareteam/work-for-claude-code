@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Changelog - Atelier</title>
-    <meta name="description" content="Every release of Atelier, dated and itemised. Latest: v2.10.3 (july 18, 2026).">
+    <meta name="description" content="Every release of Atelier, dated and itemised. Latest: v2.10.4 (july 18, 2026).">
     <link rel="canonical" href="https://work.munyamakosa.com/releases.html">
     <link rel="alternate" type="application/rss+xml" title="Atelier appcast" href="https://work.munyamakosa.com/appcast.xml">
 
@@ -184,13 +184,34 @@
         </div>
 
 
+    <article id="v2-10-4" class="release-article" style="display:grid;grid-template-columns:200px 1fr;gap:40px;padding:38px 0;border-bottom:1px solid var(--line);">
+      <div>
+        <div style="font-family:var(--helv);font-weight:500;font-size:22px;letter-spacing:-.01em;">
+          <a href="#v2-10-4" style="color:var(--ink);text-decoration:none;">v2.10.4</a>
+        </div>
+        <div style="font-family:var(--mono);font-size:11px;color:var(--mute);margin-top:6px;">2026 · jul 18</div>
+        <div style="display:inline-block;font-family:var(--mono);font-size:10px;letter-spacing:.08em;text-transform:uppercase;border:1px solid var(--line2);padding:3px 8px;margin-top:12px;">latest</div>
+        <div style="font-family:var(--mono);font-size:10px;color:var(--mute);margin-top:10px;">macOS 15.0+</div>
+      </div>
+      <div class="release-body" style="font-family:var(--helv);font-size:16px;line-height:1.6;color:rgba(27,28,30,.82);">
+        <h3>A real sign-in flow, and a refined provider switcher</h3>
+        <ul>
+          <li><b>Built a real "Sign in to Claude" flow.</b> Atelier previously had no way to detect or fix "not authenticated," just a silent failure. It now checks your real sign-in status before ever attempting a session, and offers an in-app sign-in when needed.</li>
+          <li><b>Added a real "not installed" screen for both Claude and Codex</b> — previously just plain, unclickable text. Now shows the actual install command (copy button, nothing runs automatically) and a link to the full guide, from both the empty state and each tab's start button.</li>
+          <li><b>The provider switcher now arms before it switches.</b> Clicking the other provider shows exactly what happens ("switching restarts the session — context is re-sent, in-flight work is lost") and requires an explicit confirm, instead of switching immediately.</li>
+          <li><b>The plan-usage breakdown now always shows reset time</b>, carries severity in the bar color, and gives an exceeded window its own clear state instead of just "100%".</li>
+          <li><b>The composer's compact usage meter now shows your session window by default</b>, and swaps to weekly only once weekly needs your attention — instead of showing both at once.</li>
+          <li><b>Crossing into a usage warning or hitting a limit now prints one line into the transcript when it happens</b>, instead of nothing.</li>
+        </ul>
+      </div>
+    </article>
+
     <article id="v2-10-3" class="release-article" style="display:grid;grid-template-columns:200px 1fr;gap:40px;padding:38px 0;border-bottom:1px solid var(--line);">
       <div>
         <div style="font-family:var(--helv);font-weight:500;font-size:22px;letter-spacing:-.01em;">
           <a href="#v2-10-3" style="color:var(--ink);text-decoration:none;">v2.10.3</a>
         </div>
         <div style="font-family:var(--mono);font-size:11px;color:var(--mute);margin-top:6px;">2026 · jul 18</div>
-        <div style="display:inline-block;font-family:var(--mono);font-size:10px;letter-spacing:.08em;text-transform:uppercase;border:1px solid var(--line2);padding:3px 8px;margin-top:12px;">latest</div>
         <div style="font-family:var(--mono);font-size:10px;color:var(--mute);margin-top:10px;">macOS 15.0+</div>
       </div>
       <div class="release-body" style="font-family:var(--helv);font-size:16px;line-height:1.6;color:rgba(27,28,30,.82);">

@@ -6,6 +6,29 @@
         <description>Updates for Work</description>
         <language>en</language>
         <item>
+            <title>Version 2.10.4</title>
+            <pubDate>Sat, 18 Jul 2026 21:30:41 +0400</pubDate>
+            <sparkle:version>71</sparkle:version>
+            <sparkle:shortVersionString>2.10.4</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>15.0</sparkle:minimumSystemVersion>
+            <description><![CDATA[
+                <h3>Atelier 2.10.4 — a real sign-in flow, and a refined provider switcher</h3>
+                <ul>
+                    <li><b>Built a real "Sign in to Claude" flow.</b> Atelier previously had no way to detect or fix "not authenticated," just a silent failure. It now checks your real sign-in status before ever attempting a session, and offers an in-app sign-in when needed.</li>
+                    <li><b>Added a real "not installed" screen for both Claude and Codex</b> — previously just plain, unclickable text. Now shows the actual install command (copy button, nothing runs automatically) and a link to the full guide, from both the empty state and each tab's start button.</li>
+                    <li><b>The provider switcher now arms before it switches.</b> Clicking the other provider shows exactly what happens ("switching restarts the session — context is re-sent, in-flight work is lost") and requires an explicit confirm, instead of switching immediately.</li>
+                    <li><b>The plan-usage breakdown now always shows reset time</b>, carries severity in the bar color, and gives an exceeded window its own clear state instead of just "100%".</li>
+                    <li><b>The composer's compact usage meter now shows your session window by default</b>, and swaps to weekly only once weekly needs your attention — instead of showing both at once.</li>
+                    <li><b>Crossing into a usage warning or hitting a limit now prints one line into the transcript when it happens</b>, instead of nothing.</li>
+                </ul>
+            ]]></description>
+            <enclosure
+                url="https://work.munyamakosa.com/Work-2.10.4.dmg"
+                length="14838231"
+                type="application/octet-stream"
+                sparkle:edSignature="9BzO/OsS5YtHabIWmt0eZeaSTZp2gphJU/1z23TV/6jgFEilHVMR2mmuo9lyM0l7ebHYv/6VnzluwigY3Mk/AQ==" />
+        </item>
+        <item>
             <title>Version 2.10.3</title>
             <pubDate>Sat, 18 Jul 2026 12:08:20 +0400</pubDate>
             <sparkle:version>70</sparkle:version>
