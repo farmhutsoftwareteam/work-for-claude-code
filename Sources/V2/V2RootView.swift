@@ -262,6 +262,11 @@ struct V2RootView: View {
                 if tab.provider == .codex, let session = tab.codexSession {
                     if session.requiresChatGPTLogin {
                         EmptyView()
+                    } else if session.isResuming {
+                        // History is loading off the app-server — the
+                        // transcript shows its "Loading conversation…"
+                        // overlay; don't flash the Start CTA underneath it.
+                        EmptyView()
                     } else {
                         switch session.state {
                         case .idle, .terminated:

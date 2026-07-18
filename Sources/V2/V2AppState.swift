@@ -391,14 +391,23 @@ final class V2AppState: ObservableObject {
         for tab in tabs {
             // Never the tab the user is looking at — the next message is most
             // likely here, and it shouldn't pay respawn latency.
-            guard tab.id != activeTabId,
-                  let session = tab.streamSession,
-                  session.state == .ready,
-                  now.timeIntervalSince(session.lastActivityAt) > Self.hibernateAfterSeconds,
-                  // A running co-driven terminal is live user-visible work.
-                  CoTerminalManager.shared.terminals(for: session).allSatisfy({ !$0.isRunning })
-            else { continue }
-            session.hibernate()
+            guard tab.id != activeTabId else { continue }
+            if let session = tab.streamSession,
+               session.state == .ready,
+               now.timeIntervalSince(session.lastActivityAt) > Self.hibernateAfterSeconds,
+               // A running co-driven terminal is live user-visible work.
+               CoTerminalManager.shared.terminals(for: session).allSatisfy({ !$0.isRunning }) {
+                session.hibernate()
+            }
+            // A Codex app-server is a real process too, and an idle one on a
+            // background tab is as reclaimable as an idle claude. Both slots
+            // are checked because a tab retains both independently of which
+            // provider is currently active on it.
+            if let codex = tab.codexSession,
+               codex.state == .ready,
+               now.timeIntervalSince(codex.lastActivityAt) > Self.hibernateAfterSeconds {
+                codex.hibernate()
+            }
         }
     }
 
@@ -690,14 +699,31 @@ final class V2AppState: ObservableObject {
                 )
             }
 
-            if codexAvailable, let codexId {
+            if codexAvailable, let codexId, let binary = codexBinary {
                 codexResumeIds[id] = codexId
                 let session = terminals.tabs.first(where: { $0.id == id })?.codexSession ?? CodexSession()
                 session.composerDraft = entry.codexDraft
                     ?? (provider == .codex ? entry.draft : nil)
                     ?? ""
                 terminals.setCodexSession(session, on: id, activate: false)
+                // Same burst-collapse marking as the Claude slot above —
+                // staggered .hibernated landings are one chrome republish,
+                // not one per tab.
+                restorePendingTabs.insert(id)
                 observeCodexSessionState(session, tabId: id)
+                // Hibernate rather than start: the conversation comes back
+                // on screen and the first message wakes it. Previously only
+                // the active Codex tab was started and every other restored
+                // Codex tab showed a "Start session" button over an empty
+                // pane, while Claude tabs restored their transcript.
+                session.restoreHibernated(
+                    threadId: codexId,
+                    cwd: URL(fileURLWithPath: entry.projectCwd),
+                    codexURL: binary,
+                    model: defaultCodexModel,
+                    permissionMode: defaultCodexApprovalPolicy,
+                    effort: defaultCodexEffort
+                )
             }
             if entry.sessionId == snapshot.activeSessionId { activeCandidate = id }
         }
@@ -707,13 +733,10 @@ final class V2AppState: ObservableObject {
         if let tab = tabs.first(where: { $0.id == id }) {
             selectedProjectCwd = URL(fileURLWithPath: tab.projectCwd)
             selectedProjectName = (tab.projectCwd as NSString).lastPathComponent
-            if tab.provider == .codex, let session = tab.codexSession, let binary = codexBinary {
-                session.start(
-                    cwd: URL(fileURLWithPath: tab.projectCwd), codexURL: binary,
-                    resumeId: codexResumeIds[tab.id], model: defaultCodexModel,
-                    permissionMode: defaultCodexApprovalPolicy, effort: defaultCodexEffort
-                )
-            }
+            // The active Codex tab used to be started here — the one tab
+            // that escaped the Start-button problem. It now hibernates with
+            // every other tab (above), so launch spawns no agent at all and
+            // the first message wakes whichever tab you actually use.
         }
         // Safety net: if any restore never lands (transcript vanished mid-
         // launch, spawn wedged), don't leave the burst permanently "in

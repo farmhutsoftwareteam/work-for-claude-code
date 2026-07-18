@@ -44,7 +44,9 @@ final class CodexSession: ObservableObject, V2TranscriptSource {
     /// session's address (see StreamSession.instanceId's own doc comment).
     nonisolated let instanceId = UUID()
 
-    @Published private(set) var state: StreamSession.LifecycleState = .idle
+    @Published private(set) var state: StreamSession.LifecycleState = .idle {
+        didSet { lastActivityAt = Date() }
+    }
     @Published private(set) var transcript: [TranscriptItem] = []
     @Published private(set) var model = ""
     @Published private(set) var effort = ""
@@ -113,13 +115,38 @@ final class CodexSession: ObservableObject, V2TranscriptSource {
     /// V2TranscriptSource's provider-neutral name for the native identifier
     /// StreamSession calls sessionId — Codex's own is threadId.
     var sessionId: String? { threadId }
-    var isResuming: Bool { state == .initializing && resumeThreadId != nil }
+    /// Covers both "reading history off the app-server before we're live"
+    /// (launch restore) and "resuming a thread through a spawning process"
+    /// (the original live-resume meaning). The stored half has to exist
+    /// separately: a purely computed flag can't act as the re-entrancy
+    /// latch that stops a double restore appending the transcript twice,
+    /// and during an off-process preload the state is still `.idle`.
+    var isResuming: Bool {
+        isPreloadingHistory || (state == .initializing && resumeThreadId != nil)
+    }
+    @Published private(set) var isPreloadingHistory = false
     var provider: V2AgentProvider { .codex }
     func retryLastTurn() {}
+
+    /// Drives the idle-hibernation scanner. Deliberately NOT @Published —
+    /// it changes on every lifecycle transition, and republishing that would
+    /// fan out into every observing view for a value nothing renders
+    /// (PERFORMANCE.md rule 2, same reasoning as StreamSession's).
+    private(set) var lastActivityAt = Date()
 
     private var client: CodexAppServerClient?
     private var binary: URL?
     private var resumeThreadId: String?
+    /// Everything needed to respawn transparently after hibernation,
+    /// captured on every start() exactly like StreamSession's.
+    private var wakeCwd: URL?
+    private var wakeBinary: URL?
+    private var wakeModel: String?
+    private var wakePermissionMode: String?
+    private var wakeEffort: String?
+    /// Text (and attachments) typed into a hibernated tab, buffered through
+    /// the respawn and flushed once the thread is live again.
+    private var pendingWakeSend: (text: String, attachments: [URL])?
     private var streamBuffer = ""
     private var streamingIndex: Int?
     private var streamingItemId: String?
@@ -189,6 +216,12 @@ final class CodexSession: ObservableObject, V2TranscriptSource {
         self.model = model ?? ""
         self.permissionMode = permissionMode
         self.effort = effort
+        // Capture the wake recipe — hibernation respawns with exactly these.
+        wakeCwd = cwd
+        wakeBinary = codexURL
+        wakeModel = model
+        wakePermissionMode = permissionMode
+        wakeEffort = effort
         endError = nil
         state = .spawning
 
@@ -221,8 +254,16 @@ final class CodexSession: ObservableObject, V2TranscriptSource {
                     self.fail("Couldn't verify your Codex account — check your connection and try again.")
                     return
                 }
-                if !self.requiresChatGPTLogin { try await self.openThreadIfNeeded() }
-                else { self.state = .idle }
+                if !self.requiresChatGPTLogin {
+                    try await self.openThreadIfNeeded()
+                    // Wake-from-hibernation: the message that triggered this
+                    // respawn goes out only now, once the thread is actually
+                    // resumed and state is .ready — send() rejects anything
+                    // earlier. Chained in THIS task rather than a second one
+                    // so there is a real ordering guarantee (the bug
+                    // StreamSession.start documents at its own flush point).
+                    self.flushPendingWakeSend()
+                } else { self.state = .idle }
                 // MCP discovery must never gate thread creation or history
                 // restore. Slow/startup-heavy servers update independently.
                 Task { [weak self] in await self?.refreshMCPStatus() }
@@ -245,6 +286,116 @@ final class CodexSession: ObservableObject, V2TranscriptSource {
         client?.stop()
         client = nil
         state = .terminated(reason: "Stopped")
+    }
+
+    // MARK: - Hibernation
+
+    /// Restore a thread's conversation WITHOUT starting it — the launch
+    /// path. Reads history through the shared CodexHistoryReader (one
+    /// app-server for every restored tab, `thread/read` leaves the thread
+    /// `notLoaded`) and lands in `.hibernated`: transcript on screen,
+    /// composer live, ZERO processes owned by this session. The first
+    /// message wakes it via thread/resume.
+    ///
+    /// Before this, only the single active Codex tab was started at launch
+    /// and every other restored Codex tab sat at `.idle` behind a "Start
+    /// session" button, while Claude tabs came back with their conversation
+    /// already on screen.
+    func restoreHibernated(
+        threadId: String,
+        cwd: URL,
+        codexURL: URL,
+        model: String? = nil,
+        permissionMode: String = "on-request",
+        effort: String = ""
+    ) {
+        guard !isPreloadingHistory, case .idle = state else { return }
+        isPreloadingHistory = true
+        self.cwd = cwd
+        self.binary = codexURL
+        // The wake recipe, and the id wake() resumes. Set eagerly because
+        // wake() reads self.threadId rather than a stored copy.
+        wakeCwd = cwd
+        wakeBinary = codexURL
+        wakeModel = model
+        wakePermissionMode = permissionMode
+        wakeEffort = effort
+        self.threadId = threadId
+        self.model = model ?? ""
+        self.permissionMode = permissionMode
+        self.effort = effort
+
+        Task { [weak self] in
+            let thread = await CodexHistoryReader.shared.read(threadId: threadId, binary: codexURL)
+            guard let self else { return }
+            if let turns = thread?["turns"] as? [[String: Any]], !turns.isEmpty, self.transcript.isEmpty {
+                self.transcript = Self.transcript(from: turns)
+            }
+            self.isPreloadingHistory = false
+            // Land hibernated even if the read failed: the thread id is
+            // still valid, so waking works and thread/resume returns the
+            // history anyway. Dropping back to .idle would put the Start
+            // button back — the exact thing this removes.
+            self.state = .hibernated
+        }
+    }
+
+    /// Drop the app-server process while keeping the conversation on screen.
+    /// Entered from `.ready` by the idle scanner; the thread id is what
+    /// makes the later wake resumable, so it's a hard precondition.
+    func hibernate() {
+        guard state == .ready, threadId != nil else { return }
+        finalizeStreamingText()
+        clearPendingRequests()
+        // Clear the handler BEFORE stopping: this teardown is deliberate,
+        // and handleTermination would otherwise read the resulting exit as
+        // a crash and fail() the session out of hibernation.
+        let dying = client
+        client = nil
+        dying?.onTermination = nil
+        dying?.stop()
+        state = .hibernated
+    }
+
+    /// Respawn after hibernation, buffering the message until the thread is
+    /// resumed and ready to accept a turn.
+    private func wake(thenSend text: String, attachments: [URL]) {
+        guard let cwd = wakeCwd, let binary = wakeBinary else {
+            state = .terminated(reason: "can't wake: no spawn recipe")
+            return
+        }
+        pendingWakeSend = (text, attachments)
+        start(
+            cwd: cwd,
+            codexURL: binary,
+            resumeId: threadId,
+            model: wakeModel,
+            permissionMode: wakePermissionMode ?? "on-request",
+            effort: wakeEffort ?? ""
+        )
+    }
+
+    /// Deliver the buffered wake message now that the thread is live. State
+    /// is `.ready` by this point, so the re-entrant send() takes the normal
+    /// path and cannot recurse back into wake().
+    private func flushPendingWakeSend() {
+        guard let queued = pendingWakeSend else { return }
+        pendingWakeSend = nil
+        send(text: queued.text, attachments: queued.attachments)
+    }
+
+    /// A wake that never reached a live thread must not swallow what the
+    /// user typed. StreamSession's equivalent leaves the text stranded in
+    /// memory — invisible in the UI but live enough to be flushed as a user
+    /// turn by some later successful spawn. Put it back in the composer
+    /// instead, where it's visible and the user decides.
+    private func returnPendingWakeSendToComposer() {
+        guard let queued = pendingWakeSend else { return }
+        pendingWakeSend = nil
+        guard !queued.text.isEmpty else { return }
+        composerDraft = composerDraft.isEmpty
+            ? queued.text
+            : composerDraft + "\n" + queued.text
     }
 
     /// Synchronous process teardown used during app termination/update, when
@@ -381,7 +532,17 @@ final class CodexSession: ObservableObject, V2TranscriptSource {
 
     func send(text: String, attachments: [URL] = []) {
         let text = text.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard (!text.isEmpty || !attachments.isEmpty), state == .ready, let client, let threadId else { return }
+        // Emptiness is checked BEFORE the wake branch on purpose: sending
+        // pure whitespace into a hibernated tab must not spawn a whole
+        // app-server just to discard the message on the far side.
+        guard !text.isEmpty || !attachments.isEmpty else { return }
+        // Typing into a hibernated tab IS the wake gesture — respawn,
+        // resume the thread, and deliver this message once it's live.
+        if state == .hibernated {
+            wake(thenSend: text, attachments: attachments)
+            return
+        }
+        guard state == .ready, let client, let threadId else { return }
         finalizeStreamingText()
         let attachmentNames = attachments.map(\.lastPathComponent)
         let displayText = text + (attachmentNames.isEmpty ? "" : "\n\nAttached: \(attachmentNames.joined(separator: ", "))")
@@ -1163,11 +1324,20 @@ final class CodexSession: ObservableObject, V2TranscriptSource {
     private func handleTermination(_ reason: String) {
         guard state != .closing else { return }
         if case .terminated = state { return }
+        // .hibernated: WE dropped that process on purpose. The exit is
+        // expected and the state has to survive it — failing here would
+        // undo every hibernation the moment it happened.
+        if state == .hibernated { return }
         client = nil
         fail(reason)
     }
 
     private func fail(_ message: String, terminal: Bool = true) {
+        // Covers every failure path out of start() — spawn error,
+        // unverifiable account, process death — so a wake that never
+        // reached a live thread hands the typed message back rather than
+        // losing it.
+        returnPendingWakeSendToComposer()
         endError = message
         appendError(message)
         if terminal { state = .terminated(reason: message) }

@@ -535,6 +535,9 @@ final class TerminalsController: ObservableObject {
             tab.streamSession?.terminateNow()
             tab.codexSession?.terminateNow()
         }
+        // The shared history-reader app-server is owned by no tab, so the
+        // loop above can't reach it — it would outlive the app otherwise.
+        MainActor.assumeIsolated { CodexHistoryReader.shared.terminateNow() }
     }
 
     /// Update the human-readable title of a tab (e.g. after a rename).

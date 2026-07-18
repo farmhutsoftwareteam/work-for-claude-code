@@ -202,13 +202,21 @@ struct V2CodexComposer: View {
 
     private var canType: Bool {
         switch session.state {
-        case .initializing, .working, .ready: return true
+        // .hibernated: typing IS the wake gesture — send() respawns,
+        // resumes the thread, and delivers the message once it's live.
+        // Without it here the placeholder below promises a reply the
+        // disabled field can't accept, and the tab is unwakeable.
+        case .initializing, .working, .ready, .hibernated: return true
         default: return false
         }
     }
 
     private var canSend: Bool {
-        guard session.state == .ready else { return false }
+        // Derived from canType (same rule as V2LiveComposer) so a state
+        // that can be typed into can always be sent from — the two drifting
+        // apart is what leaves a tab with a live-looking composer and a
+        // dead Send button.
+        guard canType, session.state != .initializing, session.state != .working else { return false }
         return !draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || !attachments.items.isEmpty
     }
 
