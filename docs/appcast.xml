@@ -6,6 +6,28 @@
         <description>Updates for Work</description>
         <language>en</language>
         <item>
+            <title>Version 2.10.6</title>
+            <pubDate>Sat, 18 Jul 2026 23:18:55 +0400</pubDate>
+            <sparkle:version>73</sparkle:version>
+            <sparkle:shortVersionString>2.10.6</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>15.0</sparkle:minimumSystemVersion>
+            <description><![CDATA[
+                <h3>Atelier 2.10.6 — Codex tabs come back to your conversation, not a button</h3>
+                <ul>
+                    <li><b>Reopening Atelier now restores your Codex tabs to their actual conversation with a live composer</b> — the same way Claude tabs already did. Previously only the tab you were last looking at came back; every other Codex tab showed a "Start session" button over an empty pane.</li>
+                    <li><b>Restoring costs nothing.</b> Codex history is read without starting the thread or spending a turn, and every restored tab is served by one shared process instead of one each — launching Atelier with ten Codex tabs open starts zero agents. Your first message wakes whichever tab you actually use.</li>
+                    <li><b>Idle Codex sessions on background tabs are now reclaimed after ten minutes</b>, the same as Claude's — the conversation stays on screen and replying brings it straight back.</li>
+                    <li><b>Fixed the Codex composer being unusable in that resting state</b> — it invited a reply while the text field and Send button were disabled.</li>
+                    <li><b>Fixed a message typed into a resting tab being silently swallowed</b> if the session couldn't restart — it's handed back to the composer now instead of disappearing.</li>
+                </ul>
+            ]]></description>
+            <enclosure
+                url="https://work.munyamakosa.com/Work-2.10.6.dmg"
+                length="14857697"
+                type="application/octet-stream"
+                sparkle:edSignature="Gny0oN3XIaJ2NlKNeZHdOFSyxZzrNFWymWnhsd9gsbKKQrMBC05b72aCRZKXblItdHUhkN0acqjGzjuUCecgCw==" />
+        </item>
+        <item>
             <title>Version 2.10.5</title>
             <pubDate>Sun, 19 Jul 2026 09:14:22 +0400</pubDate>
             <sparkle:version>72</sparkle:version>
