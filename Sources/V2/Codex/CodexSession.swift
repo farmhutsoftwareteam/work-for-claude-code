@@ -66,6 +66,14 @@ final class CodexSession: ObservableObject, V2TranscriptSource {
     /// same surface the ChatGPT app's meter reads. Drives the composer's
     /// compact meter + the session-config LIMITS section.
     @Published private(set) var usageLimits: V2UsageLimits?
+    /// Whether codex's workspace-write sandbox allows outbound network —
+    /// read from the app-server's effective config. nil until a live
+    /// client has answered. With this false (codex's default), every
+    /// `git push` / `gh` / package install inside a session dies instantly
+    /// with "Could not resolve host", and nothing in the product said why —
+    /// a real user hit exactly that wall (winpal, 2026-07-20) and it took
+    /// rollout-log archaeology to explain. Surfacing the switch is the fix.
+    @Published private(set) var sandboxNetworkAccess: Bool?
     /// nil = still running, true = failed, false = succeeded — same valence
     /// convention V2LiveToolWidget/StreamSession.toolOutcomes already use.
     /// Keyed by ThreadItem id (commandExecution/fileChange/mcpToolCall/
@@ -270,6 +278,7 @@ final class CodexSession: ObservableObject, V2TranscriptSource {
                 // Seed the plan-usage meters once; the account/rateLimits/
                 // updated push keeps them fresh from here without polling.
                 Task { [weak self] in await self?.refreshRateLimits() }
+                Task { [weak self] in await self?.refreshSandboxNetwork() }
             } catch {
                 client.stop()
                 if self.client === client { self.client = nil }
@@ -468,6 +477,46 @@ final class CodexSession: ObservableObject, V2TranscriptSource {
             }
         } catch {
             log.debug("account/rateLimits/read failed: \(error.localizedDescription, privacy: .public)")
+        }
+    }
+
+    /// True while this session owns a live app-server that can answer
+    /// config reads/writes — the sandbox-network control disables itself
+    /// on a resting/ended session instead of no-oping silently.
+    var hasLiveClient: Bool { client != nil }
+
+    func refreshSandboxNetwork() async {
+        guard let client else { return }
+        guard let response = try? await client.request("config/read", params: [:]) else { return }
+        sandboxNetworkAccess = Self.sandboxNetworkAccess(fromConfigRead: response.raw)
+    }
+
+    /// Pure parse of config/read — snake_case keys verified against a live
+    /// codex-cli 0.144.4 response (2026-07-20). An absent table means
+    /// codex's default, which is network OFF.
+    static func sandboxNetworkAccess(fromConfigRead response: [String: Any]) -> Bool? {
+        guard let config = response["config"] as? [String: Any] else { return nil }
+        let sandbox = config["sandbox_workspace_write"] as? [String: Any]
+        return sandbox?["network_access"] as? Bool ?? false
+    }
+
+    /// Writes through the app-server's own config writer (config/value/write
+    /// → user config.toml) rather than hand-editing TOML. The setting is
+    /// read at app-server spawn, so it takes effect from the next session
+    /// start — resting tabs pick it up on wake.
+    func setSandboxNetworkAccess(_ enabled: Bool) async -> Bool {
+        guard let client else { return false }
+        do {
+            _ = try await client.request("config/value/write", params: CodexJSONObject([
+                "keyPath": "sandbox_workspace_write.network_access",
+                "value": enabled,
+                "mergeStrategy": "upsert"
+            ]))
+            sandboxNetworkAccess = enabled
+            return true
+        } catch {
+            log.error("config/value/write sandbox network failed: \(error.localizedDescription, privacy: .public)")
+            return false
         }
     }
 

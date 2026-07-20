@@ -251,6 +251,26 @@ final class CodexSessionMappingTests: XCTestCase {
     /// installed codex-cli 0.144.4 schema (generated via
     /// `codex app-server generate-json-schema`), minimal-but-valid per their
     /// `required` fields.
+    // Shape verified against a live codex-cli 0.144.4 config/read response
+    // (2026-07-20): snake_case keys, table absent until something writes it.
+    func testSandboxNetworkParsesEnabledFromConfigRead() {
+        let response: [String: Any] = ["config": ["sandbox_workspace_write": ["network_access": true]], "origins": [:]]
+        XCTAssertEqual(CodexSession.sandboxNetworkAccess(fromConfigRead: response), true)
+    }
+
+    func testSandboxNetworkDefaultsToOffWhenTableAbsent() {
+        // No [sandbox_workspace_write] table is codex's default state, and
+        // that default is network OFF — reporting nil here would hide the
+        // toggle from exactly the users who need it most.
+        let response: [String: Any] = ["config": ["model": "gpt-5.6-sol"], "origins": [:]]
+        XCTAssertEqual(CodexSession.sandboxNetworkAccess(fromConfigRead: response), false)
+    }
+
+    func testSandboxNetworkIsUnknownWhenConfigMissingEntirely() {
+        XCTAssertNil(CodexSession.sandboxNetworkAccess(fromConfigRead: [:]),
+                     "a malformed response must read as unknown, not as a confident off")
+    }
+
     func testAllEighteenThreadItemDiscriminatorsMapToNonEmptyRows() {
         let fixtures: [String: [String: Any]] = [
             "userMessage": ["type": "userMessage", "id": "1", "content": [["type": "text", "text": "hi"]]],

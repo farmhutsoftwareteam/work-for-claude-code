@@ -357,11 +357,52 @@ private struct V2CodexSessionConfigPanel: View {
                         }.padding(.horizontal, 13).padding(.vertical, 8).frame(maxWidth: .infinity, alignment: .leading)
                     }.buttonStyle(.plain)
                 }
+
+                sandboxNetworkSection
             }
         }
         // Height only — width/background/border belong to the popover shell
         // now, so the surface stays constant while panels swap.
         .frame(height: 520)
+    }
+
+    /// Codex's workspace-write sandbox blocks outbound network by default,
+    /// which makes `git push` / `gh` / installs die instantly with "Could
+    /// not resolve host" — invisible and unfixable from inside the app
+    /// until now (a real session hit exactly this and needed log
+    /// archaeology to explain). The toggle writes codex's own user config
+    /// through the app-server, so it also applies to other codex clients.
+    @ViewBuilder
+    private var sandboxNetworkSection: some View {
+        if let network = session.sandboxNetworkAccess {
+            sectionHeader("SANDBOX NETWORK")
+                .overlay(alignment: .top) { Rectangle().fill(v2.line).frame(height: 1) }
+            ForEach([
+                (true, "on", "git push, gh, and installs can reach the internet from inside the sandbox"),
+                (false, "off", "network commands fail — git push and gh cannot connect")
+            ], id: \.1) { option in
+                Button {
+                    Task { _ = await session.setSandboxNetworkAccess(option.0) }
+                } label: {
+                    HStack(alignment: .top, spacing: 8) {
+                        Circle().fill(network == option.0 ? v2.ink : Color.clear)
+                            .overlay(Circle().stroke(v2.line2, lineWidth: 1)).frame(width: 7, height: 7).padding(.top, 3)
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(option.1).font(.system(size: 12.5)).foregroundColor(v2.ink)
+                            Text(option.2).font(.system(size: 9.5, design: .monospaced)).foregroundColor(v2.faint)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+                    }.padding(.horizontal, 13).padding(.vertical, 8).frame(maxWidth: .infinity, alignment: .leading)
+                }
+                .buttonStyle(.plain)
+                .disabled(!session.hasLiveClient)
+                .opacity(session.hasLiveClient ? 1 : 0.45)
+            }
+            Text("saved to ~/.codex/config.toml — applies from the next session start; resting tabs pick it up on wake")
+                .font(.system(size: 9, design: .monospaced)).foregroundColor(v2.faint)
+                .fixedSize(horizontal: false, vertical: true)
+                .padding(.horizontal, 13).padding(.top, 2).padding(.bottom, 12)
+        }
     }
 
     private func sectionHeader(_ text: String) -> some View {
