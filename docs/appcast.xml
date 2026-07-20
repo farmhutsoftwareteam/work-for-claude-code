@@ -6,6 +6,27 @@
         <description>Updates for Work</description>
         <language>en</language>
         <item>
+            <title>Version 2.10.7</title>
+            <pubDate>Mon, 20 Jul 2026 11:54:29 +0400</pubDate>
+            <sparkle:version>74</sparkle:version>
+            <sparkle:shortVersionString>2.10.7</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>15.0</sparkle:minimumSystemVersion>
+            <description><![CDATA[
+                <h3>Atelier 2.10.7 — Codex replies render like they were written</h3>
+                <ul>
+                    <li><b>Fixed your own message appearing twice in Codex chats.</b> The app-server echoes every sent message back, and Atelier was rendering both the instant local copy and the echo.</li>
+                    <li><b>Rebuilt markdown rendering around what Codex actually writes</b>, measured across 67 real session logs: numbered lists keep their real numbers ("3. Run tests" no longer renders as "1. Run tests"), nested lists keep their depth with distinct markers, "---" draws a real divider instead of a line of dashes, task-list plans render as ☐/☑ checkboxes instead of literal brackets, blockquotes get a quoted left edge, underline-style and #### headings render as headings, and a code block under a list item renders as code instead of stray backticks.</li>
+                    <li><b>Claude replies benefit too</b> — the transcript renderer is shared.</li>
+                    <li><b>New SANDBOX NETWORK section in the Codex session config</b>: see and change whether commands inside Codex's sandbox can reach the internet. When it's off (codex's default), git push and gh fail instantly with "Could not resolve host" — and until now nothing in the app said why.</li>
+                </ul>
+            ]]></description>
+            <enclosure
+                url="https://work.munyamakosa.com/Work-2.10.7.dmg"
+                length="14903359"
+                type="application/octet-stream"
+                sparkle:edSignature="2NpoTnAizxFfWYtam+1qeZyRxyxE/vqjmIUw36+JOTXZnSkOG8ziowYojl8eoJIonwnABR9XAA8y+8GqosnZCQ==" />
+        </item>
+        <item>
             <title>Version 2.10.6</title>
             <pubDate>Sat, 18 Jul 2026 23:18:55 +0400</pubDate>
             <sparkle:version>73</sparkle:version>

@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Changelog - Atelier</title>
-    <meta name="description" content="Every release of Atelier, dated and itemised. Latest: v2.10.6 (july 19, 2026).">
+    <meta name="description" content="Every release of Atelier, dated and itemised. Latest: v2.10.7 (july 20, 2026).">
     <link rel="canonical" href="https://work.munyamakosa.com/releases.html">
     <link rel="alternate" type="application/rss+xml" title="Atelier appcast" href="https://work.munyamakosa.com/appcast.xml">
 
@@ -184,13 +184,32 @@
         </div>
 
 
+    <article id="v2-10-7" class="release-article" style="display:grid;grid-template-columns:200px 1fr;gap:40px;padding:38px 0;border-bottom:1px solid var(--line);">
+      <div>
+        <div style="font-family:var(--helv);font-weight:500;font-size:22px;letter-spacing:-.01em;">
+          <a href="#v2-10-7" style="color:var(--ink);text-decoration:none;">v2.10.7</a>
+        </div>
+        <div style="font-family:var(--mono);font-size:11px;color:var(--mute);margin-top:6px;">2026 · jul 20</div>
+        <div style="display:inline-block;font-family:var(--mono);font-size:10px;letter-spacing:.08em;text-transform:uppercase;border:1px solid var(--line2);padding:3px 8px;margin-top:12px;">latest</div>
+        <div style="font-family:var(--mono);font-size:10px;color:var(--mute);margin-top:10px;">macOS 15.0+</div>
+      </div>
+      <div class="release-body" style="font-family:var(--helv);font-size:16px;line-height:1.6;color:rgba(27,28,30,.82);">
+        <h3>Codex replies render like they were written</h3>
+        <ul>
+          <li><b>Fixed your own message appearing twice in Codex chats.</b> The app-server echoes every sent message back, and Atelier was rendering both the instant local copy and the echo.</li>
+          <li><b>Rebuilt markdown rendering around what Codex actually writes</b>, measured across 67 real session logs: numbered lists keep their real numbers ("3. Run tests" no longer renders as "1. Run tests"), nested lists keep their depth with distinct markers, "---" draws a real divider instead of a line of dashes, task-list plans render as ☐/☑ checkboxes instead of literal brackets, blockquotes get a quoted left edge, underline-style and #### headings render as headings, and a code block under a list item renders as code instead of stray backticks.</li>
+          <li><b>Claude replies benefit too</b> — the transcript renderer is shared.</li>
+          <li><b>New SANDBOX NETWORK section in the Codex session config</b>: see and change whether commands inside Codex's sandbox can reach the internet. When it's off (codex's default), git push and gh fail instantly with "Could not resolve host" — and until now nothing in the app said why.</li>
+        </ul>
+      </div>
+    </article>
+
     <article id="v2-10-6" class="release-article" style="display:grid;grid-template-columns:200px 1fr;gap:40px;padding:38px 0;border-bottom:1px solid var(--line);">
       <div>
         <div style="font-family:var(--helv);font-weight:500;font-size:22px;letter-spacing:-.01em;">
           <a href="#v2-10-6" style="color:var(--ink);text-decoration:none;">v2.10.6</a>
         </div>
         <div style="font-family:var(--mono);font-size:11px;color:var(--mute);margin-top:6px;">2026 · jul 19</div>
-        <div style="display:inline-block;font-family:var(--mono);font-size:10px;letter-spacing:.08em;text-transform:uppercase;border:1px solid var(--line2);padding:3px 8px;margin-top:12px;">latest</div>
         <div style="font-family:var(--mono);font-size:10px;color:var(--mute);margin-top:10px;">macOS 15.0+</div>
       </div>
       <div class="release-body" style="font-family:var(--helv);font-size:16px;line-height:1.6;color:rgba(27,28,30,.82);">
