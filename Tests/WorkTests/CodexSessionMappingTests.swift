@@ -251,6 +251,120 @@ final class CodexSessionMappingTests: XCTestCase {
     /// installed codex-cli 0.144.4 schema (generated via
     /// `codex app-server generate-json-schema`), minimal-but-valid per their
     /// `required` fields.
+    // MARK: - Multi-agent (collab) rows
+    //
+    // Shapes are the app-server's own schema (codex-cli 0.144.4):
+    // agentsStates is a threadId → {status, message?} map documented "when
+    // available", and agent paths are "/root" (the main thread, per
+    // list_agents' own `"last_task_message":"Main thread"`) or "/root/<name>".
+
+    func testCollabResultNamesAgentsInsteadOfPrintingThreadUUIDs() {
+        let item: [String: Any] = [
+            "type": "collabAgentToolCall", "id": "c1", "tool": "wait",
+            "senderThreadId": "t-root", "receiverThreadIds": ["019f-aaaa"],
+            "status": "completed",
+            "agentsStates": ["019f-aaaa": ["status": "completed", "message": "audit finished"]]
+        ]
+        let text = CodexSession.collabResultText(item, agentNames: ["019f-aaaa": "/root/audit_measure_backend"])
+        XCTAssertEqual(text, "audit_measure_backend — completed: audit finished")
+    }
+
+    func testCollabResultWithoutStateSaysWhatTheCallDidNotNoAgentState() {
+        // agentsStates absent is NORMAL per the schema. The old code printed
+        // the literal placeholder "(no agent state)" here, which read like a
+        // bug and told the user nothing about a real spawn.
+        let item: [String: Any] = [
+            "type": "collabAgentToolCall", "id": "c2", "tool": "spawnAgent",
+            "senderThreadId": "t-root", "receiverThreadIds": ["019f-bbbb"],
+            "status": "completed", "agentsStates": [String: Any]()
+        ]
+        let text = CodexSession.collabResultText(item, agentNames: ["019f-bbbb": "/root/fix_backend_billing"])
+        XCTAssertEqual(text, "spawned fix_backend_billing")
+        XCTAssertFalse(text.contains("no agent state"))
+    }
+
+    func testCollabResultFallsBackToAShortIdWhenTheNameIsNotKnownYet() {
+        let item: [String: Any] = [
+            "type": "collabAgentToolCall", "id": "c3", "tool": "sendInput",
+            "senderThreadId": "t-root", "receiverThreadIds": ["019f6f7e-fcb1-7800-a2b6-00f1c4942aa1"],
+            "status": "completed", "agentsStates": [String: Any]()
+        ]
+        XCTAssertEqual(CodexSession.collabResultText(item, agentNames: [:]), "sent input to 019f6f7e")
+    }
+
+    func testCollabResultOrderIsStableAcrossRenders() {
+        // Iterating a Swift dictionary is order-unstable, so the same call
+        // could render its agents in a different order every re-render.
+        let item: [String: Any] = [
+            "type": "collabAgentToolCall", "id": "c4", "tool": "wait",
+            "senderThreadId": "t-root", "receiverThreadIds": [],
+            "status": "completed",
+            "agentsStates": [
+                "t-c": ["status": "running"], "t-a": ["status": "completed"], "t-b": ["status": "errored"]
+            ]
+        ]
+        let names = ["t-a": "/root/alpha", "t-b": "/root/beta", "t-c": "/root/gamma"]
+        let once = CodexSession.collabResultText(item, agentNames: names)
+        for _ in 0..<25 {
+            XCTAssertEqual(CodexSession.collabResultText(item, agentNames: names), once)
+        }
+        XCTAssertEqual(once, "alpha — completed\nbeta — errored\ngamma — running")
+    }
+
+    func testCollabResultWithNothingAtAllIsHonestRatherThanMysterious() {
+        let item: [String: Any] = [
+            "type": "collabAgentToolCall", "id": "c5", "tool": "wait",
+            "senderThreadId": "t-root", "receiverThreadIds": [String](),
+            "status": "completed", "agentsStates": [String: Any]()
+        ]
+        XCTAssertEqual(CodexSession.collabResultText(item, agentNames: [:]),
+                       "no agent state reported for this call")
+    }
+
+    func testAgentDisplayNameTreatsRootAsTheMainThread() {
+        XCTAssertEqual(CodexSession.agentDisplayName("/root"), "main thread")
+        XCTAssertEqual(CodexSession.agentDisplayName("/root/context_transfer_verify"), "context_transfer_verify")
+    }
+
+    func testSubAgentActivityReadsAsASentenceNotABarePath() {
+        // This is the literal "/root interacted" line the transcript used
+        // to show — indistinguishable from a stray filesystem path.
+        let mapped = CodexSession.transcriptItem(from: [
+            "type": "subAgentActivity", "id": "s1", "kind": "interacted",
+            "agentPath": "/root", "agentThreadId": "t-root"
+        ])
+        guard case .systemNote(_, let text) = mapped.first else { return XCTFail("expected a system note") }
+        XCTAssertEqual(text, "sub-agent main thread interacted")
+    }
+
+    func testSubAgentInterruptedReadsAsPastTense() {
+        let mapped = CodexSession.transcriptItem(from: [
+            "type": "subAgentActivity", "id": "s2", "kind": "interrupted",
+            "agentPath": "/root/codex_send_trace", "agentThreadId": "t-x"
+        ])
+        guard case .systemNote(_, let text) = mapped.first else { return XCTFail("expected a system note") }
+        XCTAssertEqual(text, "sub-agent codex_send_trace was interrupted")
+    }
+
+    func testHistoryIndexesAgentNamesBeforeMappingSoCollabRowsAreNamed() {
+        // The naming subAgentActivity item lands AFTER the collab call that
+        // targeted it — a single pass would render a raw id there.
+        let turns: [[String: Any]] = [["items": [
+            ["type": "collabAgentToolCall", "id": "c1", "tool": "wait",
+             "senderThreadId": "t-root", "receiverThreadIds": ["t-late"], "status": "completed",
+             "agentsStates": ["t-late": ["status": "completed"]]],
+            ["type": "subAgentActivity", "id": "s1", "kind": "started",
+             "agentPath": "/root/late_namer", "agentThreadId": "t-late"]
+        ]]]
+        let items = CodexSession.transcript(from: turns)
+        let joined = items.compactMap { item -> String? in
+            guard case .assistantBlock(.toolResult(_, let content, _)) = item,
+                  case .text(let text) = content else { return nil }
+            return text
+        }.joined()
+        XCTAssertTrue(joined.contains("late_namer"), "expected the collab row to resolve the name, got: \(joined)")
+    }
+
     func testServerEchoOfTheSentUserMessageDoesNotDoubleRender() {
         let session = CodexSession()
         // send() appends the user's text the moment they hit return; the

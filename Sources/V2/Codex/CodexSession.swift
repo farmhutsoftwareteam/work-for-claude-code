@@ -181,6 +181,11 @@ final class CodexSession: ObservableObject, V2TranscriptSource {
     /// case comment for why not: Claude's own Bash tool_result isn't
     /// streamed live either, so holding off here is parity, not a gap).
     private var liveItemOutput: [String: String] = [:]
+    /// threadId → agentPath for sub-agents seen this session, so collab
+    /// tool results can name the agents they targeted instead of printing
+    /// raw thread UUIDs. Accumulated live; history rebuilds its own index
+    /// up front (see transcript(from:)).
+    private var subAgentNames: [String: String] = [:]
     /// itemId → latest MCP progress message, shown next to the spinner via
     /// V2LiveToolWidget's liveStatus.
     @Published private(set) var toolLiveStatus: [String: String] = [:]
@@ -1321,10 +1326,18 @@ final class CodexSession: ObservableObject, V2TranscriptSource {
             return
         }
         if id == streamingItemId { finalizeStreamingText(); return }
+        // Learn this agent's name before mapping, so a subAgentActivity
+        // item names itself and every later collab result can resolve it.
+        if item["type"] as? String == "subAgentActivity",
+           let threadId = item["agentThreadId"] as? String,
+           let path = item["agentPath"] as? String {
+            subAgentNames[threadId] = path
+        }
         let mapped = Self.transcriptItem(
             from: item,
             alreadyStarted: startedItemIndex[id] != nil,
-            liveOutput: liveItemOutput[id]
+            liveOutput: liveItemOutput[id],
+            agentNames: subAgentNames
         )
         guard !mapped.isEmpty else { return }
         transcript.append(contentsOf: mapped)
@@ -1425,9 +1438,24 @@ final class CodexSession: ObservableObject, V2TranscriptSource {
     }
 
     static func transcript(from turns: [[String: Any]]) -> [TranscriptItem] {
-        turns.flatMap { turn in
-            (turn["items"] as? [[String: Any]] ?? []).flatMap { transcriptItem(from: $0) }
+        let items = turns.flatMap { $0["items"] as? [[String: Any]] ?? [] }
+        // Two passes: only subAgentActivity carries the threadId→name
+        // mapping, and it can land AFTER the collab call that targeted
+        // that agent. Indexing first means a restored transcript always
+        // renders names, never raw thread ids.
+        let names = agentNameIndex(items)
+        return items.flatMap { transcriptItem(from: $0, agentNames: names) }
+    }
+
+    /// threadId → agentPath, harvested from subAgentActivity items.
+    static func agentNameIndex(_ items: [[String: Any]]) -> [String: String] {
+        var index: [String: String] = [:]
+        for item in items where item["type"] as? String == "subAgentActivity" {
+            if let id = item["agentThreadId"] as? String, let path = item["agentPath"] as? String {
+                index[id] = path
+            }
         }
+        return index
     }
 
     /// Maps a completed ThreadItem to zero or more transcript rows. Two-item
@@ -1442,7 +1470,8 @@ final class CodexSession: ObservableObject, V2TranscriptSource {
     /// known type may silently return nil (regression coverage below tests
     /// this directly against the installed app-server's discriminators).
     static func transcriptItem(
-        from item: [String: Any], alreadyStarted: Bool = false, liveOutput: String? = nil
+        from item: [String: Any], alreadyStarted: Bool = false, liveOutput: String? = nil,
+        agentNames: [String: String] = [:]
     ) -> [TranscriptItem] {
         let type = item["type"] as? String ?? ""
         let id = item["id"] as? String ?? UUID().uuidString
@@ -1525,18 +1554,24 @@ final class CodexSession: ObservableObject, V2TranscriptSource {
             guard status == "completed" || status == "failed" else {
                 return [call()].compactMap { $0 }
             }
-            let states = item["agentsStates"] as? [String: [String: Any]] ?? [:]
-            let text = states.map { threadId, state in
-                "\(threadId): \(state["status"] as? String ?? "?")" +
-                    (state["message"].flatMap { $0 as? String }.map { " — \($0)" } ?? "")
-            }.joined(separator: "\n")
-            return [call(), result(content: text.isEmpty ? "(no agent state)" : text, isError: status == "failed")]
-                .compactMap { $0 }
+            return [call(), result(
+                content: collabResultText(item, agentNames: agentNames),
+                isError: status == "failed"
+            )].compactMap { $0 }
 
         case "subAgentActivity":
             let kind = item["kind"] as? String ?? "activity"
             let path = item["agentPath"] as? String ?? "sub-agent"
-            return [.systemNote(kind: .info, text: "\(path) \(kind)")]
+            // Was "\(path) \(kind)" — which rendered as the bare, baffling
+            // line "/root interacted". Name the category and use the
+            // agent's own leaf name.
+            let phrase: String
+            switch kind {
+            case "started": phrase = "started"
+            case "interrupted": phrase = "was interrupted"
+            default: phrase = kind
+            }
+            return [.systemNote(kind: .info, text: "sub-agent \(agentDisplayName(path)) \(phrase)")]
 
         case "webSearch":
             let query = item["query"] as? String ?? ""
@@ -1601,6 +1636,70 @@ final class CodexSession: ObservableObject, V2TranscriptSource {
         default:
             return nil
         }
+    }
+
+    /// Codex names agents by path: "/root" is the main thread (verified in
+    /// real rollouts — list_agents reports it as `{"agent_name":"/root",
+    /// …,"last_task_message":"Main thread"}`), and children are
+    /// "/root/<name>". Show the leaf, not the path, so a delegation row
+    /// reads "audit_measure_backend" rather than a filesystem-looking string.
+    static func agentDisplayName(_ path: String) -> String {
+        if path == "/root" { return "main thread" }
+        let leaf = path.split(separator: "/").last.map(String.init) ?? path
+        return leaf.isEmpty ? path : leaf
+    }
+
+    /// A thread id shown when no name is known yet — the full UUIDv7 is
+    /// unreadable in a transcript row.
+    static func shortThreadId(_ id: String) -> String {
+        String(id.prefix(8))
+    }
+
+    /// The result row for a collab (multi-agent) tool call.
+    ///
+    /// Replaces a literal "(no agent state)" placeholder that fired often
+    /// and told the user nothing. Three real problems, all fixed here:
+    /// `agentsStates` is documented "when available" so an empty map is
+    /// NORMAL rather than an error worth a mystery string; the map's keys
+    /// are raw thread UUIDs, which need resolving to agent names; and
+    /// iterating a Swift dictionary is order-UNSTABLE, so the same call
+    /// could render its agents in a different order on every re-render.
+    static func collabResultText(_ item: [String: Any], agentNames: [String: String]) -> String {
+        func label(_ threadId: String) -> String {
+            agentNames[threadId].map(agentDisplayName) ?? shortThreadId(threadId)
+        }
+
+        let states = item["agentsStates"] as? [String: [String: Any]] ?? [:]
+        if !states.isEmpty {
+            // Sorted by resolved label so the order is stable across
+            // renders and restores.
+            return states.keys
+                .map { (label: label($0), state: states[$0] ?? [:]) }
+                .sorted { $0.label < $1.label }
+                .map { entry in
+                    let status = entry.state["status"] as? String ?? "unknown"
+                    let message = (entry.state["message"] as? String)?
+                        .trimmingCharacters(in: .whitespacesAndNewlines)
+                    let detail = (message?.isEmpty == false) ? ": \(message!)" : ""
+                    return "\(entry.label) — \(status)\(detail)"
+                }
+                .joined(separator: "\n")
+        }
+
+        // No state reported: say what the call DID, from the fields that
+        // are always present, instead of claiming there's nothing to show.
+        let verb: String
+        switch item["tool"] as? String ?? "" {
+        case "spawnAgent":  verb = "spawned"
+        case "sendInput":   verb = "sent input to"
+        case "resumeAgent": verb = "resumed"
+        case "closeAgent":  verb = "closed"
+        case "wait":        verb = "waited for"
+        default:            verb = "targeted"
+        }
+        let targets = (item["receiverThreadIds"] as? [String] ?? []).map(label)
+        guard !targets.isEmpty else { return "no agent state reported for this call" }
+        return "\(verb) \(targets.joined(separator: ", "))"
     }
 
     /// Compact multi-file diff summary — path + change kind + the diff body,
