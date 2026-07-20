@@ -42,11 +42,26 @@ final class CodexHistoryReader {
     private var startTask: Task<CodexAppServerClient?, Never>?
     private var idleShutdown: Task<Void, Never>?
     private var inFlight = 0
+    /// The codex binary this machine resolved, remembered so callers deep
+    /// in the view tree (the sub-agent peek) can read a thread without
+    /// plumbing a URL through every view between them and app state.
+    private var rememberedBinary: URL?
+
+    func rememberBinary(_ url: URL) { rememberedBinary = url }
+
+    /// Read using the remembered binary. Returns nil if nothing has
+    /// established one yet — the caller shows its empty state rather than
+    /// guessing at a path.
+    func read(threadId: String) async -> [String: Any]? {
+        guard let binary = rememberedBinary else { return nil }
+        return await read(threadId: threadId, binary: binary)
+    }
 
     /// The thread's app-server representation (`turns` → `items`), or nil if
     /// the read failed. Callers map it with `CodexSession.transcript(from:)`
     /// — the identical mapping `thread/resume` results go through.
     func read(threadId: String, binary: URL) async -> [String: Any]? {
+        rememberedBinary = binary
         guard let client = await ensureClient(binary: binary) else { return nil }
         inFlight += 1
         idleShutdown?.cancel()

@@ -324,6 +324,18 @@ struct V2SubagentPeekSheet: View {
     /// V2DelegationCard.refreshLiveAction(): resolution + a bounded tail
     /// read + JSONL parse, hopped via Task.detached, published on return.
     private func refresh() async {
+        // Codex sub-agents have no agent-*.jsonl on disk — each is a real
+        // thread. Read it through the shared app-server reader (the same
+        // non-loading thread/read hibernation uses) and flatten it into the
+        // same one-line-per-action feed the file tail produces.
+        if let threadId = run?.threadId {
+            let thread = await CodexHistoryReader.shared.read(threadId: threadId)
+            guard !Task.isCancelled else { return }
+            let turns = thread?["turns"] as? [[String: Any]] ?? []
+            let fresh = V2SubagentTail.activity(items: CodexSession.transcript(from: turns))
+            if fresh != feed { feed = fresh }
+            return
+        }
         guard let sessionDir else { return }
         let toolUseId = toolUseId
         let agentId = run?.agentId

@@ -365,6 +365,136 @@ final class CodexSessionMappingTests: XCTestCase {
         XCTAssertTrue(joined.contains("late_namer"), "expected the collab row to resolve the name, got: \(joined)")
     }
 
+    // MARK: - Sub-agent run registry
+    //
+    // CodexSession.subagentRuns was hardcoded `[]`, so Codex tabs had no
+    // delegation cards and no runs strip while Claude tabs did.
+
+    private func spawn(id: String = "c1", thread: String = "t-a", prompt: String = "Audit the billing backend") -> [String: Any] {
+        ["type": "collabAgentToolCall", "id": id, "tool": "spawnAgent",
+         "senderThreadId": "t-root", "receiverThreadIds": [thread],
+         "status": "completed", "prompt": prompt, "agentsStates": [String: Any]()]
+    }
+
+    func testSpawnCreatesARunKeyedByTheCallSoTheInlineCardResolves() {
+        var runs: [V2SubagentRun] = []
+        CodexSession.applySubagentEvent(spawn(), to: &runs, names: [:], now: Date())
+        XCTAssertEqual(runs.count, 1)
+        // The inline delegation card looks itself up by the tool_use id of
+        // the block it renders — which is the collab call's own id.
+        XCTAssertEqual(runs[0].toolUseId, "c1")
+        XCTAssertEqual(runs[0].threadId, "t-a")
+        XCTAssertEqual(runs[0].description, "Audit the billing backend")
+        XCTAssertEqual(runs[0].state, .running)
+    }
+
+    func testSpawnIsNotDuplicatedIfTheSameCallIsSeenTwice() {
+        var runs: [V2SubagentRun] = []
+        CodexSession.applySubagentEvent(spawn(), to: &runs, names: [:], now: Date())
+        CodexSession.applySubagentEvent(spawn(), to: &runs, names: [:], now: Date())
+        XCTAssertEqual(runs.count, 1)
+    }
+
+    func testLongPromptIsTruncatedToATaskLine() {
+        var runs: [V2SubagentRun] = []
+        let long = String(repeating: "verify the thing ", count: 20)
+        CodexSession.applySubagentEvent(spawn(prompt: long + "\nsecond line"), to: &runs, names: [:], now: Date())
+        XCTAssertLessThanOrEqual(runs[0].description.count, 90)
+        XCTAssertFalse(runs[0].description.contains("\n"), "a card row is one line")
+    }
+
+    func testActivityBackfillsTheAgentNameOntoARunSpawnedBeforeItIdentified() {
+        var runs: [V2SubagentRun] = []
+        CodexSession.applySubagentEvent(spawn(), to: &runs, names: [:], now: Date())
+        XCTAssertEqual(runs[0].agentType, "sub-agent")
+        CodexSession.applySubagentEvent([
+            "type": "subAgentActivity", "id": "s1", "kind": "started",
+            "agentPath": "/root/audit_measure_backend", "agentThreadId": "t-a"
+        ], to: &runs, names: [:], now: Date())
+        XCTAssertEqual(runs[0].agentType, "audit_measure_backend")
+    }
+
+    func testCompletedStatusFinishesTheRunWithItsMessage() {
+        var runs: [V2SubagentRun] = []
+        CodexSession.applySubagentEvent(spawn(), to: &runs, names: [:], now: Date())
+        CodexSession.applySubagentEvent([
+            "type": "collabAgentToolCall", "id": "c2", "tool": "wait",
+            "senderThreadId": "t-root", "receiverThreadIds": ["t-a"], "status": "completed",
+            "agentsStates": ["t-a": ["status": "completed", "message": "audit clean"]]
+        ], to: &runs, names: [:], now: Date())
+        XCTAssertEqual(runs[0].state, .completed)
+        XCTAssertEqual(runs[0].resultText, "audit clean")
+        XCTAssertNotNil(runs[0].finishedAt)
+    }
+
+    func testErroredAndInterruptedBothCountAsFailure() {
+        for status in ["errored", "interrupted"] {
+            var runs: [V2SubagentRun] = []
+            CodexSession.applySubagentEvent(spawn(), to: &runs, names: [:], now: Date())
+            CodexSession.applySubagentEvent([
+                "type": "collabAgentToolCall", "id": "c2", "tool": "wait",
+                "senderThreadId": "t-root", "receiverThreadIds": ["t-a"], "status": "completed",
+                "agentsStates": ["t-a": ["status": status]]
+            ], to: &runs, names: [:], now: Date())
+            XCTAssertEqual(runs[0].state, .failed, "\(status) should read as failed")
+        }
+    }
+
+    func testShutdownAgentIsOrphanedNotLeftClaimingToRun() {
+        var runs: [V2SubagentRun] = []
+        CodexSession.applySubagentEvent(spawn(), to: &runs, names: [:], now: Date())
+        CodexSession.applySubagentEvent([
+            "type": "collabAgentToolCall", "id": "c2", "tool": "wait",
+            "senderThreadId": "t-root", "receiverThreadIds": ["t-a"], "status": "completed",
+            "agentsStates": ["t-a": ["status": "shutdown"]]
+        ], to: &runs, names: [:], now: Date())
+        // The agent is gone and can never report back — a strip row stuck
+        // on "running" forever would be a lie.
+        XCTAssertEqual(runs[0].state, .orphaned)
+    }
+
+    func testAFinishedRunIsNotReopenedByALaterStatus() {
+        var runs: [V2SubagentRun] = []
+        CodexSession.applySubagentEvent(spawn(), to: &runs, names: [:], now: Date())
+        for status in ["completed", "running"] {
+            CodexSession.applySubagentEvent([
+                "type": "collabAgentToolCall", "id": "c2", "tool": "wait",
+                "senderThreadId": "t-root", "receiverThreadIds": ["t-a"], "status": "completed",
+                "agentsStates": ["t-a": ["status": status]]
+            ], to: &runs, names: [:], now: Date())
+        }
+        XCTAssertEqual(runs[0].state, .completed, "a settled run must stay settled")
+    }
+
+    func testStatusForAnUnknownThreadIsIgnored() {
+        var runs: [V2SubagentRun] = []
+        CodexSession.applySubagentEvent([
+            "type": "collabAgentToolCall", "id": "c9", "tool": "wait",
+            "senderThreadId": "t-root", "receiverThreadIds": ["t-ghost"], "status": "completed",
+            "agentsStates": ["t-ghost": ["status": "completed"]]
+        ], to: &runs, names: [:], now: Date())
+        XCTAssertTrue(runs.isEmpty, "a status for an agent we never saw spawn must not invent a run")
+    }
+
+    func testCodexSpawnRendersAsADelegationCardLikeClaudes() {
+        XCTAssertTrue(V2SubagentParser.isAgentSpawn(toolName: "collab.spawnAgent"))
+        XCTAssertTrue(V2SubagentParser.isAgentSpawn(toolName: "Task"))
+        XCTAssertFalse(V2SubagentParser.isAgentSpawn(toolName: "collab.wait"))
+    }
+
+    func testPeekFeedFlattensAThreadIntoActionLines() {
+        let feed = V2SubagentTail.activity(items: [
+            .userText("Audit the billing backend"),
+            .assistantBlock(.text("Starting the audit.")),
+            .assistantBlock(.toolUse(id: "t1", name: "Bash", input: .object(["command": .string("npm test")]))),
+        ])
+        XCTAssertEqual(feed, [
+            "› task — Audit the billing backend",
+            "Starting the audit.",
+            "› Bash — npm test",
+        ])
+    }
+
     func testServerEchoOfTheSentUserMessageDoesNotDoubleRender() {
         let session = CodexSession()
         // send() appends the user's text the moment they hit return; the

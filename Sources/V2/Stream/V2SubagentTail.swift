@@ -82,6 +82,39 @@ enum V2SubagentTail {
     /// One human-readable line per meaningful transcript event, oldest
     /// first. `bytes` bounds the read; the first (likely partial) line of
     /// the chunk is dropped.
+    /// Codex sub-agents are threads, not files, so their peek arrives as
+    /// already-mapped TranscriptItems rather than JSONL. Same feed
+    /// vocabulary as the file path — "› tool — brief" for actions, plain
+    /// text for the agent's own prose — so one sheet renders both.
+    static func activity(items: [TranscriptItem]) -> [String] {
+        items.compactMap { item -> String? in
+            switch item {
+            case .userText(let text):
+                return brief(text).map { "› task — \($0)" }
+            case .assistantBlock(.text(let text)):
+                return brief(text)
+            case .assistantBlock(.toolUse(_, let name, let input)):
+                // Same key priority briefInput uses, read through JSONValue
+                // rather than a bridged dictionary.
+                let detail = ["file_path", "command", "path", "query", "prompt", "description"]
+                    .lazy.compactMap { input.dig($0)?.asString }.first
+                    .flatMap(brief)
+                return detail.map { "› \(name) — \($0)" } ?? "› \(name)"
+            case .systemNote(_, let text):
+                return brief(text).map { "› \($0)" }
+            default:
+                return nil
+            }
+        }
+    }
+
+    private static func brief(_ text: String) -> String? {
+        let first = text.split(separator: "\n").first.map(String.init) ?? text
+        let trimmed = first.trimmingCharacters(in: .whitespaces)
+        guard !trimmed.isEmpty else { return nil }
+        return trimmed.count > 140 ? String(trimmed.prefix(140)) + "…" : trimmed
+    }
+
     static func activity(path: URL, bytes: Int = 256 * 1024) -> [String] {
         guard let tail = readTail(path: path, bytes: bytes) else { return [] }
         var lines = String(decoding: tail.data, as: UTF8.self)

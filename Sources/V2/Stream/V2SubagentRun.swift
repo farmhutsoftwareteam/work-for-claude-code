@@ -51,8 +51,12 @@ struct V2SubagentRun: Identifiable, Equatable {
     /// sync completions (tool_result), background completions
     /// (<tool-use-id>), and the on-disk meta.json all carry it.
     let toolUseId: String
-    let description: String
-    let agentType: String
+    /// `var` because Codex identifies an agent only when it reports in:
+    /// a spawn can land before the subAgentActivity that names it, so both
+    /// are backfilled (see CodexSession.applySubagentEvent). Claude sets
+    /// them once at spawn and never rewrites them.
+    var description: String
+    var agentType: String
     let isBackground: Bool
     let startedAt: Date
     var state: State = .running
@@ -63,6 +67,11 @@ struct V2SubagentRun: Identifiable, Equatable {
     /// The agent's final report — sync tool_result text, or the
     /// notification's <result> payload.
     var resultText: String?
+    /// Codex only: the sub-agent's own THREAD id. Codex sub-agents aren't
+    /// files on disk like Claude's agent-*.jsonl — each is a real thread
+    /// with its own history, readable through the app-server. Non-nil is
+    /// what routes the peek to the Codex reader instead of the file tail.
+    var threadId: String?
 
     var id: String { toolUseId }
 }
@@ -86,8 +95,10 @@ enum V2SubagentParser {
 
     /// True when a tool_use is an agent spawn — the CLI's "Task" and the
     /// SDK's "Agent" are the same tool across harness versions.
+    /// "collab.spawnAgent" is Codex's equivalent (see CodexSession's
+    /// toolUseItem), so both providers render the same delegation card.
     static func isAgentSpawn(toolName: String) -> Bool {
-        toolName == "Task" || toolName == "Agent"
+        toolName == "Task" || toolName == "Agent" || toolName == "collab.spawnAgent"
     }
 
     /// The agentId out of a background spawn ack, nil for any other text

@@ -18,18 +18,24 @@
 import SwiftUI
 import Inject
 
-struct V2SubagentRunsStrip: View {
+private let v2SubagentStripLingerAfterFinish: TimeInterval = 30
+private let v2SubagentStripMaxRows = 3
+
+struct V2SubagentRunsStrip<Session: V2TranscriptSource>: View {
     @ObserveInjection private var inject
     @Environment(\.v2) private var v2
     /// Not @ObservedObject — same reasoning as the other strips: this
     /// mounts beside the transcript and only cares about `subagentRuns`,
     /// so it tracks just that one publisher instead of the session's
     /// blanket objectWillChange (PERFORMANCE.md §2).
-    let session: StreamSession
+    let session: Session
     @State private var runs: [V2SubagentRun] = []
 
-    private static let lingerAfterFinish: TimeInterval = 30
-    private static let maxRows = 3
+    // File-scope, not static members: Swift doesn't allow static stored
+    // properties in a generic type, and this view is now generic over the
+    // session so both providers share it.
+    private var lingerAfterFinish: TimeInterval { v2SubagentStripLingerAfterFinish }
+    private var maxRows: Int { v2SubagentStripMaxRows }
 
     var body: some View {
         Group {
@@ -47,7 +53,7 @@ struct V2SubagentRunsStrip: View {
         // malloc-reuse pitfall documented on the sibling strips.
         .task(id: session.instanceId) {
             runs = session.subagentRuns
-            for await r in session.$subagentRuns.values {
+            for await r in session.subagentRunsPublisher.values {
                 runs = r
             }
         }
@@ -67,7 +73,7 @@ struct V2SubagentRunsStrip: View {
             .filter { run in
                 if run.state == .running { return true }
                 guard let finishedAt = run.finishedAt else { return true }
-                return now.timeIntervalSince(finishedAt) < Self.lingerAfterFinish
+                return now.timeIntervalSince(finishedAt) < lingerAfterFinish
             }
             .sorted { a, b in
                 let ra = a.state == .running, rb = b.state == .running
@@ -78,8 +84,8 @@ struct V2SubagentRunsStrip: View {
 
     private var cappedRows: [Row] {
         let visible = visibleRuns
-        let capped = visible.prefix(Self.maxRows).map(Row.run)
-        let overflow = visible.dropFirst(Self.maxRows)
+        let capped = visible.prefix(maxRows).map(Row.run)
+        let overflow = visible.dropFirst(maxRows)
         guard !overflow.isEmpty else { return Array(capped) }
         let running = overflow.filter { $0.state == .running }.count
         let done = overflow.filter { $0.state == .completed }.count

@@ -158,6 +158,7 @@ final class StreamSession: ObservableObject, V2TranscriptSource {
     /// Subagents delegated via the Task/Agent tool (#38) — see
     /// V2SubagentRun.swift for the wire format this parses.
     @Published private(set) var subagentRuns: [V2SubagentRun] = []
+    var subagentRunsPublisher: Published<[V2SubagentRun]>.Publisher { $subagentRuns }
     /// toolUseId → command, populated when a Bash tool_use is seen, so the
     /// spawn-ack (which only carries a task id + output path) can be matched
     /// back to the real command it started. Small and short-lived — an

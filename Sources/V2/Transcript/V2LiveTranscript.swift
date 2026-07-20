@@ -20,6 +20,10 @@ protocol V2TranscriptSource: ObservableObject {
     var endError: String? { get }
     var preloadOmittedTurns: Int { get }
     var subagentRuns: [V2SubagentRun] { get }
+    /// The runs strip subscribes to THIS rather than the session's blanket
+    /// objectWillChange — it mounts beside a streaming transcript and must
+    /// not re-render on every token (PERFORMANCE.md §2).
+    var subagentRunsPublisher: Published<[V2SubagentRun]>.Publisher { get }
     var sessionDir: URL? { get }
     var state: StreamSession.LifecycleState { get }
     var toolOutcomes: [String: Bool] { get }
@@ -555,7 +559,11 @@ struct V2AssistantBlock: View {
                 V2DelegationCard(
                     run: subagentRuns[id],
                     toolUseId: id,
-                    fallbackDescription: input.dig("description")?.asString ?? "agent",
+                    // Codex spawns carry the task as `prompt`; Claude's as
+                    // `description`. Same card either way.
+                    fallbackDescription: input.dig("description")?.asString
+                        ?? input.dig("prompt")?.asString
+                        ?? "agent",
                     fallbackAgentType: input.dig("subagent_type")?.asString ?? "agent",
                     sessionDir: sessionDir
                 )

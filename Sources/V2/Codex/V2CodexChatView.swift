@@ -19,7 +19,15 @@ struct V2CodexChatView: View {
             if session.requiresChatGPTLogin {
                 loginView
             } else {
-                V2LiveTranscript(session: session, projectCwd: projectCwd)
+                VStack(spacing: 0) {
+                    V2LiveTranscript(session: session, projectCwd: projectCwd)
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    // Multi-agent delegations, live — the same strip Claude
+                    // tabs mount. Codex tabs previously had no equivalent,
+                    // so concurrent sub-agents were invisible once their
+                    // spawn row scrolled away. Empty ⇒ renders nothing.
+                    V2SubagentRunsStrip(session: session)
+                }
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)

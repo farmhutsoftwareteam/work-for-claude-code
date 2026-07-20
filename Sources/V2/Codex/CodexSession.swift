@@ -114,7 +114,11 @@ final class CodexSession: ObservableObject, V2TranscriptSource {
     // corresponding branch in V2LiveTranscript's shared body just never
     // renders for a Codex session instead of rendering something wrong.
     var baseDir: String? { cwd?.path }
-    var subagentRuns: [V2SubagentRun] { [] }
+    /// Populated live from collab spawns + sub-agent activity (see
+    /// applySubagentEvent). Was hardcoded empty, which is why Codex tabs
+    /// had no delegation cards and no runs strip while Claude tabs did.
+    @Published private(set) var subagentRuns: [V2SubagentRun] = []
+    var subagentRunsPublisher: Published<[V2SubagentRun]>.Publisher { $subagentRuns }
     var sessionDir: URL? { nil }
     var preloadOmittedTurns: Int { 0 }
     var isRetrying: Bool { false }
@@ -229,6 +233,9 @@ final class CodexSession: ObservableObject, V2TranscriptSource {
         self.model = model ?? ""
         self.permissionMode = permissionMode
         self.effort = effort
+        // Lets the sub-agent peek read a thread later without plumbing the
+        // binary through the view tree.
+        CodexHistoryReader.shared.rememberBinary(codexURL)
         // Capture the wake recipe — hibernation respawns with exactly these.
         wakeCwd = cwd
         wakeBinary = codexURL
@@ -1333,6 +1340,7 @@ final class CodexSession: ObservableObject, V2TranscriptSource {
            let path = item["agentPath"] as? String {
             subAgentNames[threadId] = path
         }
+        Self.applySubagentEvent(item, to: &subagentRuns, names: subAgentNames, now: Date())
         let mapped = Self.transcriptItem(
             from: item,
             alreadyStarted: startedItemIndex[id] != nil,
@@ -1636,6 +1644,100 @@ final class CodexSession: ObservableObject, V2TranscriptSource {
         default:
             return nil
         }
+    }
+
+    /// Folds one ThreadItem into the sub-agent run registry, keyed by the
+    /// spawning collab call's item id (what an inline delegation card looks
+    /// itself up by) with the agent's thread id carried alongside (what
+    /// every later status update is keyed by).
+    ///
+    /// Pure and static so the whole lifecycle is testable without a live
+    /// app-server. Live-only by design, exactly like Claude's registry —
+    /// a restored transcript renders its delegation blocks from history and
+    /// the card degrades to a static row.
+    static func applySubagentEvent(
+        _ item: [String: Any],
+        to runs: inout [V2SubagentRun],
+        names: [String: String],
+        now: Date
+    ) {
+        func indexOf(threadId: String) -> Int? {
+            runs.firstIndex { $0.threadId == threadId }
+        }
+        func finish(_ idx: Int, _ state: V2SubagentRun.State, message: String?) {
+            guard runs[idx].state == .running else { return }
+            runs[idx].state = state
+            runs[idx].finishedAt = now
+            if let message, !message.isEmpty { runs[idx].resultText = message }
+        }
+
+        switch item["type"] as? String {
+        case "collabAgentToolCall":
+            let tool = item["tool"] as? String ?? ""
+            let receivers = item["receiverThreadIds"] as? [String] ?? []
+            if tool == "spawnAgent", let callId = item["id"] as? String {
+                for threadId in receivers where indexOf(threadId: threadId) == nil {
+                    let name = names[threadId].map(agentDisplayName)
+                    runs.append(V2SubagentRun(
+                        toolUseId: callId,
+                        description: spawnDescription(item, fallback: name),
+                        agentType: name ?? "sub-agent",
+                        // Codex sub-agents always run concurrently with the
+                        // parent — there's no synchronous variant.
+                        isBackground: true,
+                        startedAt: now,
+                        threadId: threadId
+                    ))
+                }
+            }
+            // Any collab call can report status for agents it touched.
+            for (threadId, raw) in item["agentsStates"] as? [String: [String: Any]] ?? [:] {
+                guard let idx = indexOf(threadId: threadId) else { continue }
+                let message = (raw["message"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines)
+                switch raw["status"] as? String {
+                case "completed":
+                    finish(idx, .completed, message: message)
+                case "errored", "interrupted":
+                    finish(idx, .failed, message: message)
+                case "shutdown", "notFound":
+                    // The agent is gone and can no longer report back —
+                    // never leave it claiming to still be running.
+                    finish(idx, .orphaned, message: message)
+                default:
+                    if let message, !message.isEmpty { runs[idx].resultText = message }
+                }
+            }
+
+        case "subAgentActivity":
+            guard let threadId = item["agentThreadId"] as? String else { return }
+            // A name may arrive only now; backfill it onto a run spawned
+            // before the agent identified itself.
+            if let idx = indexOf(threadId: threadId) {
+                if let path = item["agentPath"] as? String {
+                    let name = agentDisplayName(path)
+                    runs[idx].agentType = name
+                    if runs[idx].description.isEmpty { runs[idx].description = name }
+                }
+                if item["kind"] as? String == "interrupted" {
+                    finish(idx, .failed, message: "interrupted")
+                }
+            }
+
+        default:
+            break
+        }
+    }
+
+    /// A spawn's prompt is the closest thing Codex has to Claude's
+    /// `description` — take its first meaningful line so a card reads like
+    /// a task, not a wall of prompt.
+    private static func spawnDescription(_ item: [String: Any], fallback: String?) -> String {
+        let prompt = (item["prompt"] as? String)?
+            .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        guard let first = prompt.split(separator: "\n").first.map(String.init), !first.isEmpty else {
+            return fallback ?? "sub-agent"
+        }
+        return first.count > 90 ? String(first.prefix(89)) + "…" : first
     }
 
     /// Codex names agents by path: "/root" is the main thread (verified in
