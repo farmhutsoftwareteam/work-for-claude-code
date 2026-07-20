@@ -321,35 +321,47 @@ struct V2ProseRunView: NSViewRepresentable {
                     ]))
                 }
 
-            case .bullet(let items):
+            case .list(let items):
                 for (idx, item) in items.enumerated() {
                     newlineIfNeeded()
                     let last = idx == items.count - 1
+                    // Depth shifts the whole row; the marker column width
+                    // stays constant per marker kind so wrapped text hangs
+                    // under its own first character, not under the marker.
+                    let depthShift = CGFloat(item.depth) * 14
+                    let markerIndent = item.number != nil ? orderedIndent : bulletIndent
+                    let style = NSMutableParagraphStyle()
+                    style.lineSpacing = size * 0.66
+                    style.firstLineHeadIndent = depthShift
+                    style.headIndent = depthShift + markerIndent
+                    style.paragraphSpacing = last ? blockSpacing : itemSpacing
+                    style.tabStops = [NSTextTab(textAlignment: .left, location: depthShift + markerIndent)]
+                    let marker = item.number.map { "\($0).\t" }
+                        ?? (V2MarkdownText.bulletGlyph(depth: item.depth) + "\t")
+                    out.append(NSAttributedString(string: marker, attributes: [
+                        .font: NSFont.monospacedSystemFont(ofSize: size, weight: .regular),
+                        .foregroundColor: NSColor(palette.mute),
+                        .paragraphStyle: style,
+                    ]))
+                    out.append(piece(item.text, style: style))
+                }
+
+            case .quote(let text):
+                // One bar-prefixed line per quote line so the bar reads as
+                // a continuous left edge, matching the streaming path.
+                for line in text.components(separatedBy: "\n") {
+                    newlineIfNeeded()
                     let style = paraStyle(headIndent: bulletIndent, tabAt: bulletIndent,
-                                          spacingAfter: last ? blockSpacing : itemSpacing)
-                    out.append(NSAttributedString(string: "•\t", attributes: [
+                                          spacingAfter: itemSpacing)
+                    out.append(NSAttributedString(string: "│\t", attributes: [
                         .font: NSFont.monospacedSystemFont(ofSize: size, weight: .regular),
-                        .foregroundColor: NSColor(palette.mute),
+                        .foregroundColor: NSColor(palette.line2),
                         .paragraphStyle: style,
                     ]))
-                    out.append(piece(item, style: style))
+                    out.append(piece(line, style: style))
                 }
 
-            case .ordered(let items):
-                for (idx, item) in items.enumerated() {
-                    newlineIfNeeded()
-                    let last = idx == items.count - 1
-                    let style = paraStyle(headIndent: orderedIndent, tabAt: orderedIndent,
-                                          spacingAfter: last ? blockSpacing : itemSpacing)
-                    out.append(NSAttributedString(string: "\(idx + 1).\t", attributes: [
-                        .font: NSFont.monospacedSystemFont(ofSize: size, weight: .regular),
-                        .foregroundColor: NSColor(palette.mute),
-                        .paragraphStyle: style,
-                    ]))
-                    out.append(piece(item, style: style))
-                }
-
-            case .codeFence, .table:
+            case .codeFence, .table, .divider:
                 // Chrome blocks never reach a prose run (groupRuns splits on
                 // them); tolerate rather than trap if that invariant slips.
                 continue

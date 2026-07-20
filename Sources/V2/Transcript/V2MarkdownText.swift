@@ -83,34 +83,45 @@ struct V2MarkdownText: View {
             // selection, click-to-open (SwiftUI Text can't do per-run cursors).
             V2RichText(markdown: text, baseDir: baseDir)
                 .frame(maxWidth: .infinity, alignment: .leading)
-        case .bullet(let items):
+        case .list(let items):
             VStack(alignment: .leading, spacing: 7) {
                 ForEach(Array(items.enumerated()), id: \.offset) { _, item in
                     HStack(alignment: .top, spacing: 10) {
-                        Text("•")
+                        Text(item.number.map { "\($0)." } ?? Self.bulletGlyph(depth: item.depth))
                             .font(.system(size: 13, design: .monospaced))
                             .foregroundColor(v2.mute)
-                        V2RichText(markdown: item, baseDir: baseDir)
+                        V2RichText(markdown: item.text, baseDir: baseDir)
                             .frame(maxWidth: .infinity, alignment: .leading)
                     }
+                    .padding(.leading, CGFloat(item.depth) * 14)
                 }
             }
-        case .ordered(let items):
-            VStack(alignment: .leading, spacing: 7) {
-                ForEach(Array(items.enumerated()), id: \.offset) { idx, item in
-                    HStack(alignment: .top, spacing: 10) {
-                        Text("\(idx + 1).")
-                            .font(.system(size: 13, design: .monospaced))
-                            .foregroundColor(v2.mute)
-                        V2RichText(markdown: item, baseDir: baseDir)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                    }
-                }
+        case .divider:
+            Rectangle().fill(v2.line)
+                .frame(height: 1)
+                .padding(.vertical, 3)
+        case .quote(let text):
+            HStack(alignment: .top, spacing: 10) {
+                Rectangle().fill(v2.line2).frame(width: 2)
+                V2RichText(markdown: text, baseDir: baseDir)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .opacity(0.82)
             }
         case .codeFence(let lang, let body):
             V2CodeBlock(lang: lang, code: body)
         case .table(let header, let rows):
             V2MarkdownTable(header: header, rows: rows)
+        }
+    }
+
+    /// Nesting markers: • at the top level, ◦ then · below it — the depth
+    /// has to be visible in the glyph as well as the indent or deep lists
+    /// read as accidental spacing.
+    static func bulletGlyph(depth: Int) -> String {
+        switch depth {
+        case 0: return "•"
+        case 1: return "◦"
+        default: return "·"
         }
     }
 
@@ -239,13 +250,30 @@ struct V2MarkdownText: View {
         return result
     }
 
-    enum MDBlock {
+    /// One list row. `depth` is the nesting level (0-based, from leading
+    /// indentation); `number` carries an ordered item's SOURCE number.
+    /// Both exist because of what real Codex replies do constantly and
+    /// Claude's flatter style never exposed (counted across 67 real
+    /// rollouts, 2026-07-20): 2,500 nested-bullet lines were flattened to
+    /// top level, and 4,729 ordered lines don't start at 1 — a renderer
+    /// that renumbers from its own loop index rewrites "3. Run tests"
+    /// into "1. Run tests".
+    struct ListItem: Equatable {
+        var text: String
+        let depth: Int
+        var number: Int?
+    }
+
+    enum MDBlock: Equatable {
         case heading(level: Int, text: String)
         case paragraph(String)
-        case bullet([String])
-        case ordered([String])
+        /// Bullets and ordered items share one block so mixed nesting
+        /// (an ordered child under a bullet parent) stays one list.
+        case list([ListItem])
         case codeFence(lang: String, body: String)
         case table(header: [String], rows: [[String]])
+        case divider
+        case quote(String)
     }
 
     /// A block plus the SOURCE LINE it starts at, used as ForEach identity
@@ -305,7 +333,10 @@ struct V2MarkdownText: View {
 
         for item in blocks {
             switch item.block {
-            case .codeFence, .table:
+            // Dividers join fences and tables as chrome: an NSTextView run
+            // can't draw a horizontal rule, and a rule is a section break —
+            // bounding selection at it matches how it reads.
+            case .codeFence, .table, .divider:
                 flush()
                 out.append(IDRun(id: item.id, kind: .chrome(item.block), key: ""))
             case .paragraph(let s):
@@ -316,14 +347,17 @@ struct V2MarkdownText: View {
                 if pendingId == nil { pendingId = item.id }
                 pending.append(item.block)
                 keyParts.append("h\(level):\(text)")
-            case .bullet(let items):
+            case .list(let items):
                 if pendingId == nil { pendingId = item.id }
                 pending.append(item.block)
-                keyParts.append("b:\(items.joined(separator: "\u{01}"))")
-            case .ordered(let items):
+                // Depth and source number are part of the rendered output,
+                // so they must be part of the cache key.
+                keyParts.append("l:" + items.map { "\($0.depth)/\($0.number.map(String.init) ?? "-")/\($0.text)" }
+                    .joined(separator: "\u{01}"))
+            case .quote(let text):
                 if pendingId == nil { pendingId = item.id }
                 pending.append(item.block)
-                keyParts.append("o:\(items.joined(separator: "\u{01}"))")
+                keyParts.append("q:\(text)")
             }
         }
         flush()
@@ -355,20 +389,35 @@ struct V2MarkdownText: View {
                 continue
             }
 
-            // Heading
-            if trimmed.hasPrefix("# ") {
-                out.append(IDBlock(id: blockStart, block: .heading(level: 1, text: String(trimmed.dropFirst(2)))))
+            // Thematic break (--- / *** / ___). Checked before lists: "---"
+            // can't match a bullet ("- " needs the space) but the ordering
+            // makes the intent explicit. A dash rule directly UNDER text is
+            // setext and handled inside paragraph accumulation below.
+            if isRule(trimmed) {
+                out.append(IDBlock(id: blockStart, block: .divider))
                 i += 1
                 continue
             }
-            if trimmed.hasPrefix("## ") {
-                out.append(IDBlock(id: blockStart, block: .heading(level: 2, text: String(trimmed.dropFirst(3)))))
+
+            // ATX heading, any depth — #### and deeper clamp to the level-3
+            // style rather than falling through as a literal "#### Foo"
+            // paragraph.
+            if let (level, headingText) = atxHeading(trimmed) {
+                out.append(IDBlock(id: blockStart, block: .heading(level: min(level, 3), text: headingText)))
                 i += 1
                 continue
             }
-            if trimmed.hasPrefix("### ") {
-                out.append(IDBlock(id: blockStart, block: .heading(level: 3, text: String(trimmed.dropFirst(4)))))
-                i += 1
+
+            // Blockquote — consecutive "> " lines collapse into one quote.
+            if trimmed.hasPrefix(">") {
+                var quote: [String] = []
+                while i < lines.count {
+                    let q = lines[i].trimmingCharacters(in: .whitespaces)
+                    guard q.hasPrefix(">") else { break }
+                    quote.append(String(q.dropFirst()).trimmingCharacters(in: .whitespaces))
+                    i += 1
+                }
+                out.append(IDBlock(id: blockStart, block: .quote(quote.joined(separator: "\n"))))
                 continue
             }
 
@@ -387,25 +436,31 @@ struct V2MarkdownText: View {
                 continue
             }
 
-            // Bullet list
-            if isBullet(trimmed) {
-                var items: [String] = []
-                while i < lines.count, isBullet(lines[i].trimmingCharacters(in: .whitespaces)) {
-                    items.append(stripBullet(lines[i].trimmingCharacters(in: .whitespaces)))
+            // List — bullets and ordered items together, depth from the RAW
+            // line's indentation (trimming first is what flattened every
+            // nested list), numbers from the source (renumbering from the
+            // render loop's own index is what rewrote "3." as "1.").
+            if isBullet(trimmed) || orderedItem(trimmed) != nil {
+                var items: [ListItem] = []
+                while i < lines.count {
+                    let rawLine = lines[i]
+                    let t = rawLine.trimmingCharacters(in: .whitespaces)
+                    if t.isEmpty { break }
+                    let depth = depthFor(leadingIndent(rawLine))
+                    if let (number, rest) = orderedItem(t) {
+                        items.append(ListItem(text: rest, depth: depth, number: number))
+                    } else if isBullet(t) {
+                        items.append(ListItem(text: stripBullet(t), depth: depth, number: nil))
+                    } else if leadingIndent(rawLine) >= 2, !items.isEmpty {
+                        // Lazy continuation: an indented plain line belongs
+                        // to the item above it, not to a fresh paragraph.
+                        items[items.count - 1].text += "\n" + t
+                    } else {
+                        break
+                    }
                     i += 1
                 }
-                out.append(IDBlock(id: blockStart, block: .bullet(items)))
-                continue
-            }
-
-            // Ordered list
-            if isOrdered(trimmed) {
-                var items: [String] = []
-                while i < lines.count, isOrdered(lines[i].trimmingCharacters(in: .whitespaces)) {
-                    items.append(stripOrdered(lines[i].trimmingCharacters(in: .whitespaces)))
-                    i += 1
-                }
-                out.append(IDBlock(id: blockStart, block: .ordered(items)))
+                out.append(IDBlock(id: blockStart, block: .list(items)))
                 continue
             }
 
@@ -422,14 +477,30 @@ struct V2MarkdownText: View {
                 let l = lines[i]
                 let t = l.trimmingCharacters(in: .whitespaces)
                 if t.isEmpty { break }
-                if t.hasPrefix("# ") || t.hasPrefix("## ") || t.hasPrefix("### ") { break }
-                if t.hasPrefix("```") { break }
-                if isBullet(t) || isOrdered(t) { break }
+                // Setext underline: "Title\n---" (or ===) is a heading, not
+                // a paragraph carrying literal dashes. Only a single-line
+                // paragraph promotes; under a longer one the rule reads as
+                // a divider and the outer loop picks it up.
+                if para.count == 1, isSetextUnderline(t) {
+                    out.append(IDBlock(id: blockStart, block: .heading(
+                        level: t.hasPrefix("=") ? 1 : 2,
+                        text: para[0].trimmingCharacters(in: .whitespaces)
+                    )))
+                    i += 1
+                    para = []
+                    break
+                }
+                if isRule(t) { break }
+                if atxHeading(t) != nil { break }
+                if t.hasPrefix("```") || t.hasPrefix(">") { break }
+                if isBullet(t) || orderedItem(t) != nil { break }
                 if isTableRow(t), i + 1 < lines.count, isTableDelimiter(lines[i + 1]) { break }
                 para.append(l)
                 i += 1
             }
-            out.append(IDBlock(id: blockStart, block: .paragraph(para.joined(separator: "\n"))))
+            if !para.isEmpty {
+                out.append(IDBlock(id: blockStart, block: .paragraph(para.joined(separator: "\n"))))
+            }
         }
         return out
     }
@@ -442,20 +513,54 @@ struct V2MarkdownText: View {
         String(s.dropFirst(2))
     }
 
-    private static func isOrdered(_ s: String) -> Bool {
-        // 1. … / 12. …
-        guard let dot = s.firstIndex(of: ".") else { return false }
-        let prefix = s[..<dot]
-        guard !prefix.isEmpty, prefix.allSatisfy(\.isNumber) else { return false }
-        let after = s.index(after: dot)
-        return after < s.endIndex && s[after] == " "
+    /// "3. text" / "3) text" → (3, "text"). Codex emits both delimiters
+    /// (69 "N)" lines in the real corpus) and lists that continue across
+    /// message boundaries, so the source number is data, not decoration.
+    private static func orderedItem(_ s: String) -> (number: Int, text: String)? {
+        guard let mark = s.firstIndex(where: { $0 == "." || $0 == ")" }) else { return nil }
+        let prefix = s[..<mark]
+        guard !prefix.isEmpty, prefix.count <= 4, prefix.allSatisfy(\.isNumber),
+              let number = Int(prefix) else { return nil }
+        let after = s.index(after: mark)
+        guard after < s.endIndex, s[after] == " " else { return nil }
+        return (number, String(s[s.index(after: after)...]))
     }
 
-    private static func stripOrdered(_ s: String) -> String {
-        guard let dot = s.firstIndex(of: ".") else { return s }
-        let after = s.index(after: dot)
-        guard after < s.endIndex else { return "" }
-        return String(s[s.index(after: after)...])
+    /// Leading indentation in spaces (tab = 4) measured on the RAW line.
+    private static func leadingIndent(_ s: String) -> Int {
+        var n = 0
+        for ch in s {
+            if ch == " " { n += 1 } else if ch == "\t" { n += 4 } else { break }
+        }
+        return n
+    }
+
+    /// Two-space indents per level (Codex's convention), clamped so a
+    /// pathological indent can't push text off the pane.
+    private static func depthFor(_ indent: Int) -> Int {
+        min(indent / 2, 4)
+    }
+
+    /// Thematic break: 3+ of the same -, *, or _ and nothing else.
+    private static func isRule(_ s: String) -> Bool {
+        guard s.count >= 3, let first = s.first, "-*_".contains(first) else { return false }
+        return s.allSatisfy { $0 == first }
+    }
+
+    /// Setext underline: 2+ dashes or equals signs and nothing else.
+    private static func isSetextUnderline(_ s: String) -> Bool {
+        guard s.count >= 2, let first = s.first, first == "-" || first == "=" else { return false }
+        return s.allSatisfy { $0 == first }
+    }
+
+    /// "## Title" → (2, "Title") for any 1–6 hash prefix.
+    private static func atxHeading(_ s: String) -> (level: Int, text: String)? {
+        guard s.hasPrefix("#") else { return nil }
+        let hashes = s.prefix(while: { $0 == "#" })
+        guard hashes.count <= 6 else { return nil }
+        let rest = s.dropFirst(hashes.count)
+        guard rest.first == " " else { return nil }
+        return (hashes.count, String(rest.dropFirst()))
     }
 
     // MARK: - Table parsing
