@@ -125,6 +125,55 @@ final class MarkdownChunkerTests: XCTestCase {
         XCTAssertEqual(items.map(\.depth), [0, 0])
     }
 
+    // MARK: - Second sweep (corpus-driven): task lists, CRLF, fences in lists
+
+    func testTaskListCheckboxesParse() {
+        // 1,990 real corpus lines — Codex writes plans as GFM task lists,
+        // which previously rendered their brackets literally.
+        let md = "- [ ] buy milk\n- [x] ship release\n- plain item"
+        guard case .list(let items) = blocks(md).first else { return XCTFail("expected a list") }
+        XCTAssertEqual(items.map(\.checked), [false, true, nil])
+        XCTAssertEqual(items.map(\.text), ["buy milk", "ship release", "plain item"])
+    }
+
+    func testCarriageReturnsAreInvisible() {
+        // 784 real corpus lines carry \r; CharacterSet.whitespaces does NOT
+        // strip it, so without normalization "---\r" fails the rule check
+        // and item text keeps a trailing CR.
+        let md = "- alpha\r\n- beta\r\n\r\n---\r"
+        let out = blocks(md)
+        guard case .list(let items) = out.first else { return XCTFail("expected a list") }
+        XCTAssertEqual(items.map(\.text), ["alpha", "beta"])
+        guard case .divider = out.last else { return XCTFail("CR after --- must not demote the divider") }
+    }
+
+    func testFenceUnderAListItemBecomesASiblingCodeBlock() {
+        // 151 real corpus lines: a fence indented beneath a list item is a
+        // code block, not literal backticks inside the item's text.
+        let md = "- run this:\n  ```bash\n  git status\n  ```"
+        let out = blocks(md)
+        XCTAssertEqual(out.count, 2)
+        guard case .list(let items) = out[0], case .codeFence(let lang, let body) = out[1] else {
+            return XCTFail("expected list then fence, got \(out)")
+        }
+        XCTAssertEqual(items.map(\.text), ["run this:"])
+        XCTAssertEqual(lang, "bash")
+        XCTAssertTrue(body.contains("git status"))
+    }
+
+    func testClosingHashSequenceIsDecorationNotContent() {
+        guard case .heading(2, "Title") = blocks("## Title ##").first else {
+            return XCTFail("closing hashes must be stripped from the heading text")
+        }
+    }
+
+    func testCheckboxStateFeedsTheSharedMarker() {
+        XCTAssertEqual(V2MarkdownText.listMarker(.init(text: "a", depth: 0, number: nil, checked: false)), "☐")
+        XCTAssertEqual(V2MarkdownText.listMarker(.init(text: "a", depth: 0, number: nil, checked: true)), "☑")
+        XCTAssertEqual(V2MarkdownText.listMarker(.init(text: "a", depth: 0, number: 3, checked: nil)), "3.")
+        XCTAssertEqual(V2MarkdownText.listMarker(.init(text: "a", depth: 1, number: nil, checked: nil)), "◦")
+    }
+
     // MARK: - Regressions: what already worked must keep working
 
     func testTablesStillParse() {

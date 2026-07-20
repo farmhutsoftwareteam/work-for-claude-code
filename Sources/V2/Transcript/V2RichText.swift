@@ -336,8 +336,7 @@ struct V2ProseRunView: NSViewRepresentable {
                     style.headIndent = depthShift + markerIndent
                     style.paragraphSpacing = last ? blockSpacing : itemSpacing
                     style.tabStops = [NSTextTab(textAlignment: .left, location: depthShift + markerIndent)]
-                    let marker = item.number.map { "\($0).\t" }
-                        ?? (V2MarkdownText.bulletGlyph(depth: item.depth) + "\t")
+                    let marker = V2MarkdownText.listMarker(item) + "\t"
                     out.append(NSAttributedString(string: marker, attributes: [
                         .font: NSFont.monospacedSystemFont(ofSize: size, weight: .regular),
                         .foregroundColor: NSColor(palette.mute),

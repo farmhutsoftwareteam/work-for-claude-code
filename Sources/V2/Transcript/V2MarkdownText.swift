@@ -87,7 +87,7 @@ struct V2MarkdownText: View {
             VStack(alignment: .leading, spacing: 7) {
                 ForEach(Array(items.enumerated()), id: \.offset) { _, item in
                     HStack(alignment: .top, spacing: 10) {
-                        Text(item.number.map { "\($0)." } ?? Self.bulletGlyph(depth: item.depth))
+                        Text(Self.listMarker(item))
                             .font(.system(size: 13, design: .monospaced))
                             .foregroundColor(v2.mute)
                         V2RichText(markdown: item.text, baseDir: baseDir)
@@ -123,6 +123,14 @@ struct V2MarkdownText: View {
         case 1: return "◦"
         default: return "·"
         }
+    }
+
+    /// One marker rule for both render paths (streaming rows and the merged
+    /// prose run) so they can't drift: checkbox state wins, then source
+    /// number, then the depth glyph.
+    static func listMarker(_ item: ListItem) -> String {
+        if let checked = item.checked { return checked ? "☑" : "☐" }
+        return item.number.map { "\($0)." } ?? bulletGlyph(depth: item.depth)
     }
 
     @ViewBuilder
@@ -262,6 +270,10 @@ struct V2MarkdownText: View {
         var text: String
         let depth: Int
         var number: Int?
+        /// GFM task list state: nil = plain item, false = "[ ]", true =
+        /// "[x]". 1,990 real corpus lines — Codex writes plans as task
+        /// lists, which previously rendered their brackets literally.
+        var checked: Bool?
     }
 
     enum MDBlock: Equatable {
@@ -350,10 +362,11 @@ struct V2MarkdownText: View {
             case .list(let items):
                 if pendingId == nil { pendingId = item.id }
                 pending.append(item.block)
-                // Depth and source number are part of the rendered output,
-                // so they must be part of the cache key.
-                keyParts.append("l:" + items.map { "\($0.depth)/\($0.number.map(String.init) ?? "-")/\($0.text)" }
-                    .joined(separator: "\u{01}"))
+                // Depth, source number, and checkbox state are part of the
+                // rendered output, so they must be part of the cache key.
+                keyParts.append("l:" + items.map {
+                    "\($0.depth)/\($0.number.map(String.init) ?? "-")/\($0.checked.map { $0 ? "x" : "o" } ?? "-")/\($0.text)"
+                }.joined(separator: "\u{01}"))
             case .quote(let text):
                 if pendingId == nil { pendingId = item.id }
                 pending.append(item.block)
@@ -366,7 +379,14 @@ struct V2MarkdownText: View {
 
     static func chunk(_ text: String) -> [IDBlock] {
         var out: [IDBlock] = []
-        let lines = text.components(separatedBy: "\n")
+        // Normalize CRLF/CR first: 784 real corpus lines carry \r, and
+        // CharacterSet.whitespaces does NOT include it — a trailing \r
+        // silently fails isRule/isSetextUnderline/isTableDelimiter and
+        // leaks into list item text.
+        let lines = text
+            .replacingOccurrences(of: "\r\n", with: "\n")
+            .replacingOccurrences(of: "\r", with: "\n")
+            .components(separatedBy: "\n")
         var i = 0
         while i < lines.count {
             let blockStart = i
@@ -446,11 +466,16 @@ struct V2MarkdownText: View {
                     let rawLine = lines[i]
                     let t = rawLine.trimmingCharacters(in: .whitespaces)
                     if t.isEmpty { break }
+                    // A fence under a list item (151 real corpus lines) is a
+                    // sibling code block, not continuation text — swallowing
+                    // it rendered literal backticks inside the item.
+                    if t.hasPrefix("```") { break }
                     let depth = depthFor(leadingIndent(rawLine))
                     if let (number, rest) = orderedItem(t) {
                         items.append(ListItem(text: rest, depth: depth, number: number))
                     } else if isBullet(t) {
-                        items.append(ListItem(text: stripBullet(t), depth: depth, number: nil))
+                        let (text, checked) = splitTaskCheckbox(stripBullet(t))
+                        items.append(ListItem(text: text, depth: depth, number: nil, checked: checked))
                     } else if leadingIndent(rawLine) >= 2, !items.isEmpty {
                         // Lazy continuation: an indented plain line belongs
                         // to the item above it, not to a fresh paragraph.
@@ -553,14 +578,27 @@ struct V2MarkdownText: View {
         return s.allSatisfy { $0 == first }
     }
 
-    /// "## Title" → (2, "Title") for any 1–6 hash prefix.
+    /// "## Title" → (2, "Title") for any 1–6 hash prefix. A closing hash
+    /// sequence ("## Title ##") is decoration, not content.
     private static func atxHeading(_ s: String) -> (level: Int, text: String)? {
         guard s.hasPrefix("#") else { return nil }
         let hashes = s.prefix(while: { $0 == "#" })
         guard hashes.count <= 6 else { return nil }
         let rest = s.dropFirst(hashes.count)
         guard rest.first == " " else { return nil }
-        return (hashes.count, String(rest.dropFirst()))
+        var text = String(rest.dropFirst())
+        if let closing = text.range(of: #"\s+#+\s*$"#, options: .regularExpression) {
+            text.removeSubrange(closing)
+        }
+        return (hashes.count, text)
+    }
+
+    /// "[ ] buy milk" → ("buy milk", false); "[x] done" → ("done", true);
+    /// anything else passes through unchanged.
+    private static func splitTaskCheckbox(_ s: String) -> (text: String, checked: Bool?) {
+        if s.hasPrefix("[ ] ") { return (String(s.dropFirst(4)), false) }
+        if s.hasPrefix("[x] ") || s.hasPrefix("[X] ") { return (String(s.dropFirst(4)), true) }
+        return (s, nil)
     }
 
     // MARK: - Table parsing
