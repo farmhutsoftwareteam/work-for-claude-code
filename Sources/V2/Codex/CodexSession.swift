@@ -1310,6 +1310,16 @@ final class CodexSession: ObservableObject, V2TranscriptSource {
 
     private func handleCompletedItem(_ item: [String: Any]) {
         guard let id = item["id"] as? String, !renderedItemIDs.contains(id) else { return }
+        // The sent message is already on screen — send() appends it the
+        // moment you hit return. The app-server then echoes that same
+        // message back as a completed userMessage item, and rendering the
+        // echo painted every sentence twice. Only the LIVE path skips it:
+        // history (thread/read preload, thread/resume turns) doesn't pass
+        // through here and still renders user rows via transcriptItem.
+        if item["type"] as? String == "userMessage" {
+            renderedItemIDs.insert(id)
+            return
+        }
         if id == streamingItemId { finalizeStreamingText(); return }
         let mapped = Self.transcriptItem(
             from: item,

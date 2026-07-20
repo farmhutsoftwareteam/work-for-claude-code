@@ -251,6 +251,32 @@ final class CodexSessionMappingTests: XCTestCase {
     /// installed codex-cli 0.144.4 schema (generated via
     /// `codex app-server generate-json-schema`), minimal-but-valid per their
     /// `required` fields.
+    func testServerEchoOfTheSentUserMessageDoesNotDoubleRender() {
+        let session = CodexSession()
+        // send() appends the user's text the moment they hit return; the
+        // app-server then echoes the same message back as a completed
+        // userMessage item. The live path must swallow that echo — it
+        // painted every sent sentence twice in the transcript.
+        session.handleNotification(method: "item/completed", params: [
+            "item": ["type": "userMessage", "id": "u-echo-1",
+                     "content": [["type": "text", "text": "hello there"]]]
+        ])
+        XCTAssertTrue(session.transcript.isEmpty,
+                      "the composer's own append is the render; the server echo must not add a second bubble")
+    }
+
+    func testHistoryMappingStillRendersUserMessages() {
+        // The echo skip is live-path only — a restored transcript's user
+        // rows come through transcriptItem and must keep rendering.
+        let mapped = CodexSession.transcriptItem(from: [
+            "type": "userMessage", "id": "u1",
+            "content": [["type": "text", "text": "from history"]]
+        ])
+        guard case .userText("from history") = mapped.first else {
+            return XCTFail("history userMessage must still map to a user row")
+        }
+    }
+
     // Shape verified against a live codex-cli 0.144.4 config/read response
     // (2026-07-20): snake_case keys, table absent until something writes it.
     func testSandboxNetworkParsesEnabledFromConfigRead() {
