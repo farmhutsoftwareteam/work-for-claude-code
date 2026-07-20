@@ -34,6 +34,15 @@ final class TerminalsController: ObservableObject {
     }
     @Published var tabJumpRequest: TabJumpCommand?
 
+    /// Session portability, staged the same way tab jumps are: the menu
+    /// lives in WorkApp (which has no V2AppState — that's per-window),
+    /// V2RootView owns the panels and the actual work.
+    enum SessionPortCommand: Equatable {
+        case exportActive
+        case importBundle
+    }
+    @Published var sessionPortRequest: SessionPortCommand?
+
     /// Set when a `request*` entry point fires while the "ask before starting"
     /// preference is on. The root view's confirmation dialog binds to this and
     /// calls `confirmPendingStart(skipPermissions:)` or `cancelPendingStart()`.

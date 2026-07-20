@@ -156,6 +156,16 @@ struct WorkApp: App {
                 }
             }
 
+            // Session portability. Staged on `terminals` and handled by
+            // V2RootView, which owns V2AppState (per-window; this scope
+            // has no access to it) — same indirection the tab commands use.
+            CommandGroup(after: .saveItem) {
+                Button("Export Session…") { terminals.sessionPortRequest = .exportActive }
+                    .keyboardShortcut("e", modifiers: [.command, .shift])
+                Button("Import Session…") { terminals.sessionPortRequest = .importBundle }
+                    .keyboardShortcut("i", modifiers: [.command, .shift])
+            }
+
             CommandGroup(replacing: .help) {
                 Button("Welcome to Atelier…") {
                     onboardingComplete = false

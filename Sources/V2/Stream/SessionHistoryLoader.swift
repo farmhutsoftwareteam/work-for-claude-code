@@ -117,10 +117,9 @@ enum SessionHistoryLoader {
     /// one — no cwd decoding needed at all. Bounded to this machine's actual
     /// project count (dozens), only runs on the rare guess-miss.
     static func jsonlURL(sessionId: String, projectCwd: String) -> URL {
-        let home = FileManager.default.homeDirectoryForCurrentUser
-        let projectsRoot = home.appendingPathComponent(".claude").appendingPathComponent("projects")
+        let projectsRoot = projectsRoot()
         let guessed = projectsRoot
-            .appendingPathComponent(projectCwd.replacingOccurrences(of: "/", with: "-"))
+            .appendingPathComponent(projectDirName(for: projectCwd))
             .appendingPathComponent(sessionId + ".jsonl")
         if FileManager.default.fileExists(atPath: guessed.path) { return guessed }
 
@@ -135,5 +134,43 @@ enum SessionHistoryLoader {
             }
         }
         return guessed   // let the caller's fileExists check log+fail as before
+    }
+
+    /// `~/.claude/projects`, honouring CLAUDE_CONFIG_DIR — the documented
+    /// knob for relocating session storage (people point it at an external
+    /// or synced volume). Reading the fixed `~/.claude` ignored that and
+    /// found no history at all for anyone who had set it.
+    static func projectsRoot() -> URL {
+        let base: URL
+        if let override = ProcessInfo.processInfo.environment["CLAUDE_CONFIG_DIR"], !override.isEmpty {
+            base = URL(fileURLWithPath: (override as NSString).expandingTildeInPath)
+        } else {
+            base = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(".claude")
+        }
+        return base.appendingPathComponent("projects")
+    }
+
+    /// Claude's project-directory name for a working directory: EVERY
+    /// non-alphanumeric character becomes "-". Not just "/" — that older
+    /// guess missed any path containing a space, dot, underscore or
+    /// parenthesis, which the scan fallback below then quietly rescued.
+    ///
+    /// Verified against a real directory on disk rather than inferred:
+    ///   /Users/…/Downloads/Mbira Tension Stems (1)
+    ///   → -Users-…-Downloads-Mbira-Tension-Stems--1-
+    /// which pins the space, both parens, and the absence of any
+    /// dash-collapsing or trailing trim.
+    ///
+    /// Load-bearing for import: a bundle written for a machine that has no
+    /// such session yet has no file to scan for, so the name has to be
+    /// right the first time.
+    /// ASCII-only on purpose: Character.isLetter is Unicode-aware and would
+    /// keep "é" or "日", but the rule is [a-zA-Z0-9] — everything else,
+    /// accented letters included, becomes "-".
+    static func projectDirName(for projectCwd: String) -> String {
+        String(projectCwd.map { ch in
+            let isASCIIAlphanumeric = ch.isASCII && (ch.isLetter || ch.isNumber)
+            return isASCIIAlphanumeric ? ch : "-"
+        })
     }
 }

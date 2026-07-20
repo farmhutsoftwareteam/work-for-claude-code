@@ -19,6 +19,8 @@ struct V2RootView: View {
     /// as an overlay. Off by default; the shipping StreamSession chat is
     /// untouched whether this is open or not.
     @State private var showACPPreview = false
+    @State private var showSessionPortAlert = false
+    @State private var sessionPortMessage = ""
     @State private var showClaudeInstall = false
     @State private var showCodexInstall = false
     @State private var showClaudeSignIn = false
@@ -163,6 +165,19 @@ struct V2RootView: View {
             case nil: break
             }
             if request != nil { terminals.tabJumpRequest = nil }
+        }
+        .onChange(of: terminals.sessionPortRequest) { _, request in
+            switch request {
+            case .exportActive: exportActiveSession()
+            case .importBundle: importSessionBundle()
+            case nil: break
+            }
+            if request != nil { terminals.sessionPortRequest = nil }
+        }
+        .alert("Session", isPresented: $showSessionPortAlert) {
+            Button("OK", role: .cancel) { }
+        } message: {
+            Text(sessionPortMessage)
         }
         .task {
             appState.attach(terminals: terminals)
@@ -480,6 +495,128 @@ struct V2RootView: View {
         } else {
             NSApp.keyWindow?.performClose(nil)
         }
+    }
+
+    // MARK: - Session portability
+
+    /// Writes the active tab's conversation to a portable bundle. The
+    /// transcript is copied verbatim; credentials are never included.
+    private func exportActiveSession() {
+        guard let tab = appState.activeTab, tab.surface == .modeB else {
+            return report("Open a chat tab to export its session.")
+        }
+        let provider = tab.provider
+        let sessionId: String? = provider == .codex
+            ? (tab.codexSession?.threadId ?? appState.codexResumeIds[tab.id])
+            : (tab.streamSession?.sessionId ?? appState.resumeIds[tab.id])
+        guard let sessionId else {
+            return report("This tab hasn't started a session yet, so there's nothing to export.")
+        }
+        let source: URL
+        do {
+            source = try V2SessionBundle.destinationURL(
+                provider: provider, sessionId: sessionId, projectCwd: tab.projectCwd
+            )
+        } catch {
+            return report(error.localizedDescription)
+        }
+        // Codex files are date-stamped, so the write-side path can't locate
+        // an existing one — find it by thread id instead.
+        let resolved = provider == .codex
+            ? (Self.findCodexRollout(threadId: sessionId) ?? source)
+            : SessionHistoryLoader.jsonlURL(sessionId: sessionId, projectCwd: tab.projectCwd)
+
+        let manifest = V2SessionBundle.Manifest(
+            provider: provider == .codex ? "codex" : "claude",
+            sessionId: sessionId,
+            projectCwd: tab.projectCwd,
+            title: tab.title,
+            draft: provider == .codex ? tab.codexSession?.composerDraft : tab.streamSession?.composerDraft,
+            exportedAt: Date(),
+            exportedBy: "Atelier \(Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "dev")"
+        )
+
+        let panel = NSSavePanel()
+        panel.nameFieldStringValue = V2SessionBundle.suggestedFilename(for: manifest)
+        panel.canCreateDirectories = true
+        panel.title = "Export Session"
+        panel.message = "The conversation only — your sign-in stays on this Mac."
+        guard panel.runModal() == .OK, let destination = panel.url else { return }
+        do {
+            let lines = try V2SessionBundle.export(manifest: manifest, transcriptAt: resolved, to: destination)
+            report("Exported \(lines) message\(lines == 1 ? "" : "s") to \(destination.lastPathComponent).")
+        } catch {
+            report(error.localizedDescription)
+        }
+    }
+
+    /// Reads a bundle and files its transcript under the project you pick
+    /// ON THIS MACHINE — the path rewrite that makes a session from another
+    /// Mac resolvable here at all.
+    private func importSessionBundle() {
+        let open = NSOpenPanel()
+        open.allowedContentTypes = []
+        open.allowsOtherFileTypes = true
+        open.canChooseDirectories = false
+        open.title = "Import Session"
+        open.message = "Choose an Atelier session file (.\(V2SessionBundle.fileExtension))."
+        guard open.runModal() == .OK, let bundle = open.url else { return }
+
+        let manifest: V2SessionBundle.Manifest
+        do {
+            manifest = try V2SessionBundle.readManifest(at: bundle)
+        } catch {
+            return report(error.localizedDescription)
+        }
+
+        // Which project here does this session belong to? Default to the
+        // selected one; the exported path is only a hint, since it's
+        // exactly what doesn't survive the move.
+        let picker = NSOpenPanel()
+        picker.canChooseDirectories = true
+        picker.canChooseFiles = false
+        picker.canCreateDirectories = false
+        picker.title = "Project for this session"
+        picker.message = "It was exported from \(manifest.projectCwd). Choose the matching folder on this Mac."
+        picker.directoryURL = appState.selectedProjectCwd
+        guard picker.runModal() == .OK, let target = picker.url else { return }
+
+        do {
+            _ = try V2SessionBundle.importBundle(at: bundle, intoProjectCwd: target.path)
+        } catch {
+            return report(error.localizedDescription)
+        }
+        // Open it straight away — an import that leaves you hunting for the
+        // session in a list hasn't finished the job.
+        let name = target.lastPathComponent
+        switch manifest.agentProvider {
+        case .codex:
+            appState.openCodexHistoryThread(
+                threadId: manifest.sessionId, projectCwd: target.path, title: manifest.title ?? name
+            )
+        default:
+            appState.openHistorySession(
+                sessionId: manifest.sessionId, projectCwd: target.path,
+                projectName: name, title: manifest.title ?? name
+            )
+        }
+    }
+
+    /// Codex rollouts are filed by date, not by thread — locate one by the
+    /// id embedded in its filename.
+    private static func findCodexRollout(threadId: String) -> URL? {
+        let root = FileManager.default.homeDirectoryForCurrentUser
+            .appendingPathComponent(".codex/sessions")
+        guard let walker = FileManager.default.enumerator(at: root, includingPropertiesForKeys: nil) else { return nil }
+        for case let url as URL in walker where url.lastPathComponent.hasSuffix("-\(threadId).jsonl") {
+            return url
+        }
+        return nil
+    }
+
+    private func report(_ message: String) {
+        sessionPortMessage = message
+        showSessionPortAlert = true
     }
 
     private func startCTA(tab: TerminalTab, session: StreamSession) -> some View {
