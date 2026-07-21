@@ -6,6 +6,24 @@
         <description>Updates for Atelier</description>
         <language>en</language>
         <item>
+            <title>Version 2.11.1</title>
+            <pubDate>Tue, 21 Jul 2026 12:08:31 +0400</pubDate>
+            <sparkle:version>76</sparkle:version>
+            <sparkle:shortVersionString>2.11.1</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>15.0</sparkle:minimumSystemVersion>
+            <description><![CDATA[
+                <h3>Atelier 2.11.1 — attaching an image no longer hangs the app</h3>
+                <ul>
+                    <li><b>Fixed the composer hanging when you pasted or dragged in a large image.</b> Pasting used to decode the image and then re-encode it uncompressed on the main thread before doing anything else — for a real high-resolution photo that could block the app for over a second. Attaching now reads the image's raw bytes directly and does all the real work in the background, so the app stays responsive no matter the image size.</li>
+                </ul>
+            ]]></description>
+            <enclosure
+                url="https://work.munyamakosa.com/Atelier-2.11.1.dmg"
+                length="15049789"
+                type="application/octet-stream"
+                sparkle:edSignature="LDf/Mimlezvkkib4YNo1lWVh4Ha6kV6hY/DKkb58Wo/1NHPDinJoXRLqdbCz9BTp+VlP2FJW/jEhHF+cTVoFCw==" />
+        </item>
+        <item>
             <title>Version 2.11.0</title>
             <pubDate>Tue, 21 Jul 2026 11:06:59 +0400</pubDate>
             <sparkle:version>75</sparkle:version>
