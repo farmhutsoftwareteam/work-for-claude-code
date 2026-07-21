@@ -5,7 +5,8 @@
 //   • Shift+Enter   → insert literal newline
 //   • Cmd+Enter     → also submit (matches iMessage / Discord)
 //   • Cmd+V image   → caught before AppKit pastes "[image]", emitted as
-//                     NSImage via onImagePasted
+//                     raw bytes via onImagePasted (see the note on that
+//                     property below for why NOT NSImage)
 //   • Drag & drop   → image-like file URLs delivered via onFilesDropped;
 //                     in-memory image data (e.g. screenshot drag from
 //                     Preview) routed through onImagePasted
@@ -15,6 +16,7 @@
 
 import SwiftUI
 import AppKit
+import UniformTypeIdentifiers
 
 struct V2ComposerTextView: NSViewRepresentable {
 
@@ -34,7 +36,15 @@ struct V2ComposerTextView: NSViewRepresentable {
     let foregroundColor: NSColor
     let placeholderColor: NSColor
     let onSubmit: () -> Void
-    let onImagePasted: (NSImage) -> Void
+    /// Raw pasteboard bytes, NOT a decoded NSImage — measured on a real
+    /// 48MP paste (2026-07-21): NSImage.tiffRepresentation alone blocks the
+    /// main thread for 1.3s and allocates a 1.5GB intermediate buffer,
+    /// which is exactly the "attaching an image hangs the app" report this
+    /// fixes. `pb.data(forType:)` below is a cheap memory copy — no decode
+    /// — so the main thread never touches image pixels at all; every
+    /// expensive step (decode, downsample, encode) moves into
+    /// V2AttachmentStore's existing off-actor Task.
+    let onImagePasted: (Data) -> Void
     let onFilesDropped: ([URL]) -> Void
     // Slash-command popover hooks. When `popoverOpen` is true, the arrow
     // keys / Enter / Tab / Esc drive the popover instead of the text field.
@@ -171,7 +181,7 @@ struct V2ComposerTextView: NSViewRepresentable {
         var cursorBinding: Binding<Int>
         weak var textView: NSTextView?
         var submitCallback: () -> Void = {}
-        var imageCallback: (NSImage) -> Void = { _ in }
+        var imageCallback: (Data) -> Void = { _ in }
         var fileDropCallback: ([URL]) -> Void = { _ in }
         var popoverOpen: () -> Bool = { false }
         var popoverMove: (Int) -> Void = { _ in }
@@ -301,11 +311,11 @@ final class ComposerNSTextView: NSTextView {
     }
 
     private func handlePasteboard(_ pb: NSPasteboard) -> Bool {
-        // 1. In-memory image data (screenshot, copy from preview, etc.)
-        if let images = pb.readObjects(forClasses: [NSImage.self], options: nil) as? [NSImage],
-           let first = images.first,
-           first.isValid {
-            coordinator?.imageCallback(first)
+        // 1. In-memory image data (screenshot, copy from preview, etc.) —
+        // raw bytes, not NSImage. See onImagePasted's doc comment: this is
+        // the fix for the app hanging on a large pasted image.
+        if let data = Self.rawImageData(from: pb) {
+            coordinator?.imageCallback(data)
             return true
         }
         // 2. File URLs that point to image files.
@@ -337,9 +347,8 @@ final class ComposerNSTextView: NSTextView {
     override func performDragOperation(_ sender: NSDraggingInfo) -> Bool {
         let pb = sender.draggingPasteboard
         // In-memory image data (e.g. a screenshot dragged from Preview).
-        if let images = pb.readObjects(forClasses: [NSImage.self], options: nil) as? [NSImage],
-           let first = images.first, first.isValid {
-            coordinator?.imageCallback(first)
+        if let data = Self.rawImageData(from: pb) {
+            coordinator?.imageCallback(data)
             return true
         }
         // Finder drag: accept ALL file URLs, not just images — the composer
@@ -355,5 +364,78 @@ final class ComposerNSTextView: NSTextView {
 
     static func isImageExtension(_ ext: String) -> Bool {
         ["png", "jpg", "jpeg", "gif", "webp", "heic", "tif", "tiff", "bmp"].contains(ext.lowercased())
+    }
+
+    /// Raw image bytes off the pasteboard — `pb.data(forType:)` is a memory
+    /// copy, not a decode, so this is main-thread-safe regardless of source
+    /// size... for the type that's genuinely THERE.
+    ///
+    /// The trap (found by testing, not inspection — 2026-07-21): asking for
+    /// a type that ISN'T natively on the pasteboard doesn't fail, it
+    /// silently TRANSCODES. `NSPasteboard.types` (the aggregate accessor)
+    /// advertises every type AppKit can synthesize on demand, not just what
+    /// was written — write only PNG and `pb.types` still lists `.tiff`,
+    /// because AppKit can manufacture one. Asking for that manufactured
+    /// type is a full decode + uncompressed re-encode: measured at 215ms
+    /// for a 4MB source PNG, scaling with resolution — this is EXACTLY the
+    /// hang this fix exists to remove, just moved one layer down. A naive
+    /// fixed try-order ([.tiff, .png]) silently regresses to the old bug
+    /// on every pasteboard that happens to natively hold PNG (which is
+    /// most modern screenshot tools).
+    ///
+    /// `NSPasteboardItem.types` (the PER-ITEM accessor, not the aggregate)
+    /// reflects only what was actually written — verified both directions:
+    /// a PNG-native item reports .tiff=false, a TIFF-native item reports
+    /// .png=false, and reading via that detected type is ~0.04ms either
+    /// way regardless of source size. That's the real fix: detect before
+    /// reading, never guess-and-ask.
+    static func rawImageData(from pb: NSPasteboard) -> Data? {
+        let nativeTypes = pb.pasteboardItems?.first?.types ?? []
+        for type: NSPasteboard.PasteboardType in [.tiff, .png, Self.jpegType] where nativeTypes.contains(type) {
+            if let data = pb.data(forType: type), !data.isEmpty { return data }
+        }
+        return fallbackViaNSImage(pb)
+    }
+
+    /// No dedicated legacy NSPasteboard.PasteboardType constant for JPEG —
+    /// bridged from UTType, same UTI space the native-type check above
+    /// compares against.
+    private static let jpegType = NSPasteboard.PasteboardType(UTType.jpeg.identifier)
+
+    /// Falls back to NSImage only for a source with an image CLASS but no
+    /// raw raster bytes at all (a vector-only clipboard entry — the one
+    /// case with no ImageIO-decodable type to detect natively). Bounded to
+    /// a fixed max dimension before drawing, so even this slow, rare path
+    /// can't reproduce the unbounded hang this fix removes.
+    private static let fallbackMaxDimension: CGFloat = 4096
+
+    private static func fallbackViaNSImage(_ pb: NSPasteboard) -> Data? {
+        guard pb.canReadObject(forClasses: [NSImage.self], options: nil),
+              let images = pb.readObjects(forClasses: [NSImage.self], options: nil) as? [NSImage],
+              let image = images.first, image.isValid
+        else { return nil }
+        return boundedPNGData(from: image, maxDimension: fallbackMaxDimension)
+    }
+
+    /// Draws into a bitmap capped at `maxDimension` BEFORE drawing, so the
+    /// cost is proportional to the output size, not whatever resolution the
+    /// source vector content implies — the same shape of bug this whole
+    /// fix removes, just for a path rare enough not to warrant the full
+    /// off-actor treatment.
+    private static func boundedPNGData(from image: NSImage, maxDimension: CGFloat) -> Data? {
+        let size = image.size
+        guard size.width > 0, size.height > 0 else { return nil }
+        let scale = min(1, maxDimension / max(size.width, size.height))
+        let target = NSSize(width: max(1, size.width * scale), height: max(1, size.height * scale))
+        guard let bitmap = NSBitmapImageRep(
+            bitmapDataPlanes: nil, pixelsWide: Int(target.width), pixelsHigh: Int(target.height),
+            bitsPerSample: 8, samplesPerPixel: 4, hasAlpha: true, isPlanar: false,
+            colorSpaceName: .deviceRGB, bytesPerRow: 0, bitsPerPixel: 0
+        ) else { return nil }
+        NSGraphicsContext.saveGraphicsState()
+        defer { NSGraphicsContext.restoreGraphicsState() }
+        NSGraphicsContext.current = NSGraphicsContext(bitmapImageRep: bitmap)
+        image.draw(in: NSRect(origin: .zero, size: target))
+        return bitmap.representation(using: .png, properties: [:])
     }
 }

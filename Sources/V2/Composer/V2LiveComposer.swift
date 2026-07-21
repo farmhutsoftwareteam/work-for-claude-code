@@ -155,7 +155,7 @@ struct V2LiveComposer: View {
                 foregroundColor: NSColor(v2.ink),
                 placeholderColor: NSColor(v2.faint),
                 onSubmit: sendCurrent,
-                onImagePasted: { image in attachments.addImage(image) },
+                onImagePasted: { data in attachments.addImageData(data) },
                 onFilesDropped: { urls in attachments.addFiles(urls) },
                 popoverOpen: paletteOpen,
                 onPopoverMove: moveSlashSelection,

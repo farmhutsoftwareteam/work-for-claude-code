@@ -133,7 +133,7 @@ struct V2CodexComposer: View {
                     foregroundColor: NSColor(v2.ink),
                     placeholderColor: NSColor(v2.faint),
                     onSubmit: send,
-                    onImagePasted: attachments.addImage,
+                    onImagePasted: attachments.addImageData,
                     onFilesDropped: attachments.addFiles
                 )
                 .onChange(of: draft) { _, value in

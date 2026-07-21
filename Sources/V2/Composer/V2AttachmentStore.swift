@@ -77,18 +77,21 @@ final class V2AttachmentStore: ObservableObject {
         urls.forEach(addFile)
     }
 
-    func addImage(_ image: NSImage) {
-        // TIFF→PNG encode + thumbnail decode are synchronous, CPU-bound work
-        // — doing them on @MainActor visibly stalls the composer for a
-        // high-res screenshot/RAW paste (M18). `tiffRepresentation` has to
-        // be read on the main thread (NSImage isn't safely Sendable), but
-        // everything after that is plain Data/ImageIO work — see the note
-        // on addFile(_:) above for why this hops via a nested Task.detached
-        // over static functions instead of capturing `[weak self]` directly.
-        guard let tiff = image.tiffRepresentation else { return }
+    /// `data` is raw pasteboard bytes (TIFF/PNG), not a decoded NSImage —
+    /// see V2ComposerTextView's `onImagePasted` doc comment for why. `Data`
+    /// is Sendable, so unlike the old NSImage-based path, NOTHING here
+    /// touches an image pixel on the main actor: decode, downsample, and
+    /// encode all happen inside the detached task. Measured on a real 48MP
+    /// paste (2026-07-21): the previous NSImage.tiffRepresentation step
+    /// alone blocked the main thread for 1.3s and allocated a 1.5GB
+    /// intermediate buffer — the actual mechanism behind "attaching an
+    /// image hangs the app forever". persistImage's own decode is real,
+    /// unavoidable work for a huge source, but it now happens entirely off
+    /// the actor the UI runs on.
+    func addImageData(_ data: Data) {
         Task {
             let result: (url: URL, thumb: NSImage?)? = await Task.detached(priority: .userInitiated) {
-                guard let url = Self.persistImage(tiffData: tiff) else { return nil }
+                guard let url = Self.persistImage(raw: data) else { return nil }
                 return (url, Self.makeThumbnail(for: url))
             }.value
             guard let result else { return }
@@ -159,12 +162,14 @@ final class V2AttachmentStore: ObservableObject {
 
     // MARK: - Persistence
 
-    /// Encodes + writes pasted image bytes. Called from a detached Task (see
-    /// `addImage`) so it must not touch NSImage/AppKit — ImageIO's
+    /// Encodes + writes pasted image bytes. `raw` is whatever ImageIO-
+    /// decodable format the pasteboard actually had (TIFF or PNG — ImageIO
+    /// sniffs it, no need to know which). Called from a detached Task (see
+    /// `addImageData`) so it must not touch NSImage/AppKit — ImageIO's
     /// CGImageSource/CGImageDestination are the documented thread-safe way
     /// to decode/downsize/encode off the main actor (M18).
-    nonisolated private static func persistImage(tiffData: Data) -> URL? {
-        guard let source = CGImageSourceCreateWithData(tiffData as CFData, nil) else { return nil }
+    nonisolated private static func persistImage(raw: Data) -> URL? {
+        guard let source = CGImageSourceCreateWithData(raw as CFData, nil) else { return nil }
         let options: [CFString: Any] = [
             kCGImageSourceCreateThumbnailFromImageAlways: true,
             kCGImageSourceThumbnailMaxPixelSize: maxPersistedDimension,
