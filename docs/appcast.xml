@@ -6,6 +6,28 @@
         <description>Updates for Atelier</description>
         <language>en</language>
         <item>
+            <title>Version 2.11.0</title>
+            <pubDate>Tue, 21 Jul 2026 11:06:59 +0400</pubDate>
+            <sparkle:version>75</sparkle:version>
+            <sparkle:shortVersionString>2.11.0</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>15.0</sparkle:minimumSystemVersion>
+            <description><![CDATA[
+                <h3>Atelier 2.11.0 — it's Atelier everywhere now, and your sessions travel</h3>
+                <ul>
+                    <li><b>The download finally says Atelier.</b> The disk image, the mounted volume, and the app you drag to Applications are all named Atelier — not "Work". Updates keep working exactly as before: the app's internal identity is unchanged, so existing installs update seamlessly. (If you installed before this release, the file on disk may keep its old name until you re-download — cosmetic only.)</li>
+                    <li><b>Move a conversation to another Mac.</b> File → Export Session (⇧⌘E) writes a portable .ateliersession file; Import Session (⇧⌘I) on the other machine files it under the right project there and opens it. Works for both Claude and Codex. Credentials and unsent drafts never leave your Mac, and importing asks before replacing an existing copy of the same session.</li>
+                    <li><b>Fixed the path bug underneath:</b> Atelier now derives Claude's session-storage folder the way Claude actually does (every non-alphanumeric character, not just slashes), so projects with spaces, dots, or underscores resolve first try — and CLAUDE_CONFIG_DIR is honoured.</li>
+                    <li><b>Codex multi-agent work is now visible:</b> delegation cards with live status and elapsed time, a persistent strip that keeps running agents in view, and click-to-peek into each agent's own thread. Agents are named instead of raw thread IDs, fan-outs show every agent, and a re-spawned agent's card comes back to life.</li>
+                    <li><b>A hardening pass before shipping: 34 fixes</b>, including several message-loss paths (a message typed into a resting tab whose sign-in had expired is handed back instead of silently replayed later as a real turn), atomic export/import writes, and a settled agent's final report never being overwritten by later chatter.</li>
+                </ul>
+            ]]></description>
+            <enclosure
+                url="https://work.munyamakosa.com/Atelier-2.11.0.dmg"
+                length="15041218"
+                type="application/octet-stream"
+                sparkle:edSignature="Pm2zduP+zYhNopMi/cVyHbt7ColGt0X2EoZ7R4sWqXBvgUlEqFG4BiEaFsVBVDbFK8gZZk0enyTS7HTtwc2CBw==" />
+        </item>
+        <item>
             <title>Version 2.10.7</title>
             <pubDate>Mon, 20 Jul 2026 11:54:29 +0400</pubDate>
             <sparkle:version>74</sparkle:version>

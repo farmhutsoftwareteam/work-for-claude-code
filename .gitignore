@@ -37,7 +37,11 @@ Atelier.dmg
 Atelier-*.dmg
 docs/Atelier-*.dmg
 # docs/Work.dmg (legacy alias) and docs/Atelier.dmg (latest alias) are
-# tracked deliberately — they're the site's download targets.
+# tracked deliberately — they're the site's download targets. The bare
+# "Atelier.dmg" pattern above matches at ANY depth, so the alias needs an
+# explicit negation or git add rejects it (which silently broke a publish
+# chain once).
+!docs/Atelier.dmg
 *.dSYM/
 *.dSYM.zip
 
