@@ -5,8 +5,8 @@ options:
     macOS: "15.0"
 
 settings:
-  PRODUCT_NAME: Work
-  MARKETING_VERSION: "2.10.8"
+  PRODUCT_NAME: Atelier
+  MARKETING_VERSION: "2.11.0"
   CURRENT_PROJECT_VERSION: "75"
   SWIFT_VERSION: "6.0"
   SWIFT_STRICT_CONCURRENCY: minimal
@@ -47,6 +47,10 @@ targets:
         product: Inject
     settings:
       base:
+        # The PRODUCT (.app filename, CFBundleExecutable) is Atelier; the
+        # MODULE stays Work — every test file does `@testable import Work`,
+        # and the module name is ABI-adjacent churn with zero user value.
+        PRODUCT_MODULE_NAME: Work
         CODE_SIGN_ENTITLEMENTS: Work.entitlements
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         # Default display name. Per-config overrides below.
@@ -73,11 +77,13 @@ targets:
     info:
       path: Sources/Info.plist
       properties:
-        # Display name is the brand surface — what macOS shows in the Dock,
-        # menu bar, Apple menu, Force Quit, and every system alert. The bundle
-        # identifier and the on-disk .app filename intentionally stay "Work" /
-        # com.munyamakosa.work in Release so existing 1.3.x users get the
-        # rebrand seamlessly via Sparkle (Sparkle keys on bundle ID, not name).
+        # The rebrand is complete except the bundle identifier, which stays
+        # com.munyamakosa.work FOREVER: Sparkle keys updates on it, TCC
+        # Automation grants key on it, and changing it would strand every
+        # existing install. The .app filename became Atelier in 2.11.0 —
+        # safe because Sparkle matches the update by bundle id, not name;
+        # users who installed before then may keep "Work.app" on disk until
+        # they re-download (Sparkle installs at the existing app's path).
         # In Debug, both bundle ID and display name fork so the dev build is
         # visible side-by-side with production.
         CFBundleDisplayName: $(BUNDLE_DISPLAY_NAME)
@@ -123,6 +129,11 @@ targets:
       # Work.swiftmodule and the build fails with "Multiple commands produce".
       PRODUCT_NAME: WorkTests
       PRODUCT_MODULE_NAME: WorkTests
+      # xcodegen infers TEST_HOST from the target NAME (Work), not from the
+      # app's PRODUCT_NAME override — with the product renamed to Atelier
+      # the inferred host path no longer exists.
+      TEST_HOST: $(BUILT_PRODUCTS_DIR)/Atelier.app/Contents/MacOS/Atelier
+      BUNDLE_LOADER: $(TEST_HOST)
       GENERATE_INFOPLIST_FILE: YES
       INFOPLIST_KEY_NSHumanReadableCopyright: ""
       # Match the host app's signing — without this the dynamic loader

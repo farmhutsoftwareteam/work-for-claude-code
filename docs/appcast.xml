@@ -1,9 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
 <rss version="2.0" xmlns:sparkle="http://www.andymatuschak.org/xml-namespaces/sparkle" xmlns:dc="http://purl.org/dc/elements/1.1/">
     <channel>
-        <title>Work</title>
+        <title>Atelier</title>
         <link>https://work.munyamakosa.com/appcast.xml</link>
-        <description>Updates for Work</description>
+        <description>Updates for Atelier</description>
         <language>en</language>
         <item>
             <title>Version 2.10.7</title>

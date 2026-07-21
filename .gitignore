@@ -32,8 +32,12 @@ Icon?
 # ─────────────────────────────────────────────────────────────────────────────
 Work.dmg
 Work-*.dmg
-docs/Work.dmg
 docs/Work-*.dmg
+Atelier.dmg
+Atelier-*.dmg
+docs/Atelier-*.dmg
+# docs/Work.dmg (legacy alias) and docs/Atelier.dmg (latest alias) are
+# tracked deliberately — they're the site's download targets.
 *.dSYM/
 *.dSYM.zip
 
