@@ -160,9 +160,9 @@ struct WorkApp: App {
             // V2RootView, which owns V2AppState (per-window; this scope
             // has no access to it) — same indirection the tab commands use.
             CommandGroup(after: .saveItem) {
-                Button("Export Session…") { terminals.sessionPortRequest = .exportActive }
+                Button("Export Session…") { terminals.sessionPortRequest = .exportActive(UUID()) }
                     .keyboardShortcut("e", modifiers: [.command, .shift])
-                Button("Import Session…") { terminals.sessionPortRequest = .importBundle }
+                Button("Import Session…") { terminals.sessionPortRequest = .importBundle(UUID()) }
                     .keyboardShortcut("i", modifiers: [.command, .shift])
             }
 

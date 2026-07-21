@@ -93,8 +93,16 @@ struct V2DelegationCard: View {
                     // result — a subagent hitting an error mid-run (which
                     // it often self-corrects a moment later) previously
                     // looked identical to routine progress.
-                    let isErrorLine = liveActionText?.hasPrefix("✗") ?? false
-                    Text(liveActionText ?? "working…")
+                    // Codex runs have no sessionDir, so refreshLiveAction
+                    // returns immediately and liveActionText stays nil for
+                    // their whole life — the card sat on a frozen
+                    // "working…". Their progress arrives through the
+                    // app-server instead, as the run's last reported
+                    // message, which costs nothing to show and updates on
+                    // real events rather than a poll.
+                    let live = liveActionText ?? run?.resultText
+                    let isErrorLine = live?.hasPrefix("✗") ?? false
+                    Text(live ?? "working…")
                         .font(.system(size: 10.5, design: .monospaced))
                         .foregroundColor(isErrorLine ? v2.del : v2.faint)
                         .lineLimit(1)
@@ -185,6 +193,9 @@ struct V2SubagentPeekSheet: View {
 
     @State private var feed: [String] = []
     @State private var transcriptPath: URL?
+    /// Codex peek throttle + change gate (see refresh()).
+    @State private var lastCodexPeek = Date.distantPast
+    @State private var lastCodexItemCount = -1
 
     private var isRunning: Bool { run?.state == .running }
 
@@ -284,7 +295,8 @@ struct V2SubagentPeekSheet: View {
         } else {
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: 4) {
-                    ForEach(Array(feed.enumerated()), id: \.offset) { _, line in
+                    ForEach(feed.indices, id: \.self) { idx in
+                        let line = feed[idx]
                         Text(line)
                             .font(.system(size: 12, design: .monospaced))
                             .foregroundColor(line.hasPrefix("›") ? v2.mute : v2.ink)
@@ -304,7 +316,7 @@ struct V2SubagentPeekSheet: View {
 
     private var footer: some View {
         HStack {
-            Text(transcriptPath?.path ?? "")
+            Text(transcriptPath?.path ?? run?.threadId.map { "thread \($0)" } ?? "")
                 .font(.system(size: 10.5, design: .monospaced))
                 .foregroundColor(v2.faint)
                 .lineLimit(1).truncationMode(.middle)
@@ -329,9 +341,29 @@ struct V2SubagentPeekSheet: View {
         // non-loading thread/read hibernation uses) and flatten it into the
         // same one-line-per-action feed the file tail produces.
         if let threadId = run?.threadId {
+            // Throttled, unlike the file tail. The Claude path stats a
+            // local file; this one is a full thread/read RPC that makes the
+            // codex process re-serialize the entire rollout, so a 1Hz poll
+            // meant 60 whole-thread reads a minute with ~15 in flight at
+            // once (requests aren't cancellable). Every few seconds is
+            // plenty for a progress line.
+            let now = Date()
+            guard now.timeIntervalSince(lastCodexPeek) >= 3 else { return }
+            lastCodexPeek = now
             let thread = await CodexHistoryReader.shared.read(threadId: threadId)
             guard !Task.isCancelled else { return }
-            let turns = thread?["turns"] as? [[String: Any]] ?? []
+            guard let turns = thread?["turns"] as? [[String: Any]] else { return }
+            // Skip the re-map entirely when the thread hasn't grown — the
+            // usual case on a poll, and the expensive part (mapping every
+            // item of every turn, then re-walking them for one line each).
+            let itemCount = turns.reduce(0) { $0 + (($1["items"] as? [Any])?.count ?? 0) }
+            guard itemCount != lastCodexItemCount else { return }
+            lastCodexItemCount = itemCount
+            // Mapped on-actor: the thread payload is [String: Any], which
+            // isn't Sendable, so it can't cross into a detached task the
+            // way the Claude file path's parse does. The item-count gate
+            // above is what keeps this cheap — the map now runs only when
+            // the thread actually grew, not once a second forever.
             let fresh = V2SubagentTail.activity(items: CodexSession.transcript(from: turns))
             if fresh != feed { feed = fresh }
             return

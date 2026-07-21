@@ -137,6 +137,11 @@ final class CodexSession: ObservableObject, V2TranscriptSource {
         isPreloadingHistory || (state == .initializing && resumeThreadId != nil)
     }
     @Published private(set) var isPreloadingHistory = false
+    /// Fires when a failed wake hands the typed message back (see
+    /// returnPendingWakeSendToComposer) — the composer's local draft state
+    /// snapshots composerDraft only on appear, so without a signal the
+    /// restored text existed but never appeared on screen.
+    let draftRestored = PassthroughSubject<String, Never>()
     var provider: V2AgentProvider { .codex }
     func retryLastTurn() {}
 
@@ -190,6 +195,18 @@ final class CodexSession: ObservableObject, V2TranscriptSource {
     /// raw thread UUIDs. Accumulated live; history rebuilds its own index
     /// up front (see transcript(from:)).
     private var subAgentNames: [String: String] = [:]
+    /// Texts this composer sent whose server echo hasn't arrived yet. The
+    /// userMessage echo skip consumes from HERE — an unconditional
+    /// type-based skip destroyed every user row from any other source
+    /// (another client on the shared thread, collab sendInput into the
+    /// parent), leaving replies that answered invisible questions.
+    private var pendingUserEchoes: [String] = []
+
+    func noteLocalUserEcho(_ text: String) {
+        pendingUserEchoes.append(text)
+        // Bounded: an echo that never arrives must not grow this forever.
+        if pendingUserEchoes.count > 8 { pendingUserEchoes.removeFirst() }
+    }
     /// itemId → latest MCP progress message, shown next to the spinner via
     /// V2LiveToolWidget's liveStatus.
     @Published private(set) var toolLiveStatus: [String: String] = [:]
@@ -283,7 +300,19 @@ final class CodexSession: ObservableObject, V2TranscriptSource {
                     // so there is a real ordering guarantee (the bug
                     // StreamSession.start documents at its own flush point).
                     self.flushPendingWakeSend()
-                } else { self.state = .idle }
+                } else {
+                    // Auth expired between hibernating and waking — the
+                    // routine case for exactly the long-lived tabs
+                    // hibernation exists for. This branch takes no fail(),
+                    // so the buffered message used to survive here
+                    // invisibly (the composer is disabled on .idle) and get
+                    // flushed as a real, billed turn by some LATER spawn,
+                    // into a conversation that had moved on. Hand it back
+                    // now instead — the exact hazard this design claims to
+                    // prevent.
+                    self.returnPendingWakeSendToComposer()
+                    self.state = .idle
+                }
                 // MCP discovery must never gate thread creation or history
                 // restore. Slow/startup-heavy servers update independently.
                 Task { [weak self] in await self?.refreshMCPStatus() }
@@ -300,6 +329,11 @@ final class CodexSession: ObservableObject, V2TranscriptSource {
     }
 
     func stop() {
+        // A message buffered for an in-flight wake must not survive the
+        // teardown: left in place it would be flushed as a real turn by
+        // some LATER start, into a conversation that had moved on.
+        returnPendingWakeSendToComposer()
+        orphanRunningSubagentRuns()
         guard client != nil else { state = .terminated(reason: "Stopped"); return }
         state = .closing
         finalizeStreamingText()
@@ -350,6 +384,12 @@ final class CodexSession: ObservableObject, V2TranscriptSource {
             let thread = await CodexHistoryReader.shared.read(threadId: threadId, binary: codexURL)
             guard let self else { return }
             if let turns = thread?["turns"] as? [[String: Any]], !turns.isEmpty, self.transcript.isEmpty {
+                // Seed the live name registry from history too — without
+                // this, rows rendered by name before hibernation came back
+                // as hex ids in NEW collab results after the wake, in the
+                // same conversation.
+                let items = turns.flatMap { $0["items"] as? [[String: Any]] ?? [] }
+                self.subAgentNames.merge(Self.agentNameIndex(items)) { _, new in new }
                 self.transcript = Self.transcript(from: turns)
             }
             self.isPreloadingHistory = false
@@ -357,7 +397,12 @@ final class CodexSession: ObservableObject, V2TranscriptSource {
             // still valid, so waking works and thread/resume returns the
             // history anyway. Dropping back to .idle would put the Start
             // button back — the exact thing this removes.
-            self.state = .hibernated
+            //
+            // Gated on still being .idle: the read takes real time, and
+            // an unconditional write resurrected a session the user had
+            // stopped in the meantime — a live composer on a tab they
+            // shut down, whose first keystroke would spawn a process.
+            if case .idle = self.state { self.state = .hibernated }
         }
     }
 
@@ -368,6 +413,10 @@ final class CodexSession: ObservableObject, V2TranscriptSource {
         guard state == .ready, threadId != nil else { return }
         finalizeStreamingText()
         clearPendingRequests()
+        // Same rule as StreamSession.hibernate(): the process being
+        // dropped is the only channel these runs could report back on, so
+        // "still running" must never be claimed after this point.
+        orphanRunningSubagentRuns()
         // Clear the handler BEFORE stopping: this teardown is deliberate,
         // and handleTermination would otherwise read the resulting exit as
         // a crash and fail() the session out of hibernation.
@@ -381,11 +430,14 @@ final class CodexSession: ObservableObject, V2TranscriptSource {
     /// Respawn after hibernation, buffering the message until the thread is
     /// resumed and ready to accept a turn.
     private func wake(thenSend text: String, attachments: [URL]) {
+        // Buffered FIRST so every failure exit below can hand the message
+        // back — the no-recipe path used to drop it outright.
+        pendingWakeSend = (text, attachments)
         guard let cwd = wakeCwd, let binary = wakeBinary else {
             state = .terminated(reason: "can't wake: no spawn recipe")
+            returnPendingWakeSendToComposer()
             return
         }
-        pendingWakeSend = (text, attachments)
         start(
             cwd: cwd,
             codexURL: binary,
@@ -413,15 +465,29 @@ final class CodexSession: ObservableObject, V2TranscriptSource {
     private func returnPendingWakeSendToComposer() {
         guard let queued = pendingWakeSend else { return }
         pendingWakeSend = nil
-        guard !queued.text.isEmpty else { return }
-        composerDraft = composerDraft.isEmpty
-            ? queued.text
-            : composerDraft + "\n" + queued.text
+        var restored = queued.text
+        if !queued.attachments.isEmpty {
+            // The attachment store lives in the view and can't be refilled
+            // from here — name what was dropped so the loss is at least
+            // visible instead of silent.
+            let names = queued.attachments.map(\.lastPathComponent).joined(separator: ", ")
+            restored += restored.isEmpty ? "(attachments not re-added: \(names))"
+                                         : "\n(attachments not re-added: \(names))"
+        }
+        guard !restored.isEmpty else { return }
+        composerDraft = composerDraft.isEmpty ? restored : composerDraft + "\n" + restored
+        // Scoped signal, NOT an @Published composerDraft: the draft changes
+        // per keystroke, and publishing it would re-render every observer
+        // of the session (the transcript included) on each key. The
+        // composer listens to just this.
+        draftRestored.send(restored)
     }
 
     /// Synchronous process teardown used during app termination/update, when
     /// an asynchronous cleanup task may never get another run-loop turn.
     func terminateNow() {
+        returnPendingWakeSendToComposer()
+        orphanRunningSubagentRuns()
         finalizeStreamingText()
         clearPendingRequests()
         client?.terminateNow()
@@ -497,9 +563,24 @@ final class CodexSession: ObservableObject, V2TranscriptSource {
     /// on a resting/ended session instead of no-oping silently.
     var hasLiveClient: Bool { client != nil }
 
+    private var sandboxConfigGeneration = 0
+
     func refreshSandboxNetwork() async {
         guard let client else { return }
-        guard let response = try? await client.request("config/read", params: [:]) else { return }
+        let generation = sandboxConfigGeneration
+        let response: CodexJSONObject
+        do {
+            response = try await client.request("config/read", params: [:])
+        } catch {
+            // try? here left a failed read invisible forever — the section
+            // just never appeared, with nothing in the log to explain why.
+            log.error("config/read failed: \(error.localizedDescription, privacy: .public)")
+            return
+        }
+        // A read that raced a write (or a dead client's late reply after a
+        // restart) must not overwrite newer state — that silently reverted
+        // a toggle the user had just flipped.
+        guard self.client === client, generation == sandboxConfigGeneration else { return }
         sandboxNetworkAccess = Self.sandboxNetworkAccess(fromConfigRead: response.raw)
     }
 
@@ -508,8 +589,17 @@ final class CodexSession: ObservableObject, V2TranscriptSource {
     /// codex's default, which is network OFF.
     static func sandboxNetworkAccess(fromConfigRead response: [String: Any]) -> Bool? {
         guard let config = response["config"] as? [String: Any] else { return nil }
-        let sandbox = config["sandbox_workspace_write"] as? [String: Any]
-        return sandbox?["network_access"] as? Bool ?? false
+        guard let sandbox = config["sandbox_workspace_write"] else {
+            // Genuinely absent table IS codex's default: network off.
+            return false
+        }
+        // Present but unparseable must be UNKNOWN, not a confident "off".
+        // For a security control the dangerous direction is claiming the
+        // sandbox is closed while it's actually open — a renamed key or a
+        // string-typed value upstream must hide the control, not lie.
+        guard let table = sandbox as? [String: Any],
+              let value = table["network_access"] as? Bool else { return nil }
+        return value
     }
 
     /// Writes through the app-server's own config writer (config/value/write
@@ -518,16 +608,24 @@ final class CodexSession: ObservableObject, V2TranscriptSource {
     /// start — resting tabs pick it up on wake.
     func setSandboxNetworkAccess(_ enabled: Bool) async -> Bool {
         guard let client else { return false }
+        sandboxConfigGeneration += 1
         do {
             _ = try await client.request("config/value/write", params: CodexJSONObject([
                 "keyPath": "sandbox_workspace_write.network_access",
                 "value": enabled,
                 "mergeStrategy": "upsert"
             ]))
-            sandboxNetworkAccess = enabled
+            guard self.client === client else { return true }
+            // Re-read what actually landed rather than trusting the
+            // optimistic value — the write goes through codex's own
+            // config merge, and disk is the truth the NEXT session reads.
+            await refreshSandboxNetwork()
             return true
         } catch {
             log.error("config/value/write sandbox network failed: \(error.localizedDescription, privacy: .public)")
+            // Surfaced, not just logged: a toggle that silently doesn't
+            // move reads as a dead control.
+            appendError("Couldn't change sandbox network access: \(error.localizedDescription)")
             return false
         }
     }
@@ -597,6 +695,10 @@ final class CodexSession: ObservableObject, V2TranscriptSource {
         // pure whitespace into a hibernated tab must not spawn a whole
         // app-server just to discard the message on the far side.
         guard !text.isEmpty || !attachments.isEmpty else { return }
+        // What the app-server will echo back as a completed userMessage —
+        // recorded so the echo skip swallows OUR echo and nothing else
+        // (another client on the same thread can inject real user rows).
+        noteLocalUserEcho(text)
         // Typing into a hibernated tab IS the wake gesture — respawn,
         // resume the thread, and deliver this message once it's live.
         if state == .hibernated {
@@ -1009,11 +1111,23 @@ final class CodexSession: ObservableObject, V2TranscriptSource {
             threadId = thread["id"] as? String
             if transcript.isEmpty,
                let turns = thread["turns"] as? [[String: Any]], !turns.isEmpty {
+                let items = turns.flatMap { $0["items"] as? [[String: Any]] ?? [] }
+                subAgentNames.merge(Self.agentNameIndex(items)) { _, new in new }
                 transcript = Self.transcript(from: turns)
             }
         }
         if let actual = response["model"] as? String { model = actual }
         if let actual = response["reasoningEffort"] as? String { effort = actual }
+        // A .ready session with no thread id is a wedge: every send()
+        // no-ops silently behind a live-looking composer, and a buffered
+        // wake message is destroyed. Fail loudly instead — the catch in
+        // start() routes this into fail(), which hands any buffered
+        // message back to the composer.
+        guard threadId != nil else {
+            throw NSError(domain: "CodexSession", code: 1, userInfo: [
+                NSLocalizedDescriptionKey: "Codex didn't return a thread id — try starting the session again."
+            ])
+        }
         state = .ready
     }
 
@@ -1311,6 +1425,15 @@ final class CodexSession: ObservableObject, V2TranscriptSource {
         guard let id = item["id"] as? String, !renderedItemIDs.contains(id),
               startedItemIndex[id] == nil else { return }
         let type = item["type"] as? String ?? ""
+        // Register the run HERE, not only on completion. item/started is
+        // what puts the delegation card on screen; registering only in
+        // handleCompletedItem meant a sub-agent spawned seconds ago had no
+        // run yet, so its card read "earlier session" with no pulse and the
+        // strip stayed empty for exactly the window it exists to cover —
+        // and stayed that way forever if the turn was interrupted before
+        // the collab call completed. applySubagentEvent is idempotent
+        // (spawns are guarded on the thread id, finishes on .running).
+        Self.applySubagentEvent(item, to: &subagentRuns, names: subAgentNames, now: Date())
         let liveTypes: Set<String> = [
             "commandExecution", "fileChange", "mcpToolCall", "dynamicToolCall", "collabAgentToolCall",
         ]
@@ -1323,14 +1446,20 @@ final class CodexSession: ObservableObject, V2TranscriptSource {
     private func handleCompletedItem(_ item: [String: Any]) {
         guard let id = item["id"] as? String, !renderedItemIDs.contains(id) else { return }
         // The sent message is already on screen — send() appends it the
-        // moment you hit return. The app-server then echoes that same
-        // message back as a completed userMessage item, and rendering the
-        // echo painted every sentence twice. Only the LIVE path skips it:
-        // history (thread/read preload, thread/resume turns) doesn't pass
-        // through here and still renders user rows via transcriptItem.
+        // moment you hit return, and records the text in pendingUserEchoes.
+        // The app-server then echoes that same message back as a completed
+        // userMessage item; skip it ONLY when it matches something this
+        // composer actually sent. A user row from any other source (a
+        // second client on the shared thread, collab sendInput) renders.
         if item["type"] as? String == "userMessage" {
-            renderedItemIDs.insert(id)
-            return
+            let echoed = ((item["content"] as? [[String: Any]]) ?? [])
+                .compactMap { $0["text"] as? String }.joined(separator: "\n")
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            if let idx = pendingUserEchoes.firstIndex(of: echoed) {
+                pendingUserEchoes.remove(at: idx)
+                renderedItemIDs.insert(id)
+                return
+            }
         }
         if id == streamingItemId { finalizeStreamingText(); return }
         // Learn this agent's name before mapping, so a subAgentActivity
@@ -1412,12 +1541,24 @@ final class CodexSession: ObservableObject, V2TranscriptSource {
         fail(reason)
     }
 
+    /// Marks every still-running sub-agent run orphaned — the session's
+    /// process is gone, so there is no channel left for them to finish on.
+    private func orphanRunningSubagentRuns() {
+        guard subagentRuns.contains(where: { $0.state == .running }) else { return }
+        let now = Date()
+        for idx in subagentRuns.indices where subagentRuns[idx].state == .running {
+            subagentRuns[idx].state = .orphaned
+            subagentRuns[idx].finishedAt = now
+        }
+    }
+
     private func fail(_ message: String, terminal: Bool = true) {
         // Covers every failure path out of start() — spawn error,
         // unverifiable account, process death — so a wake that never
         // reached a live thread hands the typed message back rather than
         // losing it.
         returnPendingWakeSendToComposer()
+        if terminal { orphanRunningSubagentRuns() }
         endError = message
         appendError(message)
         if terminal { state = .terminated(reason: message) }
@@ -1445,7 +1586,11 @@ final class CodexSession: ObservableObject, V2TranscriptSource {
         )
     }
 
-    static func transcript(from turns: [[String: Any]]) -> [TranscriptItem] {
+    /// nonisolated: pure [String: Any] → [TranscriptItem], no instance
+    /// state. Being MainActor-bound forced every caller — including the
+    /// sub-agent peek's 1Hz refresh — to map whole threads on the main
+    /// thread. Callers can now do it in a detached task.
+    nonisolated static func transcript(from turns: [[String: Any]]) -> [TranscriptItem] {
         let items = turns.flatMap { $0["items"] as? [[String: Any]] ?? [] }
         // Two passes: only subAgentActivity carries the threadId→name
         // mapping, and it can land AFTER the collab call that targeted
@@ -1456,7 +1601,7 @@ final class CodexSession: ObservableObject, V2TranscriptSource {
     }
 
     /// threadId → agentPath, harvested from subAgentActivity items.
-    static func agentNameIndex(_ items: [[String: Any]]) -> [String: String] {
+    nonisolated static func agentNameIndex(_ items: [[String: Any]]) -> [String: String] {
         var index: [String: String] = [:]
         for item in items where item["type"] as? String == "subAgentActivity" {
             if let id = item["agentThreadId"] as? String, let path = item["agentPath"] as? String {
@@ -1477,7 +1622,7 @@ final class CodexSession: ObservableObject, V2TranscriptSource {
     /// Every one of the schema's 18 ThreadItem variants is handled — no
     /// known type may silently return nil (regression coverage below tests
     /// this directly against the installed app-server's discriminators).
-    static func transcriptItem(
+    nonisolated static func transcriptItem(
         from item: [String: Any], alreadyStarted: Bool = false, liveOutput: String? = nil,
         agentNames: [String: String] = [:]
     ) -> [TranscriptItem] {
@@ -1617,7 +1762,7 @@ final class CodexSession: ObservableObject, V2TranscriptSource {
     /// The initial toolUse block for a live or completed call — factored out
     /// of transcriptItem so item/started (call-only) and item/completed
     /// (call+result) build the identical call representation.
-    private static func toolUseItem(from item: [String: Any], type: String) -> ContentBlock? {
+    nonisolated private static func toolUseItem(from item: [String: Any], type: String) -> ContentBlock? {
         let id = item["id"] as? String ?? UUID().uuidString
         switch type {
         case "commandExecution":
@@ -1675,8 +1820,20 @@ final class CodexSession: ObservableObject, V2TranscriptSource {
         case "collabAgentToolCall":
             let tool = item["tool"] as? String ?? ""
             let receivers = item["receiverThreadIds"] as? [String] ?? []
-            if tool == "spawnAgent", let callId = item["id"] as? String {
-                for threadId in receivers where indexOf(threadId: threadId) == nil {
+            if tool == "spawnAgent" || tool == "resumeAgent", let callId = item["id"] as? String {
+                for threadId in receivers {
+                    if let idx = indexOf(threadId: threadId) {
+                        // Re-spawned or resumed: a settled run comes back
+                        // to life. Without this the new call's card never
+                        // resolved and the second result could never land
+                        // (finish() only touches .running runs).
+                        if runs[idx].state != .running {
+                            runs[idx].state = .running
+                            runs[idx].finishedAt = nil
+                        }
+                        continue
+                    }
+                    guard tool == "spawnAgent" else { continue }
                     let name = names[threadId].map(agentDisplayName)
                     runs.append(V2SubagentRun(
                         toolUseId: callId,
@@ -1704,7 +1861,13 @@ final class CodexSession: ObservableObject, V2TranscriptSource {
                     // never leave it claiming to still be running.
                     finish(idx, .orphaned, message: message)
                 default:
-                    if let message, !message.isEmpty { runs[idx].resultText = message }
+                    // Same .running guard finish() uses. Without it, any
+                    // status outside the six handled ones (idle, pending,
+                    // a future variant) overwrote a COMPLETED agent's final
+                    // report with a routine progress line — destroying the
+                    // one thing the card exists to show.
+                    guard runs[idx].state == .running, let message, !message.isEmpty else { break }
+                    runs[idx].resultText = message
                 }
             }
 
@@ -1716,7 +1879,11 @@ final class CodexSession: ObservableObject, V2TranscriptSource {
                 if let path = item["agentPath"] as? String {
                     let name = agentDisplayName(path)
                     runs[idx].agentType = name
-                    if runs[idx].description.isEmpty { runs[idx].description = name }
+                    // "sub-agent" is spawnDescription's placeholder (a
+                    // spawn with no prompt) — the real name replaces it.
+                    // An .isEmpty check here was unreachable: neither
+                    // branch of spawnDescription can produce "".
+                    if runs[idx].description == "sub-agent" { runs[idx].description = name }
                 }
                 if item["kind"] as? String == "interrupted" {
                     finish(idx, .failed, message: "interrupted")
@@ -1731,10 +1898,10 @@ final class CodexSession: ObservableObject, V2TranscriptSource {
     /// A spawn's prompt is the closest thing Codex has to Claude's
     /// `description` — take its first meaningful line so a card reads like
     /// a task, not a wall of prompt.
-    private static func spawnDescription(_ item: [String: Any], fallback: String?) -> String {
+    nonisolated private static func spawnDescription(_ item: [String: Any], fallback: String?) -> String {
         let prompt = (item["prompt"] as? String)?
             .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-        guard let first = prompt.split(separator: "\n").first.map(String.init), !first.isEmpty else {
+        guard let first = prompt.split(whereSeparator: \.isNewline).first.map(String.init), !first.isEmpty else {
             return fallback ?? "sub-agent"
         }
         return first.count > 90 ? String(first.prefix(89)) + "…" : first
@@ -1745,16 +1912,27 @@ final class CodexSession: ObservableObject, V2TranscriptSource {
     /// …,"last_task_message":"Main thread"}`), and children are
     /// "/root/<name>". Show the leaf, not the path, so a delegation row
     /// reads "audit_measure_backend" rather than a filesystem-looking string.
-    static func agentDisplayName(_ path: String) -> String {
-        if path == "/root" { return "main thread" }
-        let leaf = path.split(separator: "/").last.map(String.init) ?? path
-        return leaf.isEmpty ? path : leaf
+    nonisolated static func agentDisplayName(_ path: String) -> String {
+        // Trailing slash normalized first — "/root/" must still read as
+        // the main thread, not as an agent called "root".
+        var trimmed = path
+        while trimmed.count > 1, trimmed.hasSuffix("/") { trimmed.removeLast() }
+        if trimmed == "/root" { return "main thread" }
+        let leaf = trimmed.split(separator: "/").last.map(String.init) ?? trimmed
+        guard !leaf.isEmpty else { return "sub-agent" }
+        // Unbounded names flow into card badges; spawnDescription caps at
+        // 90, this caps tighter because it renders as a chip.
+        return leaf.count > 40 ? String(leaf.prefix(39)) + "…" : leaf
     }
 
     /// A thread id shown when no name is known yet — the full UUIDv7 is
     /// unreadable in a transcript row.
-    static func shortThreadId(_ id: String) -> String {
-        String(id.prefix(8))
+    nonisolated static func shortThreadId(_ id: String) -> String {
+        // SUFFIX, not prefix: these are UUIDv7, whose first 8 hex chars
+        // are the top of a millisecond timestamp — identical for every
+        // agent spawned within the same ~65-second window, which is
+        // exactly what a fan-out does. The tail is the random block.
+        String(id.suffix(8))
     }
 
     /// The result row for a collab (multi-agent) tool call.
@@ -1766,25 +1944,34 @@ final class CodexSession: ObservableObject, V2TranscriptSource {
     /// are raw thread UUIDs, which need resolving to agent names; and
     /// iterating a Swift dictionary is order-UNSTABLE, so the same call
     /// could render its agents in a different order on every re-render.
-    static func collabResultText(_ item: [String: Any], agentNames: [String: String]) -> String {
+    nonisolated static func collabResultText(_ item: [String: Any], agentNames: [String: String]) -> String {
         func label(_ threadId: String) -> String {
             agentNames[threadId].map(agentDisplayName) ?? shortThreadId(threadId)
         }
 
         let states = item["agentsStates"] as? [String: [String: Any]] ?? [:]
         if !states.isEmpty {
-            // Sorted by resolved label so the order is stable across
-            // renders and restores.
-            return states.keys
-                .map { (label: label($0), state: states[$0] ?? [:]) }
-                .sorted { $0.label < $1.label }
-                .map { entry in
-                    let status = entry.state["status"] as? String ?? "unknown"
-                    let message = (entry.state["message"] as? String)?
-                        .trimmingCharacters(in: .whitespacesAndNewlines)
-                    let detail = (message?.isEmpty == false) ? ": \(message!)" : ""
-                    return "\(entry.label) — \(status)\(detail)"
-                }
+            // Receivers that reported nothing still appear — a wait on
+            // three agents where one replied must not read as a one-agent
+            // call. Sort key includes the thread id: labels can collide
+            // (same leaf name, or two unnamed agents), and Swift's sort
+            // isn't stable, so label-only ordering could permute equal
+            // rows on every render.
+            let missing = (item["receiverThreadIds"] as? [String] ?? []).filter { states[$0] == nil }
+            let reported: [(label: String, threadId: String, line: String)] = states.map { threadId, state in
+                let status = state["status"] as? String ?? "unknown"
+                // Agent reports are routinely multi-line; interior newlines
+                // would render continuation text as malformed agent rows.
+                let message = (state["message"] as? String)?
+                    .split(whereSeparator: \.isNewline).joined(separator: " ")
+                    .trimmingCharacters(in: .whitespaces)
+                let entryLabel = label(threadId)
+                let detail = message.flatMap { $0.isEmpty ? nil : ": \($0)" } ?? ""
+                return (entryLabel, threadId, "\(entryLabel) — \(status)\(detail)")
+            } + missing.map { (label($0), $0, "\(label($0)) — no status reported") }
+            return reported
+                .sorted { ($0.label, $0.threadId) < ($1.label, $1.threadId) }
+                .map(\.line)
                 .joined(separator: "\n")
         }
 
@@ -1807,7 +1994,7 @@ final class CodexSession: ObservableObject, V2TranscriptSource {
     /// Compact multi-file diff summary — path + change kind + the diff body,
     /// rendered through V2LiveToolResult's plain monospaced text exactly
     /// like Claude's own tool_result content.
-    private static func diffSummary(_ changes: [[String: Any]]) -> String {
+    nonisolated private static func diffSummary(_ changes: [[String: Any]]) -> String {
         changes.map { change in
             let path = change["path"] as? String ?? "?"
             let kindRaw = change["kind"] as? [String: Any]
@@ -1817,7 +2004,7 @@ final class CodexSession: ObservableObject, V2TranscriptSource {
         }.joined(separator: "\n\n")
     }
 
-    private static func jsonValue(_ any: Any) -> JSONValue {
+    nonisolated private static func jsonValue(_ any: Any) -> JSONValue {
         switch any {
         case is NSNull: return .null
         case let value as Bool: return .bool(value)

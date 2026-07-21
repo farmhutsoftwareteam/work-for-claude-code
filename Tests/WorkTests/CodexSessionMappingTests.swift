@@ -289,7 +289,9 @@ final class CodexSessionMappingTests: XCTestCase {
             "senderThreadId": "t-root", "receiverThreadIds": ["019f6f7e-fcb1-7800-a2b6-00f1c4942aa1"],
             "status": "completed", "agentsStates": [String: Any]()
         ]
-        XCTAssertEqual(CodexSession.collabResultText(item, agentNames: [:]), "sent input to 019f6f7e")
+        // SUFFIX of the id: UUIDv7 prefixes are timestamp bits, identical
+        // for every agent spawned in the same ~65s window.
+        XCTAssertEqual(CodexSession.collabResultText(item, agentNames: [:]), "sent input to c4942aa1")
     }
 
     func testCollabResultOrderIsStableAcrossRenders() {
@@ -324,6 +326,87 @@ final class CodexSessionMappingTests: XCTestCase {
     func testAgentDisplayNameTreatsRootAsTheMainThread() {
         XCTAssertEqual(CodexSession.agentDisplayName("/root"), "main thread")
         XCTAssertEqual(CodexSession.agentDisplayName("/root/context_transfer_verify"), "context_transfer_verify")
+        // Trailing slash must not relabel the main thread as "root".
+        XCTAssertEqual(CodexSession.agentDisplayName("/root/"), "main thread")
+        XCTAssertEqual(CodexSession.agentDisplayName(""), "sub-agent")
+    }
+
+    func testCollabResultListsReceiversThatReportedNothing() {
+        // A wait on three agents where one replied must not read as a
+        // one-agent call.
+        let item: [String: Any] = [
+            "type": "collabAgentToolCall", "id": "c8", "tool": "wait",
+            "senderThreadId": "t-root", "receiverThreadIds": ["t-a", "t-b", "t-c"],
+            "status": "completed",
+            "agentsStates": ["t-a": ["status": "completed"]]
+        ]
+        let names = ["t-a": "/root/alpha", "t-b": "/root/beta", "t-c": "/root/gamma"]
+        let text = CodexSession.collabResultText(item, agentNames: names)
+        XCTAssertEqual(text, "alpha — completed\nbeta — no status reported\ngamma — no status reported")
+    }
+
+    func testMultiLineAgentMessagesStayOneRowPerAgent() {
+        let item: [String: Any] = [
+            "type": "collabAgentToolCall", "id": "c9", "tool": "wait",
+            "senderThreadId": "t-root", "receiverThreadIds": ["t-a"],
+            "status": "completed",
+            "agentsStates": ["t-a": ["status": "completed", "message": "Done.\nFound 3 issues."]]
+        ]
+        let text = CodexSession.collabResultText(item, agentNames: ["t-a": "/root/alpha"])
+        XCTAssertEqual(text, "alpha — completed: Done. Found 3 issues.",
+                       "interior newlines would render continuation text as malformed agent rows")
+    }
+
+    func testRespawnOfASettledThreadReopensTheRun() {
+        var runs: [V2SubagentRun] = []
+        CodexSession.applySubagentEvent(spawn(), to: &runs, names: [:], now: Date())
+        CodexSession.applySubagentEvent([
+            "type": "collabAgentToolCall", "id": "c2", "tool": "wait",
+            "senderThreadId": "t-root", "receiverThreadIds": ["t-a"], "status": "completed",
+            "agentsStates": ["t-a": ["status": "completed"]]
+        ], to: &runs, names: [:], now: Date())
+        XCTAssertEqual(runs[0].state, .completed)
+        // Re-spawning the same thread must bring the run back to life —
+        // previously the spawn was skipped entirely and the new call's
+        // card never resolved, and the second result could never land.
+        CodexSession.applySubagentEvent(spawn(id: "c5"), to: &runs, names: [:], now: Date())
+        XCTAssertEqual(runs.count, 1)
+        XCTAssertEqual(runs[0].state, .running)
+        XCTAssertNil(runs[0].finishedAt)
+    }
+
+    func testASettledReportSurvivesALaterUnknownStatus() {
+        var runs: [V2SubagentRun] = []
+        CodexSession.applySubagentEvent(spawn(), to: &runs, names: [:], now: Date())
+        CodexSession.applySubagentEvent([
+            "type": "collabAgentToolCall", "id": "c2", "tool": "wait",
+            "senderThreadId": "t-root", "receiverThreadIds": ["t-a"], "status": "completed",
+            "agentsStates": ["t-a": ["status": "completed", "message": "Found 3 races in CoTermRing.swift"]]
+        ], to: &runs, names: [:], now: Date())
+        // A status outside the known set, WITH a message — previously this
+        // overwrote the agent's final report with a progress line.
+        CodexSession.applySubagentEvent([
+            "type": "collabAgentToolCall", "id": "c3", "tool": "sendInput",
+            "senderThreadId": "t-root", "receiverThreadIds": ["t-a"], "status": "completed",
+            "agentsStates": ["t-a": ["status": "idle", "message": "waiting for input"]]
+        ], to: &runs, names: [:], now: Date())
+        XCTAssertEqual(runs[0].resultText, "Found 3 races in CoTermRing.swift",
+                       "a settled run's final report must never be overwritten")
+    }
+
+    func testCRLFPromptsStillYieldAOneLineDescription() {
+        var runs: [V2SubagentRun] = []
+        CodexSession.applySubagentEvent(spawn(prompt: "first line\r\nsecond line"), to: &runs, names: [:], now: Date())
+        XCTAssertEqual(runs[0].description, "first line",
+                       "\\r\\n is one Character in Swift — splitting on \\n alone returns the whole string")
+    }
+
+    func testRunIdentityIsPerAgentNotPerSpawningCall() {
+        let a = V2SubagentRun(toolUseId: "c1", description: "x", agentType: "a",
+                              isBackground: true, startedAt: Date(), threadId: "t-a")
+        let b = V2SubagentRun(toolUseId: "c1", description: "y", agentType: "b",
+                              isBackground: true, startedAt: Date(), threadId: "t-b")
+        XCTAssertNotEqual(a.id, b.id, "one spawn fanning out to N agents must yield N distinct rows")
     }
 
     func testSubAgentActivityReadsAsASentenceNotABarePath() {
@@ -497,16 +580,48 @@ final class CodexSessionMappingTests: XCTestCase {
 
     func testServerEchoOfTheSentUserMessageDoesNotDoubleRender() {
         let session = CodexSession()
-        // send() appends the user's text the moment they hit return; the
-        // app-server then echoes the same message back as a completed
-        // userMessage item. The live path must swallow that echo — it
-        // painted every sent sentence twice in the transcript.
+        // send() appends the user's text the moment they hit return AND
+        // records it as a pending echo; the app-server then echoes the
+        // same message back as a completed userMessage item. The live path
+        // must swallow exactly that echo — it painted every sent sentence
+        // twice in the transcript.
+        session.noteLocalUserEcho("hello there")
         session.handleNotification(method: "item/completed", params: [
             "item": ["type": "userMessage", "id": "u-echo-1",
                      "content": [["type": "text", "text": "hello there"]]]
         ])
         XCTAssertTrue(session.transcript.isEmpty,
                       "the composer's own append is the render; the server echo must not add a second bubble")
+    }
+
+    func testAUserRowFromAnotherSourceStillRenders() {
+        // The skip is correlated with what THIS composer sent. A user row
+        // arriving from anywhere else — a second client on the shared
+        // thread, collab sendInput — must render, or the assistant's next
+        // reply answers a question nobody can see.
+        let session = CodexSession()
+        session.handleNotification(method: "item/completed", params: [
+            "item": ["type": "userMessage", "id": "u-other-1",
+                     "content": [["type": "text", "text": "message from the CLI"]]]
+        ])
+        guard case .userText("message from the CLI") = session.transcript.first else {
+            return XCTFail("an uncorrelated user row must render, got \(session.transcript)")
+        }
+    }
+
+    func testTheEchoLedgerConsumesOneEntryPerEcho() {
+        // Two identical sends → two echoes → both swallowed; a third
+        // identical row (someone else typing the same text) renders.
+        let session = CodexSession()
+        session.noteLocalUserEcho("same")
+        session.noteLocalUserEcho("same")
+        for i in 0..<3 {
+            session.handleNotification(method: "item/completed", params: [
+                "item": ["type": "userMessage", "id": "u-\(i)",
+                         "content": [["type": "text", "text": "same"]]]
+            ])
+        }
+        XCTAssertEqual(session.transcript.count, 1, "two echoes consumed, the third row is real")
     }
 
     func testHistoryMappingStillRendersUserMessages() {
@@ -539,6 +654,14 @@ final class CodexSessionMappingTests: XCTestCase {
     func testSandboxNetworkIsUnknownWhenConfigMissingEntirely() {
         XCTAssertNil(CodexSession.sandboxNetworkAccess(fromConfigRead: [:]),
                      "a malformed response must read as unknown, not as a confident off")
+    }
+
+    func testSandboxNetworkUnparseableValueIsUnknownNotOff() {
+        // For a security control, unknown collapsing to "off" is the
+        // dangerous direction: the chip would claim the sandbox is closed
+        // while it's actually open.
+        let response: [String: Any] = ["config": ["sandbox_workspace_write": ["network_access": "yes"]], "origins": [:]]
+        XCTAssertNil(CodexSession.sandboxNetworkAccess(fromConfigRead: response))
     }
 
     func testAllEighteenThreadItemDiscriminatorsMapToNonEmptyRows() {

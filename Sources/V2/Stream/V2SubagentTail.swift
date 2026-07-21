@@ -93,6 +93,16 @@ enum V2SubagentTail {
                 return brief(text).map { "› task — \($0)" }
             case .assistantBlock(.text(let text)):
                 return brief(text)
+            case .assistantBlock(.toolResult(_, let content, let isError)):
+                // Failures have to surface. The file path carries a
+                // dedicated "✗ …" line for exactly this (see describe's
+                // note about a delegated agent hitting an error that
+                // neither the one-liner nor the feed ever showed); dropping
+                // tool results here reintroduced that blind spot for Codex,
+                // and made the card's red-error styling unreachable.
+                guard isError == true else { return nil }
+                if case .text(let text) = content { return brief(text).map { "✗ \($0)" } }
+                return "✗ tool failed"
             case .assistantBlock(.toolUse(_, let name, let input)):
                 // Same key priority briefInput uses, read through JSONValue
                 // rather than a bridged dictionary.

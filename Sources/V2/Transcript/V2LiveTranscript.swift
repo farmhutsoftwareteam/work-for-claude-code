@@ -123,9 +123,15 @@ struct V2LiveTranscript<Session: V2TranscriptSource>: View {
                     // never bring down the transcript even if subagentRuns
                     // ever ends up with one (belt-and-suspenders alongside
                     // the append-site guard in StreamSession).
+                    // Keeps the FIRST run per call, not the last: one Codex
+                    // collab.spawnAgent can name several agents, and taking
+                    // "latest" made the inline card silently swap which
+                    // agent it described as siblings registered. The strip
+                    // below shows every agent individually (runs are keyed
+                    // per agent now); this card describes the call.
                     let runsById = Dictionary(
                         session.subagentRuns.map { ($0.toolUseId, $0) },
-                        uniquingKeysWith: { _, latest in latest }
+                        uniquingKeysWith: { first, _ in first }
                     )
                     let sessionDir = session.sessionDir
                     // Clamped here, not just reset reactively by the

@@ -73,7 +73,14 @@ struct V2SubagentRun: Identifiable, Equatable {
     /// what routes the peek to the Codex reader instead of the file tail.
     var threadId: String?
 
-    var id: String { toolUseId }
+    /// Keyed per AGENT, not per spawning call. One Codex
+    /// `collab.spawnAgent` can fan out to several agents, all carrying the
+    /// same call id — keying identity on `toolUseId` alone collapsed them
+    /// to one row (the transcript's run lookup dedupes by key, keeping only
+    /// the last), so a 3-agent fan-out rendered a single card describing
+    /// only the third. Claude's runs have no threadId, so their id is
+    /// unchanged.
+    var id: String { threadId.map { "\(toolUseId)#\($0)" } ?? toolUseId }
 }
 
 enum V2SubagentParser {

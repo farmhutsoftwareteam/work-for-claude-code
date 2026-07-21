@@ -38,15 +38,21 @@ struct V2SubagentRunsStrip<Session: V2TranscriptSource>: View {
     private var maxRows: Int { v2SubagentStripMaxRows }
 
     var body: some View {
-        Group {
-            if !visibleRuns.isEmpty {
-                VStack(alignment: .leading, spacing: 6) {
-                    ForEach(Array(cappedRows.enumerated()), id: \.offset) { _, row in
-                        rowView(row)
+        // Coarse 5s tick: the 30s linger reads Date() but nothing else
+        // re-rendered this view once runs stopped mutating, so a finished
+        // strip could sit on screen forever (Codex fires far fewer run
+        // updates than Claude). Idle cost is one cheap evaluation per 5s.
+        TimelineView(.periodic(from: .now, by: 5)) { _ in
+            let visible = visibleRuns
+            let rows = cappedRows(visible)
+            Group {
+                if !visible.isEmpty {
+                    VStack(alignment: .leading, spacing: 6) {
+                        ForEach(rows.indices, id: \.self) { rowView(rows[$0]) }
                     }
+                    .padding(.horizontal, 26)
+                    .padding(.vertical, 10)
                 }
-                .padding(.horizontal, 26)
-                .padding(.vertical, 10)
             }
         }
         // Keyed on instanceId, not ObjectIdentifier(session) — same
@@ -82,8 +88,7 @@ struct V2SubagentRunsStrip<Session: V2TranscriptSource>: View {
             }
     }
 
-    private var cappedRows: [Row] {
-        let visible = visibleRuns
+    private func cappedRows(_ visible: [V2SubagentRun]) -> [Row] {
         let capped = visible.prefix(maxRows).map(Row.run)
         let overflow = visible.dropFirst(maxRows)
         guard !overflow.isEmpty else { return Array(capped) }

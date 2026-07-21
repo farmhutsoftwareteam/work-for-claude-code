@@ -97,6 +97,15 @@ struct V2CodexComposer: View {
             if draft.isEmpty { draft = session.composerDraft }
             cachedHeight = V2ComposerMetrics.height(for: draft)
         }
+        // A failed wake hands the typed message back by writing
+        // composerDraft — but this view snapshots that only on appear, so
+        // without a signal the restored text existed and never appeared
+        // on screen. Scoped subject, not an @Published draft: publishing
+        // per keystroke would re-render every observer of the session.
+        .onReceive(session.draftRestored) { _ in
+            draft = session.composerDraft
+            cachedHeight = V2ComposerMetrics.height(for: draft)
+        }
         .background(
             Button("Interrupt") { if isWorking { session.interrupt() } }
                 .keyboardShortcut(.escape, modifiers: [])
@@ -220,11 +229,13 @@ struct V2CodexComposer: View {
     }
 
     private var canSend: Bool {
-        // Derived from canType (same rule as V2LiveComposer) so a state
-        // that can be typed into can always be sent from — the two drifting
-        // apart is what leaves a tab with a live-looking composer and a
-        // dead Send button.
-        guard canType, session.state != .initializing, session.state != .working else { return false }
+        // Deliberately STRICTER than V2LiveComposer (Claude allows sending
+        // during .initializing; Codex's turn/start would just fail there).
+        // isWorking is part of the guard so that if .awaitingPermission is
+        // ever added to canType ("keep typing while the modal is up"),
+        // Send stays blocked during a permission prompt instead of being
+        // silently enabled by that unrelated change.
+        guard canType, !isWorking, session.state != .initializing else { return false }
         return !draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || !attachments.items.isEmpty
     }
 

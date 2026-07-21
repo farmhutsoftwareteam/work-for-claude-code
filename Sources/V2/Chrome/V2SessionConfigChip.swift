@@ -364,6 +364,10 @@ private struct V2CodexSessionConfigPanel: View {
         // Height only — width/background/border belong to the popover shell
         // now, so the surface stays constant while panels swap.
         .frame(height: 520)
+        // The setting is machine-global (~/.codex/config.toml) but each
+        // session caches its own reading from start() — a toggle in tab A
+        // left tab B's chip stale until B restarted. Re-read on open.
+        .task { await session.refreshSandboxNetwork() }
     }
 
     /// Codex's workspace-write sandbox blocks outbound network by default,

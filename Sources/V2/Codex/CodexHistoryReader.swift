@@ -46,6 +46,9 @@ final class CodexHistoryReader {
     /// in the view tree (the sub-agent peek) can read a thread without
     /// plumbing a URL through every view between them and app state.
     private var rememberedBinary: URL?
+    /// Which binary the live `client` was actually spawned from — not the
+    /// same thing as the most recent caller's binary.
+    private var startedBinary: URL?
 
     func rememberBinary(_ url: URL) { rememberedBinary = url }
 
@@ -85,7 +88,14 @@ final class CodexHistoryReader {
     /// tabs restoring at launch would each race to start their own
     /// app-server and four would be orphaned.
     private func ensureClient(binary: URL) async -> CodexAppServerClient? {
-        if let client { return client }
+        // A live client from a DIFFERENT binary must not be reused: two
+        // projects can resolve different codex versions (a global install
+        // and a project-local one), and answering a thread written by the
+        // newer one with the older one silently yields items it doesn't
+        // understand — which map to nothing, so a peek shows an empty
+        // thread rather than an error.
+        if let client, startedBinary == binary { return client }
+        if client != nil, startedBinary != binary { shutdownIfIdle() }
         if let startTask { return await startTask.value }
 
         let task = Task<CodexAppServerClient?, Never> { [weak self] in
@@ -103,6 +113,7 @@ final class CodexHistoryReader {
         }
         startTask = task
         let started = await task.value
+        startedBinary = started == nil ? nil : binary
         // No suspension between here and the return, so a second caller
         // arriving now sees either the in-flight task or the settled client
         // — never a window where both are nil.

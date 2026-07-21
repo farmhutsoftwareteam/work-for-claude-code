@@ -20,7 +20,12 @@ struct V2RootView: View {
     /// untouched whether this is open or not.
     @State private var showACPPreview = false
     @State private var showSessionPortAlert = false
+    @State private var sessionPortTitle = "Session"
     @State private var sessionPortMessage = ""
+    /// True from panel-open until the copy finishes — one port operation
+    /// at a time, and a second menu press during a panel is a no-op
+    /// rather than a second stacked modal.
+    @State private var sessionPortBusy = false
     @State private var showClaudeInstall = false
     @State private var showCodexInstall = false
     @State private var showClaudeSignIn = false
@@ -167,14 +172,23 @@ struct V2RootView: View {
             if request != nil { terminals.tabJumpRequest = nil }
         }
         .onChange(of: terminals.sessionPortRequest) { _, request in
+            guard let request else { return }
+            // Cleared BEFORE handling, not after: the handlers spin modal
+            // panels, and a request left set during that nested run loop
+            // could re-enter this handler on the next change. (The command
+            // itself carries a nonce, so re-issuing after a wedge is
+            // always an observable change.)
+            terminals.sessionPortRequest = nil
+            guard !sessionPortBusy else { return }
+            // Hop out of the SwiftUI update transaction: runModal() spins
+            // a nested run loop, and doing that inside onChange re-enters
+            // body evaluation mid-transaction (AttributeGraph cycles).
             switch request {
-            case .exportActive: exportActiveSession()
-            case .importBundle: importSessionBundle()
-            case nil: break
+            case .exportActive: DispatchQueue.main.async { exportActiveSession() }
+            case .importBundle: DispatchQueue.main.async { importSessionBundle() }
             }
-            if request != nil { terminals.sessionPortRequest = nil }
         }
-        .alert("Session", isPresented: $showSessionPortAlert) {
+        .alert(sessionPortTitle, isPresented: $showSessionPortAlert) {
             Button("OK", role: .cancel) { }
         } message: {
             Text(sessionPortMessage)
@@ -500,38 +514,41 @@ struct V2RootView: View {
     // MARK: - Session portability
 
     /// Writes the active tab's conversation to a portable bundle. The
-    /// transcript is copied verbatim; credentials are never included.
+    /// transcript is copied verbatim; credentials never leave this Mac,
+    /// and neither does the unsent composer draft — the panel promises
+    /// "the conversation only" and the manifest honours it.
     private func exportActiveSession() {
+        guard !sessionPortBusy else { return }
         guard let tab = appState.activeTab, tab.surface == .modeB else {
-            return report("Open a chat tab to export its session.")
+            return report(title: "Export", "Open a chat tab to export its session.")
         }
         let provider = tab.provider
         let sessionId: String? = provider == .codex
             ? (tab.codexSession?.threadId ?? appState.codexResumeIds[tab.id])
             : (tab.streamSession?.sessionId ?? appState.resumeIds[tab.id])
         guard let sessionId else {
-            return report("This tab hasn't started a session yet, so there's nothing to export.")
+            return report(title: "Export", "This tab hasn't started a session yet, so there's nothing to export.")
         }
+        // Resolve the real transcript up front, with a provider-correct
+        // error. (The Codex fallback used to be a freshly-timestamped path
+        // that could never exist, producing a Claude-specific "30 days"
+        // message for a Codex miss.)
         let source: URL
-        do {
-            source = try V2SessionBundle.destinationURL(
-                provider: provider, sessionId: sessionId, projectCwd: tab.projectCwd
-            )
-        } catch {
-            return report(error.localizedDescription)
+        if provider == .codex {
+            guard let rollout = V2SessionBundle.findCodexRollout(threadId: sessionId) else {
+                return report(title: "Export failed", V2SessionBundle.BundleError.codexRolloutMissing.localizedDescription)
+            }
+            source = rollout
+        } else {
+            source = SessionHistoryLoader.jsonlURL(sessionId: sessionId, projectCwd: tab.projectCwd)
         }
-        // Codex files are date-stamped, so the write-side path can't locate
-        // an existing one — find it by thread id instead.
-        let resolved = provider == .codex
-            ? (Self.findCodexRollout(threadId: sessionId) ?? source)
-            : SessionHistoryLoader.jsonlURL(sessionId: sessionId, projectCwd: tab.projectCwd)
 
         let manifest = V2SessionBundle.Manifest(
             provider: provider == .codex ? "codex" : "claude",
             sessionId: sessionId,
             projectCwd: tab.projectCwd,
             title: tab.title,
-            draft: provider == .codex ? tab.codexSession?.composerDraft : tab.streamSession?.composerDraft,
+            draft: nil,
             exportedAt: Date(),
             exportedBy: "Atelier \(Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "dev")"
         )
@@ -540,13 +557,23 @@ struct V2RootView: View {
         panel.nameFieldStringValue = V2SessionBundle.suggestedFilename(for: manifest)
         panel.canCreateDirectories = true
         panel.title = "Export Session"
-        panel.message = "The conversation only — your sign-in stays on this Mac."
+        panel.message = "The conversation only — your sign-in and unsent draft stay on this Mac."
         guard panel.runModal() == .OK, let destination = panel.url else { return }
-        do {
-            let lines = try V2SessionBundle.export(manifest: manifest, transcriptAt: resolved, to: destination)
-            report("Exported \(lines) message\(lines == 1 ? "" : "s") to \(destination.lastPathComponent).")
-        } catch {
-            report(error.localizedDescription)
+        sessionPortBusy = true
+        // Off the main thread: a real transcript is tens of MB (71MB seen
+        // here), and copying it inline tripped the 3s hang watchdog —
+        // which then froze the app a further 3s to sample it.
+        Task.detached(priority: .userInitiated) {
+            let result = Result { try V2SessionBundle.export(manifest: manifest, transcriptAt: source, to: destination) }
+            await MainActor.run {
+                sessionPortBusy = false
+                switch result {
+                case .success(let entries):
+                    report(title: "Exported", "\(entries) entr\(entries == 1 ? "y" : "ies") → \(destination.lastPathComponent)")
+                case .failure(let error):
+                    report(title: "Export failed", error.localizedDescription)
+                }
+            }
         }
     }
 
@@ -554,9 +581,9 @@ struct V2RootView: View {
     /// ON THIS MACHINE — the path rewrite that makes a session from another
     /// Mac resolvable here at all.
     private func importSessionBundle() {
+        guard !sessionPortBusy else { return }
         let open = NSOpenPanel()
-        open.allowedContentTypes = []
-        open.allowsOtherFileTypes = true
+        open.allowedContentTypes = [.init(filenameExtension: V2SessionBundle.fileExtension)].compactMap { $0 }
         open.canChooseDirectories = false
         open.title = "Import Session"
         open.message = "Choose an Atelier session file (.\(V2SessionBundle.fileExtension))."
@@ -566,12 +593,18 @@ struct V2RootView: View {
         do {
             manifest = try V2SessionBundle.readManifest(at: bundle)
         } catch {
-            return report(error.localizedDescription)
+            return report(title: "Import failed", error.localizedDescription)
+        }
+        // The provider's runtime is needed to OPEN the session afterwards —
+        // check before writing anything, or the import "succeeds" invisibly
+        // (transcript lands on disk, the open bails, no tab, no message).
+        if manifest.agentProvider == .codex, appState.codexBinary == nil {
+            return report(title: "Import", "This is a Codex session, but the Codex CLI isn't installed on this Mac.")
+        }
+        if manifest.agentProvider == .claude, appState.claudeBinary == nil {
+            return report(title: "Import", "This is a Claude session, but Claude Code isn't installed on this Mac.")
         }
 
-        // Which project here does this session belong to? Default to the
-        // selected one; the exported path is only a hint, since it's
-        // exactly what doesn't survive the move.
         let picker = NSOpenPanel()
         picker.canChooseDirectories = true
         picker.canChooseFiles = false
@@ -581,13 +614,50 @@ struct V2RootView: View {
         picker.directoryURL = appState.selectedProjectCwd
         guard picker.runModal() == .OK, let target = picker.url else { return }
 
-        do {
-            _ = try V2SessionBundle.importBundle(at: bundle, intoProjectCwd: target.path)
-        } catch {
-            return report(error.localizedDescription)
+        sessionPortBusy = true
+        Task.detached(priority: .userInitiated) {
+            let result = Result { try V2SessionBundle.importBundle(at: bundle, intoProjectCwd: target.path) }
+            await MainActor.run { finishImport(result, bundle: bundle, manifest: manifest, target: target) }
         }
-        // Open it straight away — an import that leaves you hunting for the
-        // session in a list hasn't finished the job.
+    }
+
+    private func finishImport(
+        _ result: Result<URL, Error>,
+        bundle: URL, manifest: V2SessionBundle.Manifest, target: URL
+    ) {
+        sessionPortBusy = false
+        switch result {
+        case .success:
+            openImported(manifest: manifest, target: target)
+        case .failure(let error):
+            if case V2SessionBundle.BundleError.alreadyExists = error {
+                // The one refusal with a real user decision behind it.
+                let alert = NSAlert()
+                alert.messageText = "This session already exists on this Mac"
+                alert.informativeText = "Importing will replace the local copy. If that session is open anywhere, close it first."
+                alert.addButton(withTitle: "Replace")
+                alert.addButton(withTitle: "Cancel")
+                guard alert.runModal() == .alertFirstButtonReturn else { return }
+                sessionPortBusy = true
+                Task.detached(priority: .userInitiated) {
+                    let retry = Result { try V2SessionBundle.importBundle(at: bundle, intoProjectCwd: target.path, replaceExisting: true) }
+                    await MainActor.run {
+                        sessionPortBusy = false
+                        switch retry {
+                        case .success: openImported(manifest: manifest, target: target)
+                        case .failure(let error): report(title: "Import failed", error.localizedDescription)
+                        }
+                    }
+                }
+            } else {
+                report(title: "Import failed", error.localizedDescription)
+            }
+        }
+    }
+
+    /// Open it straight away — an import that leaves you hunting for the
+    /// session in a list hasn't finished the job.
+    private func openImported(manifest: V2SessionBundle.Manifest, target: URL) {
         let name = target.lastPathComponent
         switch manifest.agentProvider {
         case .codex:
@@ -600,21 +670,11 @@ struct V2RootView: View {
                 projectName: name, title: manifest.title ?? name
             )
         }
+        report(title: "Imported", "\(manifest.title ?? name) is ready.")
     }
 
-    /// Codex rollouts are filed by date, not by thread — locate one by the
-    /// id embedded in its filename.
-    private static func findCodexRollout(threadId: String) -> URL? {
-        let root = FileManager.default.homeDirectoryForCurrentUser
-            .appendingPathComponent(".codex/sessions")
-        guard let walker = FileManager.default.enumerator(at: root, includingPropertiesForKeys: nil) else { return nil }
-        for case let url as URL in walker where url.lastPathComponent.hasSuffix("-\(threadId).jsonl") {
-            return url
-        }
-        return nil
-    }
-
-    private func report(_ message: String) {
+    private func report(title: String, _ message: String) {
+        sessionPortTitle = title
         sessionPortMessage = message
         showSessionPortAlert = true
     }

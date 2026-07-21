@@ -37,9 +37,17 @@ final class TerminalsController: ObservableObject {
     /// Session portability, staged the same way tab jumps are: the menu
     /// lives in WorkApp (which has no V2AppState — that's per-window),
     /// V2RootView owns the panels and the actual work.
+    /// Each command carries a fresh nonce so RE-ISSUING it is always an
+    /// observable change. Without one, a request staged while no handler
+    /// was mounted (v2 window closed, legacy window keeping the app alive)
+    /// latched forever: reopening the window doesn't fire onChange for a
+    /// pre-existing value, and pressing the same shortcut again assigns an
+    /// equal value — the menu item is silently dead until the OTHER
+    /// command happens to unstick it. Same bug class the tabJumpRequest
+    /// comment above records as already fixed once.
     enum SessionPortCommand: Equatable {
-        case exportActive
-        case importBundle
+        case exportActive(UUID)
+        case importBundle(UUID)
     }
     @Published var sessionPortRequest: SessionPortCommand?
 
@@ -546,7 +554,9 @@ final class TerminalsController: ObservableObject {
         }
         // The shared history-reader app-server is owned by no tab, so the
         // loop above can't reach it — it would outlive the app otherwise.
-        MainActor.assumeIsolated { CodexHistoryReader.shared.terminateNow() }
+        // (Direct call: this class is @MainActor already; assumeIsolated
+        // here was a latent crash trap if the method ever went nonisolated.)
+        CodexHistoryReader.shared.terminateNow()
     }
 
     /// Update the human-readable title of a tab (e.g. after a rename).
