@@ -6,6 +6,27 @@
         <description>Updates for Atelier</description>
         <language>en</language>
         <item>
+            <title>Version 2.11.2</title>
+            <pubDate>Tue, 21 Jul 2026 20:59:14 +0400</pubDate>
+            <sparkle:version>77</sparkle:version>
+            <sparkle:shortVersionString>2.11.2</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>15.0</sparkle:minimumSystemVersion>
+            <description><![CDATA[
+                <h3>Atelier 2.11.2 — a guardrail against silently using Fable</h3>
+                <ul>
+                    <li><b>Fable now shows a clear warning wherever it's selected or in use</b> — in the model picker and in the always-visible model chip in the header — since it draws down your plan's usage limits faster than other models.</li>
+                    <li><b>Added a hard, enforced guarantee that Atelier itself can never auto-select or silently reroute to Fable:</b> the code path that would enable that is now actively stripped and asserted against, not just avoided by convention.</li>
+                    <li><b>If a turn ever does land on Fable via a server-side fallback,</b> the transcript note now calls that out explicitly instead of blending in as a routine notice.</li>
+                    <li><b>Fixed a tab status bug:</b> when a chat resumes on its own (a scheduled wakeup finishing, or any other self-triggered continuation) rather than from something you sent, the tab now correctly shows it as working instead of sitting idle while it's actually still going.</li>
+                </ul>
+            ]]></description>
+            <enclosure
+                url="https://work.munyamakosa.com/Atelier-2.11.2.dmg"
+                length="15049525"
+                type="application/octet-stream"
+                sparkle:edSignature="b4M+9te+u4q4DRgldhrUeHd/I2Njn2RU+3fI8xL1b4cLgrcZr/ikQQJWSvuLbbqQtMOoMiiZdQvgygecipmzCg==" />
+        </item>
+        <item>
             <title>Version 2.11.1</title>
             <pubDate>Tue, 21 Jul 2026 12:08:31 +0400</pubDate>
             <sparkle:version>76</sparkle:version>
