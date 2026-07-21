@@ -441,10 +441,7 @@ final class StreamSession: ObservableObject, V2TranscriptSource {
                         transcript.append(.assistantBlock(block))
                     case .fallback(let from, let to):
                         // Same treatment as the live path — see handle(event:).
-                        transcript.append(.systemNote(
-                            kind: .info,
-                            text: "model fallback: \(from ?? "?") was unavailable — this turn ran on \(to ?? "another model")"
-                        ))
+                        transcript.append(Self.fallbackNote(from: from, to: to))
                     case .toolResult, .thinking, .image, .unknown:
                         transcript.append(.assistantBlock(block))
                     }
@@ -797,6 +794,24 @@ final class StreamSession: ObservableObject, V2TranscriptSource {
         } else {
             self.effort = ""
         }
+        // GUARDRAIL — do not remove without reading this: `--fallback-model`
+        // is what ENABLES claude's automatic model reroute on overload/rate-
+        // limit (confirmed against `claude --help`: "Enable automatic
+        // fallback to specified model(s)..."). Omitting it — which every
+        // spawn path in this file does — means the CLI never silently
+        // switches models on its own; a request just fails instead. That's
+        // the actual guardrail a user asked for after noticing an
+        // externally-run session (a GitHub-integrated Claude session, not
+        // one Atelier spawned) auto-rerouting to Fable mid-conversation
+        // (2026-07-21) — Fable/experimental-tier turns can draw down a
+        // plan's usage limits faster, so an invisible auto-switch onto it
+        // is a real cost, not a cosmetic one. If a future feature wants
+        // opt-in fallback, it must pass an explicit allow-list that
+        // excludes any "fable"-family id — never bare `--fallback-model`
+        // with no list, and never one sourced from something Anthropic
+        // could change server-side. assertNeverAutoFallback() below is the
+        // enforced half of this comment, not just documentation.
+        Self.assertNeverAutoFallback(&args)
         process.arguments = args
         process.currentDirectoryURL = cwd
         // Critical: GUI-launched apps inherit launchd's stripped PATH which
@@ -977,6 +992,50 @@ final class StreamSession: ObservableObject, V2TranscriptSource {
             orphanRunningBackgroundTasks()
             state = .terminated(reason: "stream closed")
         }
+    }
+
+    // MARK: - Auto-fallback guardrail
+
+    /// The transcript note for a server-side model reroute. Atelier's own
+    /// spawns can't trigger this (see assertNeverAutoFallback below), but
+    /// the wire shape exists and swapping it silently would be worse than
+    /// this being unreachable in practice, so it stays real rather than
+    /// removed. Escalated to a visible warning — not just an info aside —
+    /// when the landing model is fable-family: that tier draws down a
+    /// plan's usage limits faster (user-reported, 2026-07-21; no public
+    /// Anthropic API exposes a documented multiplier to verify against, so
+    /// this deliberately doesn't claim a specific number), and an invisible
+    /// swap onto it is a real cost, not a cosmetic one.
+    static func fallbackNote(from: String?, to: String?) -> TranscriptItem {
+        // .info, not .error, on purpose even for the fable case: nothing
+        // failed here — the turn succeeded, just on a costlier model — and
+        // .error's red triangle (SystemNoteKind.error is documented as
+        // "non-retryable errors") would misrepresent that. The emphasis
+        // belongs in the wording, not a borrowed failure color.
+        let landedOnFable = to.map { V2DiscoveredModel.familyKey($0) == "fable" } ?? false
+        let base = "model fallback: \(from ?? "?") was unavailable — this turn ran on \(to ?? "another model")"
+        return .systemNote(
+            kind: .info,
+            text: landedOnFable ? base + " ⚠️ fable \(V2DiscoveredModel.usageWarning)" : base
+        )
+    }
+
+    /// The enforced half of the guardrail comment at the `start()` call
+    /// site: `--fallback-model` is what ENABLES claude's automatic model
+    /// reroute on overload/rate-limit (`claude --help`: "Enable automatic
+    /// fallback..."), so omitting it is what guarantees a spawn never
+    /// silently switches models — a request fails instead. This function
+    /// makes that a real invariant instead of just an intention: it strips
+    /// the flag (and its value) if present, so a RELEASE build fails safe
+    /// even if some future edit reintroduces it, and asserts in DEBUG so
+    /// that edit is caught immediately rather than silently neutralized
+    /// forever. `inout` and side-effecting on purpose — this is meant to be
+    /// unconditionally load-bearing, not a check someone can skip calling.
+    static func assertNeverAutoFallback(_ args: inout [String]) {
+        guard let idx = args.firstIndex(of: "--fallback-model") else { return }
+        assertionFailure("--fallback-model must never be passed when spawning claude — see the guardrail comment above this call site in start().")
+        let hasValue = idx + 1 < args.count
+        args.removeSubrange(idx..<(idx + (hasValue ? 2 : 1)))
     }
 
     // MARK: - Enriched environment
@@ -1538,10 +1597,7 @@ final class StreamSession: ObservableObject, V2TranscriptSource {
                     // The API silently answered with a DIFFERENT model than
                     // the session's (rate-limit/availability fallback) —
                     // surface it; a swapped model must never be invisible.
-                    transcript.append(.systemNote(
-                        kind: .info,
-                        text: "model fallback: \(from ?? "?") was unavailable — this turn ran on \(to ?? "another model")"
-                    ))
+                    transcript.append(Self.fallbackNote(from: from, to: to))
                 case .toolResult, .image, .unknown:
                     transcript.append(.assistantBlock(block))
                 }

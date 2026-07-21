@@ -49,6 +49,19 @@ struct V2DiscoveredModel: Identifiable, Equatable, Hashable {
         default:       return "Custom model"
         }
     }
+
+    /// Single source of truth for the fable-usage callout — every surface
+    /// that shows or lets you pick a model routes through this rather than
+    /// re-deriving the family check, so the wording can't drift between the
+    /// picker and the header badge. User-reported (2026-07-21), not from a
+    /// published Anthropic multiplier — there is no public API for this
+    /// (see AnthropicPricing.swift's header comment on the same limit) — so
+    /// this deliberately says "tends to use more" rather than a specific
+    /// number that can't be verified or that Anthropic could change without
+    /// telling us.
+    static let usageWarning = "uses more of your plan's usage limit"
+
+    var usesMoreUsage: Bool { family == "fable" }
 }
 
 enum V2ModelDiscovery {

@@ -68,6 +68,18 @@ struct V2SessionConfigChip: View {
         let e = appState.activeSession?.effort ?? appState.defaultSpawnEffort
         return e.isEmpty ? "default" : e
     }
+    /// Whether the model actually driving the active (or next) Claude spawn
+    /// is fable-family — Codex has no such tier, so this is Claude-only by
+    /// construction. Drives the chip's ALWAYS-visible cue (recolored label,
+    /// no layout change) so "am I on fable right now" doesn't require
+    /// opening the popover — the guardrail has to be visible while a
+    /// session is actually running on it, not just at selection time.
+    private var activeModelUsesMoreUsage: Bool {
+        guard !isCodex else { return false }
+        let raw = appState.activeSession?.model ?? appState.defaultSpawnModel
+        return !raw.isEmpty && V2DiscoveredModel.familyKey(raw) == "fable"
+    }
+
     private var chipPermissionLabel: String {
         if isCodex {
             return appState.activeCodexSession?.permissionMode ?? appState.defaultCodexApprovalPolicy
@@ -101,6 +113,11 @@ struct V2SessionConfigChip: View {
                         .lineLimit(1)
                         .truncationMode(.tail)
                         .frame(width: isTight ? 50 : 64, alignment: .leading)
+                        // Same fixed-width frame as always — recoloring the
+                        // label (not resizing/badging it) is what keeps this
+                        // "always aware I'm on fable" cue from reintroducing
+                        // the pill-shift regression above.
+                        .foregroundColor(activeModelUsesMoreUsage ? v2.del : v2.ink)
                 }
                 if !isCompact {
                     Rectangle().fill(v2.line2).frame(width: 1, height: 13)
@@ -131,7 +148,9 @@ struct V2SessionConfigChip: View {
         // sets the defaults for future spawns (same as the old model-only
         // chip's behavior, now true of all three sections).
         .disabled(!isCodex && appState.activeSession == nil && appState.modelCatalog.isEmpty)
-        .help("\(provider.displayName) · \(chipModelLabel) · \(chipEffortLabel) · \(chipPermissionLabel)")
+        .help(activeModelUsesMoreUsage
+            ? "\(provider.displayName) · \(chipModelLabel) · \(chipEffortLabel) · \(chipPermissionLabel) · fable \(V2DiscoveredModel.usageWarning)"
+            : "\(provider.displayName) · \(chipModelLabel) · \(chipEffortLabel) · \(chipPermissionLabel)")
         .popover(isPresented: $open, arrowEdge: .bottom) {
             V2SessionConfigPopover()
                 .environmentObject(appState)
@@ -548,9 +567,19 @@ private struct V2SessionConfigPanel: View {
                     .fill(isActive ? v2.ink : Color.clear)
                     .overlay(Circle().stroke(isActive ? Color.clear : v2.line2, lineWidth: 1))
                     .frame(width: 7, height: 7)
-                Text(option.displayName)
-                    .font(.system(size: 13, weight: isActive ? .semibold : .regular))
-                    .foregroundColor(v2.ink)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(option.displayName)
+                        .font(.system(size: 13, weight: isActive ? .semibold : .regular))
+                        .foregroundColor(v2.ink)
+                    // Visible at the moment of picking, not just after —
+                    // the whole point of a guardrail is that it's seen
+                    // BEFORE the cost is incurred, not discovered later.
+                    if option.usesMoreUsage {
+                        Text(V2DiscoveredModel.usageWarning)
+                            .font(.system(size: 9.5, design: .monospaced))
+                            .foregroundColor(v2.del)
+                    }
+                }
                 Spacer()
                 Text(option.tag)
                     .font(.system(size: 10, design: .monospaced))
