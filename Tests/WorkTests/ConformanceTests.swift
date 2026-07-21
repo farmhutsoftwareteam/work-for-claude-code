@@ -405,6 +405,72 @@ final class ConformanceTests: XCTestCase {
         XCTAssertEqual(assistantTexts.first, "ready")
     }
 
+    // MARK: - Self-resumed turns (ScheduleWakeup and friends)
+
+    /// A ScheduleWakeup (or any other self-queued continuation) resumes the
+    /// `claude` process on its own — no send() call, just a fresh top-level
+    /// `user` event arriving on stdout once the session is back to .ready.
+    /// Confirmed against a real captured session: a queue-operation dequeue
+    /// is immediately followed by exactly this shape. Before the fix, state
+    /// had no path back to .working for a turn Atelier didn't initiate, so
+    /// the tab's status dot silently stayed idle through the whole reply.
+    @MainActor
+    func test_selfResumedTurn_flipsStateToWorking() throws {
+        let session = StreamSession()
+        let decoder = JSONDecoder()
+
+        // Reach .ready without spawning a process: a can_use_tool control
+        // request flips .awaitingPermission unconditionally, and a result
+        // event then closes it to .ready — the same "session alive, waiting
+        // for the next message" state a turn genuinely ends in.
+        let controlRequestJSON = #"""
+        {"type":"control_request","request_id":"req_1","request":{"subtype":"can_use_tool","tool_name":"Bash","input":{"command":"ls"}}}
+        """#
+        let resultJSON = #"""
+        {"type":"result","subtype":"success","session_id":"s1","is_error":false}
+        """#
+        session.handle(event: try decoder.decode(StreamEvent.self, from: Data(controlRequestJSON.utf8)))
+        session.handle(event: try decoder.decode(StreamEvent.self, from: Data(resultJSON.utf8)))
+        XCTAssertEqual(session.state, .ready)
+
+        // A self-resumed turn's first visible wire event: a top-level user
+        // text block nobody here called send() for.
+        let selfResumedUserTurnJSON = #"""
+        {"type":"user","message":{"role":"user","content":[{"type":"text","text":"continuing autonomously"}]}}
+        """#
+        session.handle(event: try decoder.decode(StreamEvent.self, from: Data(selfResumedUserTurnJSON.utf8)))
+
+        XCTAssertEqual(session.state, .working, "a turn observed from the stream must flip the tab to working even if Atelier never sent it")
+        XCTAssertNotNil(session.turnStartedAt, "the live elapsed timer needs a start time for this turn too")
+    }
+
+    /// Same gap, defended a second way: if a self-resumed turn's boundary
+    /// user event is ever skipped (protocol change, dropped line), the
+    /// first assistant reply is equally definitive proof of real work and
+    /// must recover .working on its own.
+    @MainActor
+    func test_selfResumedTurn_assistantEventAloneAlsoFlipsStateToWorking() throws {
+        let session = StreamSession()
+        let decoder = JSONDecoder()
+
+        let controlRequestJSON = #"""
+        {"type":"control_request","request_id":"req_1","request":{"subtype":"can_use_tool","tool_name":"Bash","input":{"command":"ls"}}}
+        """#
+        let resultJSON = #"""
+        {"type":"result","subtype":"success","session_id":"s1","is_error":false}
+        """#
+        session.handle(event: try decoder.decode(StreamEvent.self, from: Data(controlRequestJSON.utf8)))
+        session.handle(event: try decoder.decode(StreamEvent.self, from: Data(resultJSON.utf8)))
+        XCTAssertEqual(session.state, .ready)
+
+        let assistantTurnJSON = #"""
+        {"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":"resuming"}]}}
+        """#
+        session.handle(event: try decoder.decode(StreamEvent.self, from: Data(assistantTurnJSON.utf8)))
+
+        XCTAssertEqual(session.state, .working)
+    }
+
     // MARK: - AgentConfigWriter
 
     func test_agentWriter_serializeProducesParseableFrontmatter() {

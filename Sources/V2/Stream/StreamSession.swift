@@ -1117,6 +1117,27 @@ final class StreamSession: ObservableObject, V2TranscriptSource {
         }
     }
 
+    /// Marks a turn as started the moment the STREAM itself proves one is
+    /// underway, for turns Atelier never called send() for — a
+    /// ScheduleWakeup (or any other self-queued continuation) resuming the
+    /// process on its own. `send()` below flips .ready → .working
+    /// optimistically for turns WE start; nothing did the equivalent for
+    /// one the binary starts by itself, so .state sat at .ready — read by
+    /// `V2AppState.tabStatus` as idle — for the whole autonomous turn, and
+    /// the transcript kept showing the PREVIOUS turn's result footer
+    /// underneath live-streaming content (user-reported, 2026-07-21;
+    /// confirmed against this session's own transcript: a ScheduleWakeup's
+    /// `queue-operation` dequeue is immediately followed by a top-level
+    /// `user` event and then `assistant` events, with no send() in
+    /// between). No-op once a turn is already tracked — this only fires the
+    /// FIRST observed event of an otherwise-untracked turn.
+    private func beginTurnIfObservedFromStream() {
+        guard state == .ready else { return }
+        latestResult = nil
+        turnStartedAt = Date()
+        state = .working
+    }
+
     /// Send a user turn. Triggers a new assistant cycle from the binary.
     func send(text: String) {
         // The hard observer rule: watching must never become writing. A
@@ -1524,6 +1545,7 @@ final class StreamSession: ObservableObject, V2TranscriptSource {
             // TOP-LEVEL events with no parent_tool_use_id (the sidechain
             // doesn't start until the subagent's first internal action).
             guard m.parentToolUseId == nil else { return }
+            beginTurnIfObservedFromStream()
             // With --include-partial-messages + --verbose, claude emits BOTH
             // stream_event text_deltas (live streaming) AND a final assistant
             // snapshot containing the same text. Rendering both duplicates
@@ -1606,6 +1628,7 @@ final class StreamSession: ObservableObject, V2TranscriptSource {
             // Same sidechain guard as .assistant above — a subagent's own
             // tool_result events are tagged with parent_tool_use_id too.
             guard m.parentToolUseId == nil else { return }
+            beginTurnIfObservedFromStream()
             // Tool results echo back in user events — render as a result row.
             finalizeStreamingText()
             for block in m.message.content {
