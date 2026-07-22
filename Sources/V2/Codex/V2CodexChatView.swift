@@ -73,6 +73,7 @@ struct V2CodexComposer: View {
     @EnvironmentObject private var appState: V2AppState
     @ObservedObject var session: CodexSession
     @StateObject private var attachments = V2AttachmentStore()
+    @StateObject private var dictation = V2DictationController()
     @State private var draft = ""
     @State private var cachedHeight: CGFloat = 27
     @State private var inputFocused = false
@@ -96,6 +97,13 @@ struct V2CodexComposer: View {
             inputFocused = true
             if draft.isEmpty { draft = session.composerDraft }
             cachedHeight = V2ComposerMetrics.height(for: draft)
+            dictation.onUpdate = { draft = $0 }
+        }
+        .onDisappear {
+            // Same reasoning as the Claude composer: the tab going
+            // off-screen tears this @StateObject down, so stop the mic
+            // rather than leave it recording into an unreachable controller.
+            dictation.stop()
         }
         // A failed wake hands the typed message back by writing
         // composerDraft — but this view snapshots that only on appear, so
@@ -144,6 +152,7 @@ struct V2CodexComposer: View {
                 .frame(height: cachedHeight)
 
                 V2ComposerAttachButton(enabled: canType, action: chooseAttachments)
+                V2ComposerDictationButton(controller: dictation, enabled: canType, action: { dictation.toggle(currentDraft: draft) })
                 V2ComposerTurnButton(
                     isWorking: isWorking,
                     canSend: canSend,

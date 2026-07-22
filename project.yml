@@ -96,6 +96,8 @@ targets:
         CFBundleVersion: $(CURRENT_PROJECT_VERSION)
         NSHumanReadableCopyright: ""
         NSAppleEventsUsageDescription: "Atelier needs to control Terminal to launch Claude sessions."
+        NSMicrophoneUsageDescription: "Atelier uses your microphone only while you're actively dictating into the composer."
+        NSSpeechRecognitionUsageDescription: "Atelier turns your speech into text for the composer. Recognition runs on-device when your Mac supports it."
         LSUIElement: false
         SUFeedURL: https://work.munyamakosa.com/appcast.xml
         SUPublicEDKey: OxlQLub17dx6WhaZ4eF79PE1vfQF+/x4Qo6gt/ThCH0=

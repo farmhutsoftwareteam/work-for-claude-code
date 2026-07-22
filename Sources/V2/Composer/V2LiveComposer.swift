@@ -19,6 +19,7 @@ struct V2LiveComposer: View {
     @EnvironmentObject private var appState: V2AppState
     @ObservedObject var session: StreamSession
     @StateObject private var attachments = V2AttachmentStore()
+    @StateObject private var dictation = V2DictationController()
     @State private var draft: String = ""
     /// Composer height, recomputed only when the draft EDITS (O(draft) scan)
     /// — read O(1) in body, which re-runs per streamed token. 27 = one line.
@@ -91,6 +92,13 @@ struct V2LiveComposer: View {
             // Restore the draft saved for this tab (the composer's @State was
             // torn down while the tab was off-screen).
             if draft.isEmpty { draft = session.composerDraft }
+            dictation.onUpdate = { draft = $0 }
+        }
+        .onDisappear {
+            // The tab going off-screen tears down this @State/@StateObject
+            // tree — without this, switching tabs mid-dictation would leave
+            // the mic recording into a controller nothing can reach anymore.
+            dictation.stop()
         }
         .task(id: session.cwd) { await loadCustomCommands() }
         // system/init lands asynchronously after this view appears — rebuild
@@ -196,6 +204,7 @@ struct V2LiveComposer: View {
             .frame(height: cachedHeight)
 
                 V2ComposerAttachButton(enabled: canType, action: openImagePicker)
+                V2ComposerDictationButton(controller: dictation, enabled: canType, action: toggleDictation)
                 V2ComposerTurnButton(
                     isWorking: isWorking,
                     canSend: canSend,
@@ -749,6 +758,12 @@ struct V2LiveComposer: View {
             isTight: helperTight,
             helpText: "Claude model and current context usage. /clear resets it; /compact summarises."
         )
+    }
+
+    // MARK: - Dictation
+
+    private func toggleDictation() {
+        dictation.toggle(currentDraft: draft)
     }
 
     // MARK: - Image picker
