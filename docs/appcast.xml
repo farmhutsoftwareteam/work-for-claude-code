@@ -6,6 +6,24 @@
         <description>Updates for Atelier</description>
         <language>en</language>
         <item>
+            <title>Version 2.11.3</title>
+            <pubDate>Wed, 22 Jul 2026 15:00:47 +0400</pubDate>
+            <sparkle:version>78</sparkle:version>
+            <sparkle:shortVersionString>2.11.3</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>15.0</sparkle:minimumSystemVersion>
+            <description><![CDATA[
+                <h3>Atelier 2.11.3 — fixes a tab-stuck-working regression from 2.11.2</h3>
+                <ul>
+                    <li><b>Fixed a bug introduced in 2.11.2</b> where a background task or subagent finishing while a tab was idle could leave that tab permanently stuck showing "working" — pulsing status ring, progress line, and elapsed timer running forever on a tab that wasn't actually doing anything. In active sessions with a lot of background/subagent activity, this could show up as scroll and animation churn across several tabs at once, and in the worst case contribute to the app becoming unresponsive. If you updated to 2.11.2, this is a same-day follow-up fix.</li>
+                </ul>
+            ]]></description>
+            <enclosure
+                url="https://work.munyamakosa.com/Atelier-2.11.3.dmg"
+                length="15049740"
+                type="application/octet-stream"
+                sparkle:edSignature="43eJ3KPrANlNVfPfUKgidDzcJ1ereJA/e269KuyIQNKTPqqbEUKrSpnUpFfss2gwgX5cLyvWoqtzc9Tl97IjDg==" />
+        </item>
+        <item>
             <title>Version 2.11.2</title>
             <pubDate>Tue, 21 Jul 2026 20:59:14 +0400</pubDate>
             <sparkle:version>77</sparkle:version>
