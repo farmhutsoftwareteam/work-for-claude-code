@@ -49,7 +49,10 @@ struct PluginsListView: View {
             Task { await store.loadExtensions() }
         } catch {
             // Silent — user can retry; no good place for a sheet in the list row
-            NSLog("Failed to toggle plugin %@: %@", plugin.id, String(describing: error))
+            Diagnostics.record(
+                severity: .warning, subsystem: .storage, operation: .preferences, outcome: .failed,
+                code: "plugin-toggle-failed"
+            )
         }
     }
 

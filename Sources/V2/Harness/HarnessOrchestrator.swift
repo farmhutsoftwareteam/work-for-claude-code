@@ -243,7 +243,7 @@ final class HarnessOrchestrator: ObservableObject {
         } catch {
             // plan.md not persisted — the harness keeps running from the
             // in-memory `plan`, but resume/inspect from disk will be stale.
-            log.error("failed to write plan.md: \(error.localizedDescription, privacy: .public)")
+            log.error("Failed to write harness plan")
         }
     }
 
@@ -277,7 +277,7 @@ final class HarnessOrchestrator: ObservableObject {
             // progress.md not persisted — a crash/quit mid-harness loses the
             // resumable trail even though this iteration's in-memory state
             // (and the review that follows) is still correct.
-            log.error("failed to write progress.md: \(error.localizedDescription, privacy: .public)")
+            log.error("Failed to write harness progress")
         }
 
         if let idx = iterations.firstIndex(where: { $0.number == n }) {
@@ -311,7 +311,7 @@ final class HarnessOrchestrator: ObservableObject {
             // reviews/<n>.md not persisted — verdict parsing below still
             // works from `raw` in-memory, but the per-iteration audit trail
             // on disk is missing this entry.
-            log.error("failed to write review \(n): \(error.localizedDescription, privacy: .public)")
+            log.error("Failed to write harness review")
         }
 
         let verdict = parseVerdict(raw: raw)
@@ -338,7 +338,7 @@ final class HarnessOrchestrator: ObservableObject {
             )
             return true
         } catch {
-            log.error("prepareStorage failed at \(self.storageRoot.path, privacy: .public): \(error.localizedDescription, privacy: .public)")
+            log.error("Harness storage preparation failed")
             return false
         }
     }

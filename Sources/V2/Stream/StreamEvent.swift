@@ -42,8 +42,8 @@ enum StreamEvent: Decodable, Sendable {
 
 /// A standalone top-level event (NOT a `system` subtype) claude emits
 /// out-of-band with the account's current rate-limit standing — confirmed
-/// via real captured wire data (/tmp/atelier-v2-stream-debug-*.ndjson while
-/// live-hitting 429s). Previously unhandled: fell to `.unknown`, logged, and
+/// via real captured wire data in a private development fixture while
+/// live-hitting 429s. Previously unhandled: fell to `.unknown`, logged, and
 /// dropped — no crash, but also no signal anywhere in the app that the
 /// account was approaching or over its limit.
 struct RateLimitEvent: Decodable, Sendable {
@@ -108,8 +108,8 @@ struct SystemEvent: Decodable, Sendable {
     // fatal to JSONDecoder (a present key of the wrong type throws even
     // when the property is Optional — Optional only covers an ABSENT key),
     // so every api_retry event was silently dropped in its entirety: no
-    // decode, no retry banner, no `isRetrying`/`lastRetry` update, no log
-    // beyond a 200-char "ndjson decode skipped" preview.
+    // decode, no retry banner, no `isRetrying`/`lastRetry` update, and only
+    // a bounded decode-failure counter in diagnostics.
     let attempt: Int?
     let maxRetries: Int?
     let retryDelayMs: Double?

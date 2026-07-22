@@ -52,12 +52,15 @@ final class CodexAppServerClient: @unchecked Sendable {
     private var nextID = 1
     private struct PendingRequest {
         let method: String
+        let operationID: String
         let startedAt: ContinuousClock.Instant
         let continuation: CheckedContinuation<JSONObject, Error>
     }
     private var pending: [String: PendingRequest] = [:]
     private var readBuffer = Data()
     private var stopped = false
+    private var stderrBytes = 0
+    private var serverOperationID: String?
 
     var onNotification: NotificationHandler?
     var onServerRequest: ServerRequestHandler?
@@ -66,6 +69,12 @@ final class CodexAppServerClient: @unchecked Sendable {
     init(binary: URL) { self.binary = binary }
 
     func start() async throws {
+        let serverOperationID = UUID().uuidString
+        self.serverOperationID = serverOperationID
+        Diagnostics.record(
+            subsystem: .codex, operation: .codexServerStart, outcome: .started,
+            provider: .codex, operationID: serverOperationID
+        )
         process.executableURL = binary
         process.arguments = ["app-server", "--listen", "stdio://"]
         process.standardInput = input
@@ -82,12 +91,21 @@ final class CodexAppServerClient: @unchecked Sendable {
         errors.fileHandleForReading.readabilityHandler = { [weak self] handle in
             let data = handle.availableData
             guard !data.isEmpty else { return }
-            self?.log.debug("Codex app-server wrote \(data.count) stderr bytes")
+            guard let self else { return }
+            self.lock.withLock { self.stderrBytes += data.count }
         }
         process.terminationHandler = { [weak self] process in
             self?.finish(reason: "Codex app-server exited with status \(process.terminationStatus).")
         }
-        try process.run()
+        do {
+            try process.run()
+        } catch {
+            Diagnostics.record(
+                severity: .error, subsystem: .codex, operation: .codexServerStart, outcome: .failed,
+                provider: .codex, operationID: serverOperationID, code: "spawn-failed"
+            )
+            throw error
+        }
 
         _ = try await request("initialize", params: [
             "clientInfo": [
@@ -124,11 +142,17 @@ final class CodexAppServerClient: @unchecked Sendable {
             return String(nextID)
         }
         let timeout = Self.timeout(for: method)
-        log.debug("Codex request \(method, privacy: .public) started")
+        let operationID = UUID().uuidString
+        log.debug("Codex request started")
+        Diagnostics.record(
+            severity: .debug, subsystem: .codex, operation: .codexRequest, outcome: .started,
+            provider: .codex, operationID: operationID, code: Self.diagnosticMethodCode(method)
+        )
         return try await withCheckedThrowingContinuation { continuation in
             lock.withLock {
                 pending[id] = PendingRequest(
                     method: method,
+                    operationID: operationID,
                     startedAt: ContinuousClock.now,
                     continuation: continuation
                 )
@@ -207,10 +231,27 @@ final class CodexAppServerClient: @unchecked Sendable {
             let request = lock.withLock { pending.removeValue(forKey: id) }
             if let request {
                 let elapsed = request.startedAt.duration(to: .now)
-                log.debug("Codex request \(request.method, privacy: .public) completed in \(String(describing: elapsed), privacy: .public)")
+                let milliseconds = max(0, Int(
+                    Double(elapsed.components.seconds) * 1_000
+                    + Double(elapsed.components.attoseconds) / 1_000_000_000_000_000
+                ))
+                log.debug("Codex request completed")
+                Diagnostics.record(
+                    severity: .debug, subsystem: .codex, operation: .codexRequest, outcome: .succeeded,
+                    provider: .codex, operationID: request.operationID,
+                    code: Self.diagnosticMethodCode(request.method), durationMilliseconds: milliseconds
+                )
             }
             if let error = object["error"] as? [String: Any] {
-                log.error("Codex request \(request?.method ?? "unknown", privacy: .public) failed with code \(error["code"] as? Int ?? 0, privacy: .public): \(error["message"] as? String ?? "unknown error", privacy: .private)")
+                log.error("Codex request failed")
+                if let request {
+                    Diagnostics.record(
+                        severity: .error, subsystem: .codex, operation: .codexRequest, outcome: .failed,
+                        provider: .codex, operationID: request.operationID,
+                        code: Self.diagnosticMethodCode(request.method),
+                        measurements: ["rpc_code": error["code"] as? Int ?? 0]
+                    )
+                }
                 request?.continuation.resume(throwing: CodexAppServerError.rpc(
                     code: error["code"] as? Int,
                     message: error["message"] as? String ?? "Unknown Codex error"
@@ -243,6 +284,19 @@ final class CodexAppServerClient: @unchecked Sendable {
             return Array(pending.values)
         }
         guard let requests else { return }
+        let stderr = lock.withLock { stderrBytes }
+        Diagnostics.record(
+            severity: .notice, subsystem: .codex, operation: .codexServerEnd, outcome: .observed,
+            provider: .codex, operationID: serverOperationID,
+            code: "server-ended", measurements: ["pending_requests": requests.count, "stderr_bytes": stderr]
+        )
+        if stderr > 0 {
+            Diagnostics.record(
+                severity: .warning, subsystem: .codex, operation: .codexStderr, outcome: .observed,
+                provider: .codex, operationID: serverOperationID,
+                code: "stderr-received", measurements: ["bytes": stderr]
+            )
+        }
         requests.forEach {
             $0.continuation.resume(throwing: CodexAppServerError.processEnded(reason))
         }
@@ -251,6 +305,11 @@ final class CodexAppServerClient: @unchecked Sendable {
 
     private func expireRequest(id: String, method: String, timeout: TimeInterval) {
         guard let request = lock.withLock({ pending.removeValue(forKey: id) }) else { return }
+        Diagnostics.record(
+            severity: .warning, subsystem: .codex, operation: .codexRequest, outcome: .timedOut,
+            provider: .codex, operationID: request.operationID,
+            code: Self.diagnosticMethodCode(method), durationMilliseconds: Int(timeout * 1_000)
+        )
         request.continuation.resume(throwing: CodexAppServerError.timedOut(
             method: method,
             seconds: Int(timeout)
@@ -267,6 +326,18 @@ final class CodexAppServerClient: @unchecked Sendable {
         if let string = value as? String { return string }
         if let number = value as? NSNumber { return number.stringValue }
         return nil
+    }
+
+    /// Method names are protocol vocabulary, but still map them through an
+    /// allow-list so a future server cannot inject arbitrary text into logs.
+    private static func diagnosticMethodCode(_ method: String) -> String {
+        switch method {
+        case "initialize", "account/read", "account/rateLimits/read", "model/list", "config/read",
+             "mcpServerStatus/list", "config/mcpServer/reload", "thread/start", "thread/resume", "turn/start":
+            return method.replacingOccurrences(of: "/", with: "-")
+        default:
+            return "other-method"
+        }
     }
 }
 

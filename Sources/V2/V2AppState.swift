@@ -620,7 +620,7 @@ final class V2AppState: ObservableObject {
             try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
             try data.write(to: url, options: .atomic)
         } catch {
-            log.error("Workspace checkpoint failed: \(error.localizedDescription, privacy: .public)")
+            log.error("Workspace checkpoint failed")
         }
     }
 

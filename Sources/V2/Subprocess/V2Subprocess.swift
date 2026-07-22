@@ -24,8 +24,8 @@ private let log = Logger(subsystem: "com.munyamakosa.work", category: "subproces
 enum V2Subprocess {
 
     /// Spawn the given executable, collect stdout into a string while
-    /// concurrently draining stderr (logged at warning level), and honour
-    /// Task cancellation by SIGTERM'ing the child.
+    /// concurrently draining stderr into bounded counters, and honour Task
+    /// cancellation by SIGTERM'ing the child.
     static func runCollectingStdout(
         executable: URL,
         args: [String],
@@ -33,6 +33,8 @@ enum V2Subprocess {
         environment: [String: String]? = nil
     ) async -> String {
         let box = ProcessBox()
+        let operationID = UUID().uuidString
+        Diagnostics.record(subsystem: .process, operation: .subprocessRun, outcome: .started, operationID: operationID)
         return await withTaskCancellationHandler(
             operation: {
                 if Task.isCancelled { return "" }
@@ -49,6 +51,7 @@ enum V2Subprocess {
                     process.standardError = stderr
 
                     let stdoutBuf = DataBuffer()
+                    let stderrCounter = StderrCounter()
 
                     stdout.fileHandleForReading.readabilityHandler = { handle in
                         let chunk = handle.availableData
@@ -64,29 +67,38 @@ enum V2Subprocess {
                             handle.readabilityHandler = nil
                             return
                         }
-                        if let s = String(data: chunk, encoding: .utf8) {
-                            // Log each non-empty line so multi-line errors
-                            // don't get squashed into one entry.
-                            for line in s.split(whereSeparator: \.isNewline) {
-                                let trimmed = line.trimmingCharacters(in: .whitespaces)
-                                if !trimmed.isEmpty {
-                                    log.warning("subprocess stderr: \(trimmed, privacy: .public)")
-                                }
-                            }
-                        }
+                        // Raw subprocess output is intentionally never put in
+                        // unified logs: verifier/harness commands may echo
+                        // repository paths, tokens, or a user's prompt.
+                        stderrCounter.append(chunk)
                     }
 
                     // `terminationHandler` fires on a background queue once
                     // the child exits (either naturally or via terminate()).
                     // CheckedContinuation is safe to resume from any thread.
                     let resumeOnce = OneShotResumer(continuation: cont)
-                    process.terminationHandler = { _ in
+                    process.terminationHandler = { proc in
                         stdout.fileHandleForReading.readabilityHandler = nil
                         stderr.fileHandleForReading.readabilityHandler = nil
                         // Drain whatever is left in the pipe before we
                         // hand back the string.
                         let final = stdout.fileHandleForReading.availableData
                         if !final.isEmpty { stdoutBuf.append(final) }
+                        let stderr = stderrCounter.snapshot()
+                        Diagnostics.record(
+                            severity: proc.terminationStatus == 0 ? .info : .warning,
+                            subsystem: .process, operation: .subprocessRun, outcome: .observed,
+                            operationID: operationID,
+                            code: proc.terminationStatus == 0 ? "exit-zero" : "exit-nonzero",
+                            measurements: ["exit_status": Int(proc.terminationStatus), "stderr_bytes": stderr.bytes, "stderr_lines": stderr.lines]
+                        )
+                        if stderr.bytes > 0 {
+                            Diagnostics.record(
+                                severity: .warning, subsystem: .process, operation: .subprocessStderr, outcome: .observed,
+                                operationID: operationID, code: "stderr-received",
+                                measurements: ["bytes": stderr.bytes, "lines": stderr.lines]
+                            )
+                        }
                         resumeOnce.resume(with: stdoutBuf.string)
                     }
 
@@ -95,7 +107,11 @@ enum V2Subprocess {
                     do {
                         try process.run()
                     } catch {
-                        log.error("subprocess spawn failed: \(error.localizedDescription, privacy: .public)")
+                        log.error("Subprocess spawn failed")
+                        Diagnostics.record(
+                            severity: .error, subsystem: .process, operation: .subprocessRun, outcome: .failed,
+                            operationID: operationID, code: "spawn-failed"
+                        )
                         stdout.fileHandleForReading.readabilityHandler = nil
                         stderr.fileHandleForReading.readabilityHandler = nil
                         // terminationHandler won't fire if run() threw.
@@ -142,6 +158,23 @@ enum V2Subprocess {
         var string: String {
             lock.lock(); defer { lock.unlock() }
             return String(data: data, encoding: .utf8) ?? ""
+        }
+    }
+
+    private final class StderrCounter: @unchecked Sendable {
+        private let lock = NSLock()
+        private var bytes = 0
+        private var lines = 0
+
+        func append(_ data: Data) {
+            lock.lock(); defer { lock.unlock() }
+            bytes += data.count
+            lines += data.reduce(0) { $1 == 0x0A ? $0 + 1 : $0 }
+        }
+
+        func snapshot() -> (bytes: Int, lines: Int) {
+            lock.lock(); defer { lock.unlock() }
+            return (bytes, lines)
         }
     }
 

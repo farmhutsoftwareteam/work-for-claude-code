@@ -32,10 +32,15 @@ final class HangWatchdog: @unchecked Sendable {
     private let hangThreshold: TimeInterval = 3.0
     /// How long `sample` spends capturing once triggered.
     private let sampleSeconds = 3
+    /// Avoid overlap and give the app a chance to recover after `sample`
+    /// intentionally suspends it.
+    private let captureCooldown: TimeInterval = 30
 
     private let lock = NSLock()
     private var lastHeartbeat = Date()
     private var isCurrentlyHung = false
+    private var captureInProgress = false
+    private var lastCaptureAt: Date?
     private var timer: DispatchSourceTimer?
 
     private init() {}
@@ -76,14 +81,28 @@ final class HangWatchdog: @unchecked Sendable {
         lock.lock()
         let staleness = Date().timeIntervalSince(lastHeartbeat)
         let alreadyFlagged = isCurrentlyHung
+        let now = Date()
+        var shouldCapture = false
         if staleness > hangThreshold, !alreadyFlagged {
             isCurrentlyHung = true
+            let cooledDown = lastCaptureAt.map { now.timeIntervalSince($0) >= captureCooldown } ?? true
+            if !captureInProgress, cooledDown {
+                captureInProgress = true
+                lastCaptureAt = now
+                shouldCapture = true
+            }
         }
         lock.unlock()
 
         guard staleness > hangThreshold, !alreadyFlagged else { return }
 
         log.fault("main thread unresponsive for \(staleness, format: .fixed(precision: 1))s — capturing a sample")
+        Diagnostics.record(
+            severity: .fault, subsystem: .hang, operation: .hangDetected, outcome: .observed,
+            code: shouldCapture ? "capture-started" : "capture-suppressed",
+            durationMilliseconds: Int(staleness * 1_000)
+        )
+        guard shouldCapture else { return }
         // Off the timer's own queue so a slow `sample` invocation never
         // delays the next scheduled check-in.
         DispatchQueue.global(qos: .utility).async { [weak self] in
@@ -92,9 +111,19 @@ final class HangWatchdog: @unchecked Sendable {
     }
 
     private func captureSample() {
+        defer {
+            lock.lock(); captureInProgress = false; lock.unlock()
+        }
         let pid = ProcessInfo.processInfo.processIdentifier
         let dir = Self.hangsDirectory()
-        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        do {
+            try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+            try FileManager.default.setAttributes([.posixPermissions: NSNumber(value: mode_t(0o700))], ofItemAtPath: dir.path)
+        } catch {
+            log.error("Could not create hang diagnostics directory")
+            Diagnostics.record(severity: .error, subsystem: .hang, operation: .hangSample, outcome: .failed, code: "storage-failed")
+            return
+        }
 
         let stamp = ISO8601DateFormatter().string(from: Date()).replacingOccurrences(of: ":", with: "-")
         let outPath = dir.appendingPathComponent("hang-\(stamp).txt").path
@@ -107,14 +136,20 @@ final class HangWatchdog: @unchecked Sendable {
         do {
             try process.run()
             process.waitUntilExit()
-            log.fault("hang sample written to \(outPath, privacy: .public)")
+            if process.terminationStatus == 0 {
+                log.fault("Hang sample captured")
+                Diagnostics.record(severity: .fault, subsystem: .hang, operation: .hangSample, outcome: .succeeded, code: "captured")
+            } else {
+                log.error("Hang sample process failed")
+                Diagnostics.record(severity: .error, subsystem: .hang, operation: .hangSample, outcome: .failed, code: "sample-exit", measurements: ["exit_status": Int(process.terminationStatus)])
+            }
         } catch {
-            log.error("couldn't run /usr/bin/sample: \(error.localizedDescription, privacy: .public)")
+            log.error("Could not run hang sampler")
+            Diagnostics.record(severity: .error, subsystem: .hang, operation: .hangSample, outcome: .failed, code: "sample-spawn")
         }
     }
 
     private static func hangsDirectory() -> URL {
-        let appSupport = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
-        return appSupport.appendingPathComponent("com.munyamakosa.work").appendingPathComponent("hangs")
+        DiagnosticsPaths.hangs()
     }
 }

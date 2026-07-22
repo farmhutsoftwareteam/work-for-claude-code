@@ -407,9 +407,10 @@ final class Store: ObservableObject {
         } catch {
             // Local alias still applies — Claude propagation just didn't land.
             // We don't surface this; the user sees the rename in Work either way.
-            #if DEBUG
-            print("ClaudeRenamer failed: \(error)")
-            #endif
+            Diagnostics.record(
+                severity: .debug, subsystem: .storage, operation: .preferences, outcome: .failed,
+                code: "session-rename-propagation-failed"
+            )
         }
     }
 
@@ -610,8 +611,9 @@ final class Store: ObservableObject {
         let path = claudeDir.appendingPathComponent("sessions").path
         let fd = open(path, O_EVTONLY)
         guard fd >= 0 else {
-            // BUG-8 fix: log the failure instead of silently vanishing; 30s timer is the fallback
-            print("[Work] Warning: could not watch sessions directory at \(path) — real-time active badges unavailable, falling back to 30s timer")
+            // Keep the fallback diagnosable without putting the user's home
+            // directory into a public log.
+            Diagnostics.record(severity: .warning, subsystem: .workspace, operation: .fileWatch, outcome: .failed, code: "sessions-watch-unavailable")
             return
         }
         let src = DispatchSource.makeFileSystemObjectSource(
@@ -631,8 +633,7 @@ final class Store: ObservableObject {
         let path = claudeDir.appendingPathComponent("history.jsonl").path
         let fd = open(path, O_EVTONLY)
         guard fd >= 0 else {
-            // BUG-8 fix: log the failure
-            print("[Work] Warning: could not watch history.jsonl at \(path) — new sessions will appear after the 30s timer")
+            Diagnostics.record(severity: .warning, subsystem: .workspace, operation: .fileWatch, outcome: .failed, code: "history-watch-unavailable")
             return
         }
         let src = DispatchSource.makeFileSystemObjectSource(

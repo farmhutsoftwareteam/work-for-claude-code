@@ -77,7 +77,7 @@ enum V2AgentLoader {
 
     static func parse(fileURL: URL, scope: V2Agent.Scope) -> V2Agent? {
         guard let raw = try? String(contentsOf: fileURL, encoding: .utf8) else {
-            log.warning("could not read \(fileURL.path, privacy: .public)")
+            log.warning("Could not read agent file")
             return nil
         }
         return parse(content: raw, fileURL: fileURL, scope: scope)

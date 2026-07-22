@@ -170,6 +170,13 @@ struct WorkApp: App {
                 Button("Welcome to Atelier…") {
                     onboardingComplete = false
                 }
+                Divider()
+                Button("Report a Problem…") {
+                    DiagnosticReportController.present()
+                }
+                Button("Reveal Diagnostics") {
+                    DiagnosticReportController.reveal()
+                }
             }
         }
 
@@ -264,6 +271,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // singleton enforcement and launch migrations can terminate/restart
         // that host mid-suite, so keep application side effects out of XCTest.
         guard !Self.isRunningTests else { return }
+        Diagnostics.record(subsystem: .app, operation: .launch, outcome: .started)
+        MetricKitDiagnostics.shared.start()
         // Never run two instances of this app: after a Sparkle update replaces
         // the bundle, the OLD process keeps running from the replaced bundle —
         // and LaunchServices no longer matches it to the on-disk app, so
@@ -292,6 +301,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
+        Diagnostics.record(subsystem: .app, operation: .quit, outcome: .observed)
         Self.sharedTerminals?.shutdownAll()
         return .terminateNow
     }

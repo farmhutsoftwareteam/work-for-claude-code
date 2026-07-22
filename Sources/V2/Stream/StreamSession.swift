@@ -19,6 +19,28 @@ import OSLog
 
 private let log = Logger(subsystem: "com.munyamakosa.work", category: "session")
 
+/// Pipe callbacks run off the main actor. Keep only bounded counters here so
+/// diagnostics never retain, parse, or publish raw provider output.
+private final class StreamIOCounters: @unchecked Sendable {
+    private let lock = NSLock()
+    private var stderrBytes = 0
+    private var stderrLines = 0
+    private var decodeFailures = 0
+
+    func addStderr(_ data: Data) {
+        lock.lock(); defer { lock.unlock() }
+        stderrBytes += data.count
+        stderrLines += data.reduce(0) { $1 == 0x0A ? $0 + 1 : $0 }
+    }
+
+    func addDecodeFailure() { lock.lock(); decodeFailures += 1; lock.unlock() }
+
+    func snapshot() -> (stderrBytes: Int, stderrLines: Int, decodeFailures: Int) {
+        lock.lock(); defer { lock.unlock() }
+        return (stderrBytes, stderrLines, decodeFailures)
+    }
+}
+
 /// One row of the session task checklist, accumulated from TaskCreate /
 /// TaskUpdate calls — see StreamSession.taskItems. `status` matches the
 /// tool's own vocabulary: "pending" | "in_progress" | "completed" (and
@@ -338,11 +360,8 @@ final class StreamSession: ObservableObject, V2TranscriptSource {
     /// release the handles mid-session and the handler stops firing.
     private var stdoutHandle: FileHandle?
     private var stderrHandle: FileHandle?
-
-    /// Per-instance token for this session's /tmp debug log filenames — two
-    /// tabs alive at once previously shared ONE hardcoded debug path and
-    /// stomped each other's tee'd output.
-    private let debugToken = UUID().uuidString.prefix(8)
+    private var diagnosticsOperationID: String?
+    private var processStartedAt: Date?
 
     // MARK: - Lifecycle
 
@@ -736,7 +755,14 @@ final class StreamSession: ObservableObject, V2TranscriptSource {
             ?? UserDefaults.standard.string(forKey: Self.defaultPermissionKey)
             ?? "acceptEdits"
 
-        log.info("StreamSession.start cwd=\(cwd.path, privacy: .public) binary=\(claudeURL.path, privacy: .public) resume=\(resumeId ?? "-", privacy: .public) model=\(model ?? "-", privacy: .public) perm=\(resolvedPermission, privacy: .public)")
+        let diagnosticsOperationID = UUID().uuidString
+        self.diagnosticsOperationID = diagnosticsOperationID
+        self.processStartedAt = Date()
+        log.info("Stream session starting")
+        Diagnostics.record(
+            subsystem: .claude, operation: .streamStart, outcome: .started,
+            provider: .claude, operationID: diagnosticsOperationID
+        )
 
         let process = Process()
         process.executableURL = claudeURL
@@ -833,22 +859,18 @@ final class StreamSession: ObservableObject, V2TranscriptSource {
         // Avoid SIGPIPE killing the host if the child closes early.
         signal(SIGPIPE, SIG_IGN)
 
-        // Tee stdout to /tmp so we can verify chunks are arriving even when
-        // the parser path appears stuck. Truncated per session, keyed by a
-        // per-instance token so two tabs alive at once don't collide on one
-        // shared file.
-        let debugLog = "/tmp/atelier-v2-stream-debug-\(debugToken).ndjson"
-        try? Data().write(to: URL(fileURLWithPath: debugLog))
-        let debugHandle = (try? FileHandle(forWritingTo: URL(fileURLWithPath: debugLog))) ?? FileHandle.nullDevice
-
         do {
             try process.run()
         } catch {
-            log.error("spawn failed: \(error.localizedDescription, privacy: .public)")
+            log.error("Stream session spawn failed")
+            Diagnostics.record(
+                severity: .error, subsystem: .claude, operation: .streamStart, outcome: .failed,
+                provider: .claude, operationID: diagnosticsOperationID, code: "spawn-failed"
+            )
             state = .terminated(reason: "spawn failed: \(error.localizedDescription)")
             return
         }
-        log.info("StreamSession spawned pid=\(process.processIdentifier)")
+        log.info("Stream session spawned")
 
         self.process = process
         let writer = StreamInputWriter(fileHandle: stdinPipe.fileHandleForWriting)
@@ -870,9 +892,17 @@ final class StreamSession: ObservableObject, V2TranscriptSource {
         Task { [weak self] in
             do {
                 try await writer.initialize()
-                log.info("StreamSession sent initialize handshake")
+                log.info("Stream session handshake sent")
+                Diagnostics.record(
+                    subsystem: .claude, operation: .streamHandshake, outcome: .succeeded,
+                    provider: .claude, operationID: diagnosticsOperationID
+                )
             } catch {
-                log.error("initialize handshake failed: \(error.localizedDescription, privacy: .public)")
+                log.error("Stream session handshake failed")
+                Diagnostics.record(
+                    severity: .error, subsystem: .claude, operation: .streamHandshake, outcome: .failed,
+                    provider: .claude, operationID: diagnosticsOperationID, code: "write-failed"
+                )
             }
             if let queuedWakeText {
                 self?.send(text: queuedWakeText)
@@ -887,6 +917,7 @@ final class StreamSession: ObservableObject, V2TranscriptSource {
         // system/init was never observed. (#36)
         let buffer = LineBuffer()
         let decoder = JSONDecoder()
+        let ioCounters = StreamIOCounters()
         stdoutPipe.fileHandleForReading.readabilityHandler = { [weak self] handle in
             let chunk = handle.availableData
             guard !chunk.isEmpty else {
@@ -896,24 +927,30 @@ final class StreamSession: ObservableObject, V2TranscriptSource {
                 // event) would otherwise be silently dropped: try one last
                 // decode of whatever's left in the buffer first.
                 handle.readabilityHandler = nil
-                try? debugHandle.close()
                 let remainder = buffer.drainRemainder()
                 let trailingEvent: StreamEvent? = remainder.isEmpty ? nil : {
                     do {
                         return try decoder.decode(StreamEvent.self, from: remainder)
                     } catch {
-                        let preview = String(data: remainder.prefix(200), encoding: .utf8) ?? "<binary>"
-                        log.warning("ndjson decode skipped (EOF tail): \(error.localizedDescription, privacy: .public) — \(preview, privacy: .public)")
+                        ioCounters.addDecodeFailure()
+                        log.warning("Stream event decode failed at end of stream")
                         return nil
                     }
                 }()
                 Task { @MainActor [weak self] in
                     if let trailingEvent { self?.handle(event: trailingEvent) }
+                    let counts = ioCounters.snapshot()
+                    if counts.decodeFailures > 0 {
+                        Diagnostics.record(
+                            severity: .warning, subsystem: .claude, operation: .streamDecode, outcome: .observed,
+                            provider: .claude, operationID: self?.diagnosticsOperationID,
+                            code: "decode-failed", measurements: ["count": counts.decodeFailures]
+                        )
+                    }
                     self?.handleStreamEnd()
                 }
                 return
             }
-            try? debugHandle.write(contentsOf: chunk)
             buffer.append(chunk)
             for lineData in buffer.drainLines() {
                 guard !lineData.isEmpty else { continue }
@@ -923,37 +960,30 @@ final class StreamSession: ObservableObject, V2TranscriptSource {
                         self?.handle(event: event)
                     }
                 } catch {
-                    let preview = String(data: lineData.prefix(200), encoding: .utf8) ?? "<binary>"
-                    log.warning("ndjson decode skipped: \(error.localizedDescription, privacy: .public) — \(preview, privacy: .public)")
+                    ioCounters.addDecodeFailure()
                 }
             }
         }
 
-        // Drain stderr — log + tee to /tmp so we can diagnose silent
-        // spawn failures. If claude is printing 'command not found: node'
-        // or similar bootstrap errors, this is where they show up.
-        let stderrDebug = "/tmp/atelier-v2-stream-debug-\(debugToken).stderr.log"
-        try? Data().write(to: URL(fileURLWithPath: stderrDebug))
-        let stderrDebugHandle = (try? FileHandle(forWritingTo: URL(fileURLWithPath: stderrDebug))) ?? FileHandle.nullDevice
+        // Drain stderr so a chatty child cannot block. Keep bounded counts,
+        // never raw text: provider output can contain paths, credentials, or
+        // a user's prompt echoed by a tool.
         let stderrHandle = stderrPipe.fileHandleForReading
         stderrHandle.readabilityHandler = { handle in
             let chunk = handle.availableData
             guard !chunk.isEmpty else {
                 handle.readabilityHandler = nil
-                try? stderrDebugHandle.close()
+                let counts = ioCounters.snapshot()
+                if counts.stderrBytes > 0 {
+                    Diagnostics.record(
+                        severity: .warning, subsystem: .claude, operation: .streamStderr, outcome: .observed,
+                        provider: .claude, operationID: diagnosticsOperationID,
+                        code: "stderr-received", measurements: ["bytes": counts.stderrBytes, "lines": counts.stderrLines]
+                    )
+                }
                 return
             }
-            try? stderrDebugHandle.write(contentsOf: chunk)
-            if let s = String(data: chunk, encoding: .utf8) {
-                // Log each non-empty line so a multi-line stderr chunk
-                // doesn't get squashed into one entry.
-                for line in s.split(whereSeparator: \.isNewline) {
-                    let trimmed = line.trimmingCharacters(in: .whitespaces)
-                    if !trimmed.isEmpty {
-                        log.warning("claude stderr: \(trimmed, privacy: .public)")
-                    }
-                }
-            }
+            ioCounters.addStderr(chunk)
         }
 
         // Keep these handles strongly held so the OS keeps firing
@@ -964,7 +994,13 @@ final class StreamSession: ObservableObject, V2TranscriptSource {
     }
 
     private func handleStreamEnd() {
-        log.info("StreamSession ndjson stream ended")
+        log.info("Stream session stream ended")
+        let elapsed = processStartedAt.map { Int(Date().timeIntervalSince($0) * 1_000) }
+        Diagnostics.record(
+            subsystem: .claude, operation: .streamEnd, outcome: .observed,
+            provider: .claude, operationID: diagnosticsOperationID,
+            code: "stream-closed", durationMilliseconds: elapsed
+        )
         // Cover every non-terminal state, not just .working / .initializing.
         // If claude crashed in .ready or .awaitingPermission, the UI would
         // previously leave the composer enabled and the permission card up
@@ -1086,7 +1122,7 @@ final class StreamSession: ObservableObject, V2TranscriptSource {
                 try await inputWriter?.setModel(model)
                 self.model = model
             } catch {
-                log.error("setModel failed: \(error.localizedDescription, privacy: .public)")
+                log.error("Stream session model update failed")
             }
         }
     }
@@ -1101,7 +1137,7 @@ final class StreamSession: ObservableObject, V2TranscriptSource {
         switch state { case .working, .ready, .awaitingPermission: break; default: return }
         Task {
             do { try await inputWriter?.requestMCPStatus() }
-            catch { log.error("mcp_status request failed: \(error.localizedDescription, privacy: .public)") }
+            catch { log.error("Stream session MCP-status request failed") }
         }
     }
 
@@ -1113,7 +1149,7 @@ final class StreamSession: ObservableObject, V2TranscriptSource {
         switch state { case .working, .ready, .awaitingPermission: break; default: return }
         Task {
             do { try await inputWriter?.requestUsage() }
-            catch { log.error("get_usage request failed: \(error.localizedDescription, privacy: .public)") }
+            catch { log.error("Stream session usage request failed") }
         }
     }
 
@@ -1181,7 +1217,7 @@ final class StreamSession: ObservableObject, V2TranscriptSource {
                     self.pendingProviderHandoffContext = nil
                 }
             } catch {
-                log.error("user-turn send failed: \(error.localizedDescription, privacy: .public)")
+                log.error("Stream session user-turn send failed")
                 await MainActor.run {
                     // Surface the failure: drop back to .ready so the
                     // composer re-enables, append a synthesised assistant
@@ -1264,7 +1300,7 @@ final class StreamSession: ObservableObject, V2TranscriptSource {
                     message: message
                 )
             } catch {
-                log.error("permission reply failed: \(error.localizedDescription, privacy: .public)")
+                log.error("Stream session permission reply failed")
                 await MainActor.run {
                     // Roll back the optimistic .working flip — otherwise a
                     // write failure here leaves the composer stuck on
@@ -1407,7 +1443,7 @@ final class StreamSession: ObservableObject, V2TranscriptSource {
         // observer's state to .ready, so the state guard alone isn't enough.)
         guard !isObserving else { return }
         guard state == .ready, sessionId != nil else { return }
-        log.info("StreamSession hibernating session=\(self.sessionId ?? "-", privacy: .public)")
+        log.info("Stream session hibernating")
         stdoutHandle?.readabilityHandler = nil
         stderrHandle?.readabilityHandler = nil
         stdoutHandle = nil
@@ -1473,7 +1509,7 @@ final class StreamSession: ObservableObject, V2TranscriptSource {
         proc.terminate()
         DispatchQueue.global(qos: .utility).asyncAfter(deadline: .now() + graceSeconds) {
             if proc.isRunning {
-                log.warning("process pid=\(proc.processIdentifier) still running \(graceSeconds, privacy: .public)s after SIGTERM — sending SIGKILL")
+                log.warning("Stream child still running after SIGTERM; sending SIGKILL")
                 kill(proc.processIdentifier, SIGKILL)
             }
         }
@@ -1810,7 +1846,7 @@ final class StreamSession: ObservableObject, V2TranscriptSource {
             // signal to fetch the full typed snapshot.
             refreshUsage()
         case .unknown(let t):
-            log.notice("unknown event type: \(t, privacy: .public)")
+            log.notice("Stream session received an unknown event type")
         }
     }
 
@@ -2008,7 +2044,7 @@ final class StreamSession: ObservableObject, V2TranscriptSource {
         if req.request.toolName == "Read",
            let path = req.request.input?.dig("file_path")?.asString,
            preApprovedReadPaths.contains(path) {
-            log.info("auto-allow Read of pre-approved path \(path, privacy: .public)")
+            log.info("Stream session auto-allowed a pre-approved read")
             // Capture the writer on the main actor before hopping off — the
             // previous `await self.inputWriter` inside a non-isolated Task
             // was an isolation violation.

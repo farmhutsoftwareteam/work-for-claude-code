@@ -144,7 +144,8 @@ final class ACPClient: @unchecked Sendable {
         do {
             try process.run()
         } catch {
-            log.error("ACP spawn failed: \(error.localizedDescription, privacy: .public)")
+            log.error("ACP spawn failed")
+            Diagnostics.record(severity: .error, subsystem: .acp, operation: .subprocessRun, outcome: .failed, provider: .acp, code: "spawn-failed")
             onError?("spawn failed: \(error.localizedDescription)")
             completion(false)
             return
@@ -188,12 +189,8 @@ final class ACPClient: @unchecked Sendable {
             while true {
                 let n = buf.withUnsafeMutableBytes { read(errFD, $0.baseAddress, $0.count) }
                 if n <= 0 { break }
-                if let s = String(bytes: buf[0..<n], encoding: .utf8) {
-                    for ln in s.split(whereSeparator: \.isNewline)
-                    where !ln.trimmingCharacters(in: .whitespaces).isEmpty {
-                        log.warning("acp stderr: \(String(ln), privacy: .public)")
-                    }
-                }
+                // Drain output to prevent a full pipe, but never retain it:
+                // ACP stderr can include provider payloads and local paths.
             }
         }
         errThread.name = "acp-stderr"
@@ -331,7 +328,7 @@ final class ACPClient: @unchecked Sendable {
             if let id = obj["id"] as? Int { handlePermission(id: id, params: params) }
         default:
             // fs/*, terminal/* and others arrive in later phases.
-            log.debug("acp unhandled method \(method, privacy: .public)")
+            log.debug("ACP received an unhandled method")
         }
     }
 

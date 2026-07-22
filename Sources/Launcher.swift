@@ -118,7 +118,10 @@ enum Launcher {
         guard let appleScript = NSAppleScript(source: script) else { return false }
         let result = appleScript.executeAndReturnError(&error)
         if let error {
-            print("[Work] focusTerminalTab error: \(error["NSAppleScriptErrorMessage"] ?? error)")
+            Diagnostics.record(
+                severity: .warning, subsystem: .app, operation: .preferences, outcome: .failed,
+                code: "terminal-focus-failed"
+            )
         }
         return error == nil && result.booleanValue
     }

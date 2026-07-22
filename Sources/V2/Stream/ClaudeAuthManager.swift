@@ -147,7 +147,7 @@ final class ClaudeAuthManager: ObservableObject {
         do {
             try process.run()
         } catch {
-            log.error("claude auth login spawn failed: \(error.localizedDescription, privacy: .public)")
+            log.error("Claude auth login spawn failed")
             loginState = .failed("Couldn't start Claude sign-in: \(error.localizedDescription)")
             cleanup()
             return
@@ -175,7 +175,7 @@ final class ClaudeAuthManager: ObservableObject {
         do {
             try stdinPipe.fileHandleForWriting.write(contentsOf: data)
         } catch {
-            log.error("writing auth code to claude auth login failed: \(error.localizedDescription, privacy: .public)")
+            log.error("Claude auth login code write failed")
             loginState = .failed("Couldn't submit that code: \(error.localizedDescription)")
             cancelLogin()
             return

@@ -79,7 +79,7 @@ final class CodexHistoryReader {
             ])
             return response["thread"] as? [String: Any]
         } catch {
-            log.error("thread/read failed: \(error.localizedDescription, privacy: .public)")
+            log.error("Codex thread read failed")
             return nil
         }
     }
@@ -123,14 +123,14 @@ final class CodexHistoryReader {
     }
 
     private func logStartFailure(_ error: Error) {
-        log.error("codex app-server (history reader) failed to start: \(error.localizedDescription, privacy: .public)")
+        log.error("Codex history app-server failed to start")
     }
 
     /// The process died on its own (crash, user killed it). Drop the handle
     /// so the next read spawns a fresh one instead of writing into a pipe
     /// with nothing on the other end.
     private func handleTermination(_ reason: String) {
-        log.notice("codex app-server (history reader) ended: \(reason, privacy: .public)")
+        log.notice("Codex history app-server ended")
         client = nil
     }
 

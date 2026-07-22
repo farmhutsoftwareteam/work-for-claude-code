@@ -46,7 +46,10 @@ actor PricingFetcher {
         } catch {
             // Silent fallback. Whatever's currently in Pricing.liveTable
             // (cache or embedded) is fine — never crash on a pricing miss.
-            NSLog("[Work] Pricing fetch failed: %@", error.localizedDescription)
+            Diagnostics.record(
+                severity: .warning, subsystem: .network, operation: .pricingFetch, outcome: .failed,
+                code: "fetch-failed"
+            )
         }
     }
 

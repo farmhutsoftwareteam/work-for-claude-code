@@ -78,7 +78,7 @@ enum V2ModelDiscovery {
         var counts: [String: Int] = [:]
         let fm = FileManager.default
         guard let projects = try? fm.contentsOfDirectory(atPath: projectsDir.path) else {
-            log.notice("no projects dir at \(projectsDir.path, privacy: .public)")
+            log.notice("No projects directory available for model discovery")
             return []
         }
 

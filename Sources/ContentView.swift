@@ -1404,7 +1404,12 @@ private struct PreferencesPopover: View {
                     do {
                         if enabled { try SMAppService.mainApp.register() }
                         else { try SMAppService.mainApp.unregister() }
-                    } catch { print("[Work] LaunchAtLogin: \(error)") }
+                    } catch {
+                        Diagnostics.record(
+                            severity: .warning, subsystem: .app, operation: .preferences, outcome: .failed,
+                            code: "launch-at-login-failed"
+                        )
+                    }
                     launchAtLogin = SMAppService.mainApp.status == .enabled
                 }
             Divider()
@@ -1414,6 +1419,24 @@ private struct PreferencesPopover: View {
                     .font(.system(size: 10))
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
+            }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 12)
+            Divider()
+            VStack(alignment: .leading, spacing: 7) {
+                Text("DIAGNOSTICS")
+                    .font(.system(size: 9, weight: .semibold, design: .monospaced))
+                    .tracking(1.2)
+                    .foregroundStyle(.tertiary)
+                Text("Atelier keeps a small local, redacted diagnostic timeline. Nothing is uploaded automatically.")
+                    .font(.system(size: 10))
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                HStack(spacing: 10) {
+                    Button("Report a Problem…") { DiagnosticReportController.present() }
+                    Button("Clear") { DiagnosticReportController.clear() }
+                }
+                .font(.system(size: 11))
             }
             .padding(.horizontal, 16)
             .padding(.vertical, 12)

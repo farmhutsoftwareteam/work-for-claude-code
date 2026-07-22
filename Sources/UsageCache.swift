@@ -64,7 +64,10 @@ actor UsageCacheStore {
                 !entry.usage.byModel.isEmpty
             }
             if !hasModelData && !decoded.entries.isEmpty {
-                NSLog("[Work] Usage cache v%d lacks byModel — invalidating to re-aggregate.", decoded.version)
+                Diagnostics.record(
+                    severity: .notice, subsystem: .storage, operation: .cleanup, outcome: .observed,
+                    code: "usage-cache-invalidated"
+                )
                 data = .empty
                 return data
             }

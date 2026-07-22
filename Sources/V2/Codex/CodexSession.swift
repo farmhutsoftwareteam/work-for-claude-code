@@ -554,7 +554,7 @@ final class CodexSession: ObservableObject, V2TranscriptSource {
                 usageLimits = parsed
             }
         } catch {
-            log.debug("account/rateLimits/read failed: \(error.localizedDescription, privacy: .public)")
+            log.debug("Codex rate-limit read failed")
         }
     }
 
@@ -574,7 +574,7 @@ final class CodexSession: ObservableObject, V2TranscriptSource {
         } catch {
             // try? here left a failed read invisible forever — the section
             // just never appeared, with nothing in the log to explain why.
-            log.error("config/read failed: \(error.localizedDescription, privacy: .public)")
+            log.error("Codex config read failed")
             return
         }
         // A read that raced a write (or a dead client's late reply after a
@@ -622,7 +622,7 @@ final class CodexSession: ObservableObject, V2TranscriptSource {
             await refreshSandboxNetwork()
             return true
         } catch {
-            log.error("config/value/write sandbox network failed: \(error.localizedDescription, privacy: .public)")
+            log.error("Codex sandbox-network configuration write failed")
             // Surfaced, not just logged: a toggle that silently doesn't
             // move reads as a dead control.
             appendError("Couldn't change sandbox network access: \(error.localizedDescription)")
@@ -661,7 +661,7 @@ final class CodexSession: ObservableObject, V2TranscriptSource {
             requiresChatGPTLogin = requires && account == nil
             return true
         } catch {
-            log.error("account/read failed: \(error.localizedDescription, privacy: .public)")
+            log.error("Codex account read failed")
             return false
         }
     }
@@ -685,7 +685,7 @@ final class CodexSession: ObservableObject, V2TranscriptSource {
             }
             if effort.isEmpty { effort = selectedModel?.defaultReasoningEffort ?? "" }
         } catch {
-            log.error("model/list failed: \(error.localizedDescription, privacy: .public)")
+            log.error("Codex model list failed")
         }
     }
 
@@ -1001,7 +1001,7 @@ final class CodexSession: ObservableObject, V2TranscriptSource {
             } while cursor != nil
             mcpServers = collected
         } catch {
-            log.error("mcpServerStatus/list failed: \(error.localizedDescription, privacy: .public)")
+            log.error("Codex MCP-status list failed")
         }
     }
 
@@ -1255,7 +1255,7 @@ final class CodexSession: ObservableObject, V2TranscriptSource {
                 appendError(willRetry ? "\(message) (retrying)" : message)
             }
         default:
-            log.debug("Unhandled Codex notification: \(method, privacy: .public)")
+            log.debug("Unhandled Codex notification")
         }
     }
 
@@ -1321,7 +1321,7 @@ final class CodexSession: ObservableObject, V2TranscriptSource {
         case "item/commandExecution/requestApproval", "item/fileChange/requestApproval", "item/permissions/requestApproval":
             break
         default:
-            log.error("Unsupported Codex server request: \(method, privacy: .public)")
+            log.error("Unsupported Codex server request")
             try? client?.respondError(id: id, code: -32601, message: "Atelier does not support server request \(method)")
             return
         }

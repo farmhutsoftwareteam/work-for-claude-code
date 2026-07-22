@@ -286,7 +286,7 @@ struct V2SessionBundle {
             try? FileManager.default.removeItem(at: staging)
             throw error
         }
-        log.notice("imported session bundle → \(destination.path, privacy: .public)")
+        log.notice("Imported session bundle")
         return destination
     }
 

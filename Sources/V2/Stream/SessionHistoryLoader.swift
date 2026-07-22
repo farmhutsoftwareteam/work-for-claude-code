@@ -43,11 +43,11 @@ enum SessionHistoryLoader {
     ) -> Preload? {
         let url = jsonlURL(sessionId: sessionId, projectCwd: projectCwd)
         guard FileManager.default.fileExists(atPath: url.path) else {
-            logger.notice("history file missing: \(url.path, privacy: .public)")
+            logger.notice("History file missing")
             return nil
         }
         guard let fh = FileHandle(forReadingAtPath: url.path) else {
-            logger.warning("history file unreadable: \(url.path, privacy: .public)")
+            logger.warning("History file unreadable")
             return nil
         }
         let fileSize = (try? fh.seekToEnd()) ?? 0
@@ -57,7 +57,7 @@ enum SessionHistoryLoader {
         let data = (try? fh.readToEnd()) ?? Data()
         try? fh.close()
         guard !data.isEmpty else {
-            logger.warning("history file unreadable: \(url.path, privacy: .public)")
+            logger.warning("History file unreadable")
             return nil
         }
 
@@ -98,7 +98,7 @@ enum SessionHistoryLoader {
             trimmed = Array(renderable.suffix(maxEvents))
         }
 
-        logger.info("history preload: \(trimmed.count, privacy: .public) events for session \(sessionId, privacy: .public)")
+        logger.info("History preload completed with \(trimmed.count, privacy: .public) events")
         return Preload(events: trimmed, omittedUserTurns: omittedUserTurns)
     }
 
@@ -128,7 +128,7 @@ enum SessionHistoryLoader {
             for dir in dirs {
                 let candidate = dir.appendingPathComponent(sessionId + ".jsonl")
                 if fm.fileExists(atPath: candidate.path) {
-                    logger.notice("history: guessed path missed, found via scan: \(candidate.path, privacy: .public)")
+                    logger.notice("History path was found by scan")
                     return candidate
                 }
             }
