@@ -6,6 +6,26 @@
         <description>Updates for Atelier</description>
         <language>en</language>
         <item>
+            <title>Version 2.11.5</title>
+            <pubDate>Wed, 22 Jul 2026 20:53:32 +0400</pubDate>
+            <sparkle:version>80</sparkle:version>
+            <sparkle:shortVersionString>2.11.5</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>15.0</sparkle:minimumSystemVersion>
+            <description><![CDATA[
+                <h3>Atelier 2.11.5 — dictation</h3>
+                <ul>
+                    <li><b>New: a mic button in the composer</b>, for both Claude and Codex chats. Click it, speak, and your words appear in the draft as you talk.</li>
+                    <li>Recognition runs <b>on-device when your Mac supports it</b> — your voice never leaves the machine in that case. Falls back to Apple's server-based recognizer automatically when on-device isn't available.</li>
+                    <li>Atelier only asks for microphone and speech-recognition access the first time you actually use it, never at launch.</li>
+                </ul>
+            ]]></description>
+            <enclosure
+                url="https://work.munyamakosa.com/Atelier-2.11.5.dmg"
+                length="15210707"
+                type="application/octet-stream"
+                sparkle:edSignature="oPhT7YoXZ3N5fhgxgvv8iCZcW0tpCcnW/aUJV4sGhZRpPy3+TCMrTosF8VXqPfO3K+mskNwIrMSYA0XhlqRNDA==" />
+        </item>
+        <item>
             <title>Version 2.11.4</title>
             <pubDate>Wed, 22 Jul 2026 18:57:59 +0400</pubDate>
             <sparkle:version>79</sparkle:version>
