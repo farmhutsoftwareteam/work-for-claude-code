@@ -26,6 +26,10 @@
 	<string>Atelier needs to control Terminal to launch Claude sessions.</string>
 	<key>NSHumanReadableCopyright</key>
 	<string></string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>Atelier uses your microphone only while you're actively dictating into the composer.</string>
+	<key>NSSpeechRecognitionUsageDescription</key>
+	<string>Atelier turns your speech into text for the composer. Recognition runs on-device when your Mac supports it.</string>
 	<key>SUAutomaticallyUpdate</key>
 	<false/>
 	<key>SUEnableAutomaticChecks</key>
