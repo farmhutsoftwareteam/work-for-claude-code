@@ -1628,7 +1628,6 @@ final class StreamSession: ObservableObject, V2TranscriptSource {
             // Same sidechain guard as .assistant above — a subagent's own
             // tool_result events are tagged with parent_tool_use_id too.
             guard m.parentToolUseId == nil else { return }
-            beginTurnIfObservedFromStream()
             // Tool results echo back in user events — render as a result row.
             finalizeStreamingText()
             for block in m.message.content {
@@ -1675,6 +1674,26 @@ final class StreamSession: ObservableObject, V2TranscriptSource {
                     // .orphaned) — never a crash or a rendered artifact,
                     // since this branch was previously unhandled entirely.
                     // (Shared with history preload — see applyNotificationText.)
+                    //
+                    // Gate beginTurnIfObservedFromStream on this NOT being a
+                    // notification — a pure bg-task/subagent completion is
+                    // bookkeeping injected ahead of the model's OWN next
+                    // turn, not a turn itself, and never gets a matching
+                    // `result` event back. Calling it unconditionally here
+                    // (2.11.2) meant a notification landing while idle
+                    // flipped .ready -> .working and left it stuck there
+                    // forever — this session alone carries hundreds of
+                    // these, so it broke almost immediately: tabs stuck
+                    // permanently "working" (pulsing ring, indeterminate
+                    // line, elapsed timer) is exactly what read back as
+                    // "scroll jumping on every chat at once" and the
+                    // eventual hang (user-reported, 2026-07-22). Anything
+                    // that ISN'T a recognized notification — e.g. a
+                    // ScheduleWakeup's injected resumption prompt — is real
+                    // new content and must still flip.
+                    let isNotification = V2BackgroundTaskParser.parseCompletion(from: text) != nil
+                        || V2SubagentParser.parseCompletion(from: text) != nil
+                    if !isNotification { beginTurnIfObservedFromStream() }
                     applyNotificationText(text)
                 }
             }

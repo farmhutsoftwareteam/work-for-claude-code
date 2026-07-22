@@ -471,6 +471,47 @@ final class ConformanceTests: XCTestCase {
         XCTAssertEqual(session.state, .working)
     }
 
+    /// The 2.11.2 regression this replaced: a pure background-task/subagent
+    /// completion notification is bookkeeping injected ahead of the model's
+    /// OWN next turn, never a turn itself — it never gets a matching
+    /// `result` event back. A first cut of the self-resumed-turn fix called
+    /// beginTurnIfObservedFromStream() unconditionally on every top-level
+    /// user event, so a notification landing while idle flipped
+    /// .ready -> .working and left it stuck there forever (this exact
+    /// session's own transcript carries hundreds of these). Read back as
+    /// every open tab's scroll animating at once, then a hang.
+    @MainActor
+    func test_notificationOnlyUserEvent_doesNotFlipStateToWorking() throws {
+        let session = StreamSession()
+        let decoder = JSONDecoder()
+
+        let controlRequestJSON = #"""
+        {"type":"control_request","request_id":"req_1","request":{"subtype":"can_use_tool","tool_name":"Bash","input":{"command":"ls"}}}
+        """#
+        let resultJSON = #"""
+        {"type":"result","subtype":"success","session_id":"s1","is_error":false}
+        """#
+        session.handle(event: try decoder.decode(StreamEvent.self, from: Data(controlRequestJSON.utf8)))
+        session.handle(event: try decoder.decode(StreamEvent.self, from: Data(resultJSON.utf8)))
+        XCTAssertEqual(session.state, .ready)
+
+        let notificationText = """
+        <task-notification>
+        <task-id>bsxyox84l</task-id>
+        <status>completed</status>
+        <summary>Background command "ls /tmp" completed (exit code 0)</summary>
+        </task-notification>
+        """
+        let notificationJSON: [String: Any] = [
+            "type": "user",
+            "message": ["role": "user", "content": [["type": "text", "text": notificationText]]]
+        ]
+        let data = try JSONSerialization.data(withJSONObject: notificationJSON)
+        session.handle(event: try decoder.decode(StreamEvent.self, from: data))
+
+        XCTAssertEqual(session.state, .ready, "a notification-only event must never flip an idle tab to working — nothing will ever flip it back")
+    }
+
     // MARK: - AgentConfigWriter
 
     func test_agentWriter_serializeProducesParseableFrontmatter() {
