@@ -14,6 +14,18 @@ import Foundation
 import Speech
 import SwiftUI
 
+/// Speech explicitly expects its audio-buffer request to be fed from the
+/// audio-engine tap's real-time callback. The request is otherwise owned and
+/// torn down on the main actor; this box confines that one framework-sanctioned
+/// cross-thread use to a small, documented boundary.
+private final class V2SpeechRequestBox: @unchecked Sendable {
+    let request: SFSpeechAudioBufferRecognitionRequest
+
+    init(_ request: SFSpeechAudioBufferRecognitionRequest) {
+        self.request = request
+    }
+}
+
 @MainActor
 final class V2DictationController: ObservableObject {
     enum State: Equatable {
@@ -66,42 +78,43 @@ final class V2DictationController: ObservableObject {
         }
         draftBeforeDictation = currentDraft
         state = .requestingPermission
-        // Plain GCD, not `Task { @MainActor in }`: this completion handler
-        // is TCC's own XPC reply callback, not a Swift-concurrency-aware
-        // context — hopping back to the main actor via structured
-        // concurrency here hits a hard runtime trap (verified via crash
-        // report, 2026-07-22: swift_task_isCurrentExecutorWithFlagsImpl →
-        // dispatch_assert_queue_fail, instantly, on every call). DispatchQueue
-        // makes no isolation assumption about the calling thread, so it's
-        // safe regardless of which queue TCC actually calls back on.
-        SFSpeechRecognizer.requestAuthorization { [weak self] authStatus in
+        // TCC invokes this completion on its own XPC queue. The closure must
+        // be explicitly @Sendable: otherwise Swift 6 inherits this class's
+        // @MainActor isolation at closure creation and traps BEFORE its body
+        // runs when TCC calls it off-main. Once inside, hop to the main queue
+        // to touch the controller's UI-facing state.
+        SFSpeechRecognizer.requestAuthorization { @Sendable [weak self] authStatus in
             DispatchQueue.main.async {
                 guard let self else { return }
                 guard authStatus == .authorized else {
                     self.state = .denied
                     return
                 }
-                self.requestMicrophoneAccess(recognizer: recognizer)
+                self.requestMicrophoneAccess()
             }
         }
     }
 
-    private func requestMicrophoneAccess(recognizer: SFSpeechRecognizer) {
-        // Same reasoning as requestAuthorization above — AVCaptureDevice's
-        // completion handler is not guaranteed to land on the main thread.
-        AVCaptureDevice.requestAccess(for: .audio) { [weak self] granted in
+    private func requestMicrophoneAccess() {
+        // Same @Sendable boundary as the TCC callback above: AVFoundation
+        // does not promise a main-actor callback.
+        AVCaptureDevice.requestAccess(for: .audio) { @Sendable [weak self] granted in
             DispatchQueue.main.async {
                 guard let self else { return }
                 guard granted else {
                     self.state = .denied
                     return
                 }
-                self.beginListening(recognizer: recognizer)
+                self.beginListening()
             }
         }
     }
 
-    private func beginListening(recognizer: SFSpeechRecognizer) {
+    private func beginListening() {
+        guard let recognizer, recognizer.isAvailable else {
+            state = .unavailable
+            return
+        }
         // A stale tap from a session that ended uncleanly (engine start
         // threw, or the app never got a matching stop) would otherwise crash
         // the next installTap with "tap already installed."
@@ -117,11 +130,12 @@ final class V2DictationController: ObservableObject {
             request.requiresOnDeviceRecognition = true
         }
         self.request = request
+        let requestBox = V2SpeechRequestBox(request)
 
         let inputNode = audioEngine.inputNode
         let format = inputNode.outputFormat(forBus: 0)
-        inputNode.installTap(onBus: 0, bufferSize: 1024, format: format) { buffer, _ in
-            request.append(buffer)
+        inputNode.installTap(onBus: 0, bufferSize: 1024, format: format) { @Sendable buffer, _ in
+            requestBox.request.append(buffer)
         }
 
         audioEngine.prepare()
@@ -135,16 +149,20 @@ final class V2DictationController: ObservableObject {
         }
 
         state = .listening
-        // Same reasoning as the two requests above — SFSpeechRecognitionTask's
-        // result handler is documented to be called back on an arbitrary
-        // queue, not guaranteed to be the main thread.
-        task = recognizer.recognitionTask(with: request) { [weak self] result, error in
+        // Results also arrive on an arbitrary queue, so this callback must
+        // not inherit the controller's main-actor isolation either.
+        task = recognizer.recognitionTask(with: request) { @Sendable [weak self] result, error in
+            // Carry only Sendable values over the queue boundary. Neither
+            // SFSpeechRecognitionResult nor NSError is safe to capture in
+            // the main-actor closure directly.
+            let transcript = result?.bestTranscription.formattedString
+            let shouldTeardown = error != nil || result?.isFinal == true
             DispatchQueue.main.async {
                 guard let self else { return }
-                if let result {
-                    self.deliver(result.bestTranscription.formattedString)
+                if let transcript {
+                    self.deliver(transcript)
                 }
-                if error != nil || result?.isFinal == true {
+                if shouldTeardown {
                     self.teardown()
                 }
             }
