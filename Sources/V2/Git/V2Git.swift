@@ -41,6 +41,7 @@ struct DiffLine: Identifiable, Sendable {
 enum V2Git {
 
     private static let gitPath = "/usr/bin/git"
+    static let repositoryInitialized = Notification.Name("V2Git.repositoryInitialized")
 
     /// Run a git command in `cwd`. Returns (stdout, exitCode). Off the main
     /// thread; reads the pipe to EOF before waiting so large diffs can't
@@ -74,6 +75,19 @@ enum V2Git {
                 ))
             }
         }
+    }
+
+    /// Initialise a repository and notify the currently displayed project
+    /// home once it is ready. New-project registration deliberately happens
+    /// before this work so the rail is immediate; this low-frequency signal
+    /// keeps a concurrently-loaded Changes tab from retaining a stale
+    /// "not a git repository" result.
+    static func initializeRepository(cwd: String) async -> (out: String, err: String, code: Int32) {
+        let result = await run(["init"], cwd: cwd)
+        if result.code == 0 {
+            NotificationCenter.default.post(name: repositoryInitialized, object: cwd)
+        }
+        return result
     }
 
     /// True if `cwd` is inside a git work tree.

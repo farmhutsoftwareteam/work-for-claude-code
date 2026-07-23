@@ -459,15 +459,19 @@ struct V2AddProjectModal: View {
             model.error = "Couldn't create the folder: \(error.localizedDescription)"
             return
         }
-        Task {
-            if model.newGitInit { _ = await V2Git.run(["init"], cwd: path) }
-            guard let project = store.registerProject(at: path) else {
-                model.error = "The folder was created but couldn't be registered."
-                return
-            }
-            applySelectedModel()
-            appState.selectProject(cwd: project.cwd, name: project.displayName)
-            onClose()
+        // A folder is a valid Atelier project as soon as it exists. Register
+        // and select it before optional setup work so the rail and project
+        // home update in the same UI turn; `git init` must not gate that.
+        guard let project = store.registerProject(at: path) else {
+            model.error = "The folder was created but couldn't be registered."
+            return
+        }
+        applySelectedModel()
+        appState.selectProject(cwd: project.cwd, name: project.displayName)
+        onClose()
+
+        if model.newGitInit {
+            Task { _ = await V2Git.initializeRepository(cwd: path) }
         }
     }
 

@@ -36,6 +36,10 @@ struct V2ProjectHome: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .background(v2.paper)
         .task(id: cwd) { await git.load(cwd: cwd) }
+        .onReceive(NotificationCenter.default.publisher(for: V2Git.repositoryInitialized)) { notification in
+            guard let initializedCwd = notification.object as? String, initializedCwd == cwd else { return }
+            Task { await git.load(cwd: cwd) }
+        }
         .enableInjection()
     }
 
