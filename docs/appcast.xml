@@ -6,6 +6,24 @@
         <description>Updates for Atelier</description>
         <language>en</language>
         <item>
+            <title>Version 2.11.6</title>
+            <pubDate>Thu, 23 Jul 2026 11:03:40 +0400</pubDate>
+            <sparkle:version>81</sparkle:version>
+            <sparkle:shortVersionString>2.11.6</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>15.0</sparkle:minimumSystemVersion>
+            <description><![CDATA[
+                <h3>Atelier 2.11.6 — fixes an instant crash on the dictation button</h3>
+                <ul>
+                    <li>Fixed the mic button in the composer crashing the app immediately on tap, introduced in 2.11.5. If you're on 2.11.5, this is a same-day critical fix — please update.</li>
+                </ul>
+            ]]></description>
+            <enclosure
+                url="https://work.munyamakosa.com/Atelier-2.11.6.dmg"
+                length="15210471"
+                type="application/octet-stream"
+                sparkle:edSignature="Sc954KLzX1mZb5byHO0b9+0cerR24O+azq0r+yoUDUY9E69qoXYHCn3KyFrzHHheUuvuWFiwu3mAdCO5xnyvDw==" />
+        </item>
+        <item>
             <title>Version 2.11.5</title>
             <pubDate>Wed, 22 Jul 2026 20:53:32 +0400</pubDate>
             <sparkle:version>80</sparkle:version>
