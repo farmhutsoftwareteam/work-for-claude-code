@@ -66,8 +66,16 @@ final class V2DictationController: ObservableObject {
         }
         draftBeforeDictation = currentDraft
         state = .requestingPermission
+        // Plain GCD, not `Task { @MainActor in }`: this completion handler
+        // is TCC's own XPC reply callback, not a Swift-concurrency-aware
+        // context — hopping back to the main actor via structured
+        // concurrency here hits a hard runtime trap (verified via crash
+        // report, 2026-07-22: swift_task_isCurrentExecutorWithFlagsImpl →
+        // dispatch_assert_queue_fail, instantly, on every call). DispatchQueue
+        // makes no isolation assumption about the calling thread, so it's
+        // safe regardless of which queue TCC actually calls back on.
         SFSpeechRecognizer.requestAuthorization { [weak self] authStatus in
-            Task { @MainActor [weak self] in
+            DispatchQueue.main.async {
                 guard let self else { return }
                 guard authStatus == .authorized else {
                     self.state = .denied
@@ -79,8 +87,10 @@ final class V2DictationController: ObservableObject {
     }
 
     private func requestMicrophoneAccess(recognizer: SFSpeechRecognizer) {
+        // Same reasoning as requestAuthorization above — AVCaptureDevice's
+        // completion handler is not guaranteed to land on the main thread.
         AVCaptureDevice.requestAccess(for: .audio) { [weak self] granted in
-            Task { @MainActor [weak self] in
+            DispatchQueue.main.async {
                 guard let self else { return }
                 guard granted else {
                     self.state = .denied
@@ -125,8 +135,11 @@ final class V2DictationController: ObservableObject {
         }
 
         state = .listening
+        // Same reasoning as the two requests above — SFSpeechRecognitionTask's
+        // result handler is documented to be called back on an arbitrary
+        // queue, not guaranteed to be the main thread.
         task = recognizer.recognitionTask(with: request) { [weak self] result, error in
-            Task { @MainActor [weak self] in
+            DispatchQueue.main.async {
                 guard let self else { return }
                 if let result {
                     self.deliver(result.bestTranscription.formattedString)
