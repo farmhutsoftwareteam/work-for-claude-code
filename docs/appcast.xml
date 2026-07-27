@@ -6,6 +6,27 @@
         <description>Updates for Atelier</description>
         <language>en</language>
         <item>
+            <title>Version 2.11.8</title>
+            <pubDate>Mon, 27 Jul 2026 10:31:04 +0400</pubDate>
+            <sparkle:version>83</sparkle:version>
+            <sparkle:shortVersionString>2.11.8</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>15.0</sparkle:minimumSystemVersion>
+            <description><![CDATA[
+                <h3>Atelier 2.11.8 — dictation, done properly</h3>
+                <ul>
+                    <li><b>Dictate as long as you want</b> — the mic no longer cuts out on a pause or at the one-minute mark. Talk through pauses, think out loud, rant an idea.</li>
+                    <li><b>You can see it listening</b> — a live waveform, a pulse, and an elapsed timer while you speak, instead of a button that just greyed out.</li>
+                    <li><b>Clearer transcription</b> — Apple's more accurate engine by default, with automatic punctuation; falls back to on-device when you're offline.</li>
+                    <li>The mic turns off when you send, survives switching audio devices mid-sentence, and — if access is off — takes you straight to the right System Settings pane.</li>
+                </ul>
+            ]]></description>
+            <enclosure
+                url="https://work.munyamakosa.com/Atelier-2.11.8.dmg"
+                length="15251685"
+                type="application/octet-stream"
+                sparkle:edSignature="Z7qN7ObHHkE+8JFldvJKU04LInu0KM6BLL9RnZitij+JDpWHqGx6cidNI3LdBtC3Q3klHRkGNadVAxA5Gr4zDg==" />
+        </item>
+        <item>
             <title>Version 2.11.7</title>
             <pubDate>Fri, 24 Jul 2026 02:34:13 +0400</pubDate>
             <sparkle:version>82</sparkle:version>
