@@ -113,6 +113,11 @@ final class V2DictationController: ObservableObject {
     /// makes handleResult ignore anything but the current request's task, so a
     /// rotation can't cascade into spurious extra rotations.
     private var generation = 0
+    /// Observes AVAudioEngine I/O reconfiguration (e.g. the input device
+    /// changes when you plug in AirPods). The engine stops feeding buffers on
+    /// such a change; without handling it the meter freezes and words silently
+    /// stop landing. We finish the session cleanly instead.
+    private var configObserver: NSObjectProtocol?
     /// Called on every partial and final result with the draft text dictation
     /// should now show. The composer owns `draft`; this controller never
     /// touches it directly, so it stays agnostic of which composer holds it.
@@ -173,6 +178,9 @@ final class V2DictationController: ObservableObject {
     }
 
     private func beginListening() {
+        // If the session was cancelled while the permission prompt was up,
+        // don't quietly start the engine anyway.
+        guard state == .requestingPermission else { return }
         guard let recognizer, recognizer.isAvailable else {
             state = .unavailable
             return
@@ -217,6 +225,20 @@ final class V2DictationController: ObservableObject {
             self.requestBox = nil
             state = .unavailable
             return
+        }
+
+        // If the audio route reconfigures mid-session, the engine halts — end
+        // cleanly (text kept) rather than leaving a frozen meter.
+        configObserver = NotificationCenter.default.addObserver(
+            forName: .AVAudioEngineConfigurationChange,
+            object: audioEngine,
+            queue: nil
+        ) { [weak self] _ in
+            DispatchQueue.main.async {
+                guard let self, self.state == .listening else { return }
+                self.stopping = true
+                self.teardown()
+            }
         }
 
         startedAt = Date()
@@ -360,6 +382,15 @@ final class V2DictationController: ObservableObject {
         mic.level = mic.level * 0.55 + scaled * 0.45
     }
 
+    /// Hard-stop immediately, without waiting for a closing `final`. Used when
+    /// the composer sends: the draft already holds everything spoken, and we
+    /// must not let a late transcript repopulate the field after it's cleared.
+    func cancel() {
+        guard state == .listening || state == .requestingPermission else { return }
+        stopping = true
+        teardown()
+    }
+
     func stop() {
         guard state == .listening else { return }
         stopping = true
@@ -376,6 +407,10 @@ final class V2DictationController: ObservableObject {
     }
 
     private func teardown() {
+        if let configObserver {
+            NotificationCenter.default.removeObserver(configObserver)
+            self.configObserver = nil
+        }
         if audioEngine.isRunning { audioEngine.stop() }
         audioEngine.inputNode.removeTap(onBus: 0)
         task?.cancel()

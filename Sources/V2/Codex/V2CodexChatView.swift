@@ -213,6 +213,8 @@ struct V2CodexComposer: View {
 
     private func send() {
         guard canSend else { return }
+        // Turn the mic off on send; the draft already holds what was spoken.
+        dictation.cancel()
         let message = draft.trimmingCharacters(in: .whitespacesAndNewlines)
         let urls = attachments.items.map(\.url)
         draft = ""

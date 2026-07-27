@@ -844,6 +844,10 @@ struct V2LiveComposer: View {
     // MARK: - Send
 
     private func sendCurrent() {
+        // Turn the mic off on send — the draft already holds everything
+        // spoken, and a hard cancel keeps a late transcript from refilling
+        // the field after it's cleared.
+        dictation.cancel()
         // In command mode the chip holds the command; the field is its args.
         if let cmd = activeCommand {
             run(cmd, args: draft)
