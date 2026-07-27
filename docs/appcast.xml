@@ -6,6 +6,24 @@
         <description>Updates for Atelier</description>
         <language>en</language>
         <item>
+            <title>Version 2.11.10</title>
+            <pubDate>Mon, 27 Jul 2026 12:37:12 +0400</pubDate>
+            <sparkle:version>85</sparkle:version>
+            <sparkle:shortVersionString>2.11.10</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>15.0</sparkle:minimumSystemVersion>
+            <description><![CDATA[
+                <h3>Atelier 2.11.10 — MCP sign-in fix</h3>
+                <ul>
+                    <li>Fixed MCP servers (Supabase and other OAuth providers) intermittently failing to sign in with an "expected string, received array" error. The authorization link is now sanitised before it opens, so a duplicated-parameter URL no longer gets rejected.</li>
+                </ul>
+            ]]></description>
+            <enclosure
+                url="https://work.munyamakosa.com/Atelier-2.11.10.dmg"
+                length="15438963"
+                type="application/octet-stream"
+                sparkle:edSignature="gbOxGXPb8XP3m568dNVfOKOLnXqRHongXdX2Z6oJxsWft3B5rd8QvTl/ZxDa93vCHCFDQGUbm63MrYRh2aihAw==" />
+        </item>
+        <item>
             <title>Version 2.11.9</title>
             <pubDate>Mon, 27 Jul 2026 11:42:59 +0400</pubDate>
             <sparkle:version>84</sparkle:version>
