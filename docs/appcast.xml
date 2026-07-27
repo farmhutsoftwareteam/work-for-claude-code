@@ -6,6 +6,26 @@
         <description>Updates for Atelier</description>
         <language>en</language>
         <item>
+            <title>Version 2.11.9</title>
+            <pubDate>Mon, 27 Jul 2026 11:42:59 +0400</pubDate>
+            <sparkle:version>84</sparkle:version>
+            <sparkle:shortVersionString>2.11.9</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>15.0</sparkle:minimumSystemVersion>
+            <description><![CDATA[
+                <h3>Atelier 2.11.9 — agent runs you can actually follow</h3>
+                <ul>
+                    <li><b>A whole fan-out is now one row.</b> Delegating to N agents shows a single batch row — overall state, a live count (done · running · failed), and a cell per agent that fills in as each finishes. Click to expand into the individual agents.</li>
+                    <li><b>A live Agents panel</b> with three tabs: running (every delegated agent live, with "stop all"), session (every fan-out this session), and definitions (your agent types, as before).</li>
+                    <li><b>You always know they're working</b> — a running count on the agents tab (red if one failed) and a "N agents running" chip in the composer; click it or press ⌥A to jump to the panel.</li>
+                </ul>
+            ]]></description>
+            <enclosure
+                url="https://work.munyamakosa.com/Atelier-2.11.9.dmg"
+                length="15434263"
+                type="application/octet-stream"
+                sparkle:edSignature="WPUaRZXuhG+CYQrCzvujotz6OOAgwQXSop/sTw7OkeziHha+aZyaiUQnnPmJJyfYDv+SOuJsehgIuG2P1ErHBw==" />
+        </item>
+        <item>
             <title>Version 2.11.8</title>
             <pubDate>Mon, 27 Jul 2026 10:31:04 +0400</pubDate>
             <sparkle:version>83</sparkle:version>
