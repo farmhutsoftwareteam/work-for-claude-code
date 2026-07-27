@@ -72,6 +72,13 @@ struct V2SubagentRun: Identifiable, Equatable {
     /// with its own history, readable through the app-server. Non-nil is
     /// what routes the peek to the Codex reader instead of the file tail.
     var threadId: String?
+    /// Groups sibling agents spawned in one fan-out so the transcript can
+    /// collapse them into a single batch row instead of N stacked cards.
+    /// Claude: the spawning assistant message's id (parallel Task blocks
+    /// share it). Codex: the spawn call id (one spawnAgent fans out to many
+    /// threads that already share it). nil ⇒ ungrouped, renders as a lone
+    /// delegation card.
+    var batchId: String?
 
     /// Keyed per AGENT, not per spawning call. One Codex
     /// `collab.spawnAgent` can fan out to several agents, all carrying the

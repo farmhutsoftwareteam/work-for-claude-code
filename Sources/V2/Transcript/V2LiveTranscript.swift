@@ -133,6 +133,10 @@ struct V2LiveTranscript<Session: V2TranscriptSource>: View {
                         session.subagentRuns.map { ($0.toolUseId, $0) },
                         uniquingKeysWith: { first, _ in first }
                     )
+                    // Fan-out grouping (perf §4: built ONCE here, not per
+                    // row). A control-flow-free `let` — the work is in the
+                    // static helper so the ViewBuilder stays happy.
+                    let batchGroups = Self.groupBatches(session.subagentRuns)
                     let sessionDir = session.sessionDir
                     // Clamped here, not just reset reactively by the
                     // .onChange below: on the SAME render where a tab switch
@@ -162,6 +166,7 @@ struct V2LiveTranscript<Session: V2TranscriptSource>: View {
                     let streamingIndex = session.state == .working ? session.transcript.count - 1 : -1
                     ForEach(windowStart..<session.transcript.count, id: \.self) { i in
                         row(for: session.transcript[i], runs: runsById, sessionDir: sessionDir,
+                            batchByLead: batchGroups.byLead, suppressedSpawnIds: batchGroups.suppressed,
                             isStreaming: i == streamingIndex)
                     }
 
@@ -341,8 +346,33 @@ struct V2LiveTranscript<Session: V2TranscriptSource>: View {
         }
     }
 
+    /// Group sibling agents (same batchId, ≥2) into a fan-out. Returns the
+    /// lead spawn's tool-use id → its ordered members, plus the set of
+    /// non-lead sibling tool-use ids to suppress. Pure; called once per body.
+    private static func groupBatches(_ runs: [V2SubagentRun])
+        -> (byLead: [String: [V2SubagentRun]], suppressed: Set<String>) {
+        var byBatch: [String: [V2SubagentRun]] = [:]
+        for r in runs {
+            guard let b = r.batchId else { continue }
+            byBatch[b, default: []].append(r)
+        }
+        var byLead: [String: [V2SubagentRun]] = [:]
+        var suppressed: Set<String> = []
+        for members in byBatch.values where members.count >= 2 {
+            let ordered = members.sorted { ($0.startedAt, $0.toolUseId) < ($1.startedAt, $1.toolUseId) }
+            let lead = ordered[0].toolUseId
+            byLead[lead] = ordered
+            for tid in Set(ordered.map { $0.toolUseId }) where tid != lead {
+                suppressed.insert(tid)
+            }
+        }
+        return (byLead, suppressed)
+    }
+
     @ViewBuilder
     private func row(for item: TranscriptItem, runs: [String: V2SubagentRun], sessionDir: URL?,
+                     batchByLead: [String: [V2SubagentRun]] = [:],
+                     suppressedSpawnIds: Set<String> = [],
                      isStreaming: Bool = false) -> some View {
         switch item {
         case .userText(let text):
@@ -351,6 +381,7 @@ struct V2LiveTranscript<Session: V2TranscriptSource>: View {
             V2AssistantBlock(block: block, toolOutcomes: session.toolOutcomes,
                              baseDir: session.baseDir ?? projectCwd,
                              subagentRuns: runs, sessionDir: sessionDir,
+                             batchByLead: batchByLead, suppressedSpawnIds: suppressedSpawnIds,
                              toolStartTimes: session.toolStartTimes,
                              toolLiveStatus: session.toolLiveStatus,
                              taskItems: session.taskItems,
@@ -475,6 +506,12 @@ struct V2AssistantBlock: View {
     /// cards (#38). Built once per transcript body eval, not per row.
     var subagentRuns: [String: V2SubagentRun] = [:]
     var sessionDir: URL? = nil
+    /// Lead spawn tool-use id → all agents in that fan-out. When this block's
+    /// tool-use is a batch lead, render ONE V2AgentBatchRow instead of a card.
+    var batchByLead: [String: [V2SubagentRun]] = [:]
+    /// Non-lead sibling spawns — rendered as nothing; the lead's batch row
+    /// already represents them.
+    var suppressedSpawnIds: Set<String> = []
     /// toolUseId → call start, for the in-flight elapsed readout.
     var toolStartTimes: [String: Date] = [:]
     /// toolUseId → latest live progress message (Codex MCP calls only).
@@ -562,17 +599,25 @@ struct V2AssistantBlock: View {
                 .foregroundColor(v2.ink)
         case .toolUse(let id, let name, let input):
             if V2SubagentParser.isAgentSpawn(toolName: name) {
-                V2DelegationCard(
-                    run: subagentRuns[id],
-                    toolUseId: id,
-                    // Codex spawns carry the task as `prompt`; Claude's as
-                    // `description`. Same card either way.
-                    fallbackDescription: input.dig("description")?.asString
-                        ?? input.dig("prompt")?.asString
-                        ?? "agent",
-                    fallbackAgentType: input.dig("subagent_type")?.asString ?? "agent",
-                    sessionDir: sessionDir
-                )
+                if suppressedSpawnIds.contains(id) {
+                    // A sibling of a fan-out — the lead's batch row covers it.
+                    EmptyView()
+                } else if let members = batchByLead[id] {
+                    // Lead of a fan-out (≥2 agents) → one collapsed batch row.
+                    V2AgentBatchRow(runs: members, sessionDir: sessionDir)
+                } else {
+                    V2DelegationCard(
+                        run: subagentRuns[id],
+                        toolUseId: id,
+                        // Codex spawns carry the task as `prompt`; Claude's as
+                        // `description`. Same card either way.
+                        fallbackDescription: input.dig("description")?.asString
+                            ?? input.dig("prompt")?.asString
+                            ?? "agent",
+                        fallbackAgentType: input.dig("subagent_type")?.asString ?? "agent",
+                        sessionDir: sessionDir
+                    )
+                }
             } else if name == "TodoWrite", let todos = input.dig("todos")?.asArray {
                 V2LiveTaskChecklist(items: todos.map {
                     V2TaskItem(id: $0.dig("content")?.asString ?? UUID().uuidString,

@@ -1843,7 +1843,10 @@ final class CodexSession: ObservableObject, V2TranscriptSource {
                         // parent — there's no synchronous variant.
                         isBackground: true,
                         startedAt: now,
-                        threadId: threadId
+                        threadId: threadId,
+                        // One spawnAgent call fanning out to many threads IS
+                        // the batch — they already share this call id.
+                        batchId: callId
                     ))
                 }
             }

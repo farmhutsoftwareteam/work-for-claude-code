@@ -454,7 +454,8 @@ final class StreamSession: ObservableObject, V2TranscriptSource {
                                 description: input.dig("description")?.asString ?? "agent",
                                 agentType: input.dig("subagent_type")?.asString ?? "general-purpose",
                                 isBackground: input.dig("run_in_background")?.asBool ?? false,
-                                startedAt: Date()
+                                startedAt: Date(),
+                                batchId: m.message.id
                             ))
                         }
                         transcript.append(.assistantBlock(block))
@@ -1615,7 +1616,8 @@ final class StreamSession: ObservableObject, V2TranscriptSource {
                             description: input.dig("description")?.asString ?? "agent",
                             agentType: input.dig("subagent_type")?.asString ?? "general-purpose",
                             isBackground: input.dig("run_in_background")?.asBool ?? false,
-                            startedAt: Date()
+                            startedAt: Date(),
+                            batchId: m.message.id
                         ))
                     }
                     if name == "Bash" {
