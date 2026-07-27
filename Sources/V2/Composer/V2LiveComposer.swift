@@ -688,6 +688,10 @@ struct V2LiveComposer: View {
 
     // MARK: - Helper row
 
+    private var agentsRunning: Int {
+        session.subagentRuns.filter { $0.state == .running }.count
+    }
+
     private var helperRow: some View {
         HStack(spacing: 14) {
             V2ProviderBadge(
@@ -724,6 +728,27 @@ struct V2LiveComposer: View {
             }
 
             Spacer(minLength: 8)
+
+            // Running sub-agents live in the panel, not the flow — this chip
+            // is the pointer to them. Shown only while something runs; ⌥A
+            // (wired here) and a tap both open the agents panel.
+            if agentsRunning > 0 {
+                Button { appState.openDock(.agents) } label: {
+                    HStack(spacing: 6) {
+                        V2PulseDot(size: 6, color: v2.ink)
+                        Text(helperTight ? "\(agentsRunning) agents" : "\(agentsRunning) agents running")
+                            .foregroundColor(v2.ink)
+                        Text("⌥A").foregroundColor(v2.faint)
+                    }
+                    .padding(.horizontal, 8).padding(.vertical, 3)
+                    .overlay(Rectangle().stroke(v2.line2, lineWidth: 1))
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .keyboardShortcut("a", modifiers: .option)
+                .layoutPriority(2)
+                .help("Open the agents panel")
+            }
 
             // Plan-usage meter (5h/weekly quota %) — real state, hidden
             // entirely until the first get_usage reply lands.

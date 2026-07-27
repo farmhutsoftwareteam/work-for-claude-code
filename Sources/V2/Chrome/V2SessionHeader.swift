@@ -39,6 +39,14 @@ struct V2SessionHeader: View {
         return store.projectHasUnconnectedMCP(cwd)
     }
 
+    /// Sub-agent runs on the active session (whichever provider). Drives the
+    /// running-count badge on the `agents` dock tab.
+    private var agentRuns: [V2SubagentRun] {
+        (appState.activeSession?.subagentRuns ?? []) + (appState.activeCodexSession?.subagentRuns ?? [])
+    }
+    private var agentsRunning: Int { agentRuns.filter { $0.state == .running }.count }
+    private var agentsFailed: Bool { agentRuns.contains { $0.state == .failed } }
+
     /// Measured header width, used to choose how much the right-side controls
     /// collapse. The identity block (title + path + model) always truncates
     /// first; below the breakpoint the controls shed their labels too.
@@ -162,6 +170,17 @@ struct V2SessionHeader: View {
                             Circle().fill(v2.del).frame(width: 6, height: 6)
                                 .offset(x: -3, y: 3)
                                 .help("An MCP server needs sign-in")
+                        }
+                        // Running-agent count on the agents tab — ink while
+                        // healthy, red if one failed. Clears when nothing runs.
+                        if panel == .agents && agentsRunning > 0 {
+                            Text("\(agentsRunning)")
+                                .font(.system(size: 8.5, weight: .semibold, design: .monospaced))
+                                .foregroundColor(v2.paper)
+                                .padding(.horizontal, 3).padding(.vertical, 0.5)
+                                .background(agentsFailed ? v2.del : v2.ink)
+                                .offset(x: 3, y: -3)
+                                .help("\(agentsRunning) agent\(agentsRunning == 1 ? "" : "s") running")
                         }
                     }
                 }

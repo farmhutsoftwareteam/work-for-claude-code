@@ -198,6 +198,11 @@ struct V2RightDock: View {
             case .planning, .working, .reviewing: return true
             default:                                return false
             }
+        case .agents:
+            // A sub-agent is running right now on the active session.
+            let claude = appState.activeSession?.subagentRuns ?? []
+            let codex = appState.activeCodexSession?.subagentRuns ?? []
+            return (claude + codex).contains { $0.state == .running }
         default:
             return false
         }

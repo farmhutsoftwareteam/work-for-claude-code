@@ -163,6 +163,10 @@ struct V2CodexComposer: View {
         }
     }
 
+    private var agentsRunning: Int {
+        session.subagentRuns.filter { $0.state == .running }.count
+    }
+
     private var helperRow: some View {
         HStack(spacing: 14) {
             V2ProviderBadge(
@@ -188,6 +192,24 @@ struct V2CodexComposer: View {
             }
 
             Spacer(minLength: 8)
+
+            if agentsRunning > 0 {
+                Button { appState.openDock(.agents) } label: {
+                    HStack(spacing: 6) {
+                        V2PulseDot(size: 6, color: v2.ink)
+                        Text(helperTight ? "\(agentsRunning) agents" : "\(agentsRunning) agents running")
+                            .foregroundColor(v2.ink)
+                        Text("⌥A").foregroundColor(v2.faint)
+                    }
+                    .padding(.horizontal, 8).padding(.vertical, 3)
+                    .overlay(Rectangle().stroke(v2.line2, lineWidth: 1))
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .keyboardShortcut("a", modifiers: .option)
+                .layoutPriority(2)
+                .help("Open the agents panel")
+            }
 
             V2ComposerUsageMeter(limits: session.usageLimits, isTight: helperTight)
                 .layoutPriority(1)
