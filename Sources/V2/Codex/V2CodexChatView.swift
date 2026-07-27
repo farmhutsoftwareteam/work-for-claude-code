@@ -150,10 +150,8 @@ struct V2CodexComposer: View {
     /// Error-banner action: denied → System Settings; no-speech / failed →
     /// listen again from the current draft.
     private func voiceBannerAction() {
-        if dictation.state == .denied {
-            let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Microphone")
-                ?? URL(string: "x-apple.systempreferences:com.apple.preference.security")!
-            NSWorkspace.shared.open(url)
+        if let pane = dictation.deniedPane {
+            NSWorkspace.shared.open(pane.settingsURL)
         } else {
             dictation.retry(currentDraft: draft)
         }

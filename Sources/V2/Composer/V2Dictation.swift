@@ -70,6 +70,20 @@ final class V2MicLevel: ObservableObject {
     @Published var level: Float = 0
 }
 
+/// A System Settings privacy pane to deep-link to when a permission is off.
+/// Microphone and Speech Recognition are DIFFERENT toggles — sending someone
+/// to the wrong one is the crux of the "I can't find where to allow it"
+/// confusion, so the denial state tracks which pane it means.
+enum V2PrivacyPane {
+    case microphone, speechRecognition
+
+    var settingsURL: URL {
+        let anchor = self == .microphone ? "Privacy_Microphone" : "Privacy_SpeechRecognition"
+        return URL(string: "x-apple.systempreferences:com.apple.preference.security?\(anchor)")
+            ?? URL(string: "x-apple.systempreferences:com.apple.preference.security")!
+    }
+}
+
 @MainActor
 final class V2DictationController: ObservableObject {
     /// How the current (or most recent) session was initiated — decides what
@@ -85,15 +99,20 @@ final class V2DictationController: ObservableObject {
         /// the last audio into a final transcript ("cleaning up what you
         /// said…").
         case transcribing
-        /// Permission was denied — the button points at System Settings and an
-        /// error banner explains, instead of silently no-op'ing.
-        case denied
+        /// Microphone access denied — banner + button open the Microphone
+        /// pane of System Settings.
+        case micDenied
+        /// Speech Recognition access denied — a SEPARATE toggle from the mic
+        /// (the classic confusion); opens the Speech Recognition pane.
+        case speechDenied
         /// No recognizer for this locale, or the engine failed to start.
         case unavailable
         /// Stopped, but nothing was recognised (silence / bad input).
         case noSpeech
         /// Recognition errored out (e.g. the connection dropped).
         case failed
+
+        var isDenied: Bool { self == .micDenied || self == .speechDenied }
     }
 
     @Published private(set) var state: State = .idle
@@ -169,7 +188,16 @@ final class V2DictationController: ObservableObject {
 
     var isListening: Bool { state == .listening }
     /// The error states that surface a banner above the composer.
-    var showsErrorBanner: Bool { state == .denied || state == .noSpeech || state == .failed }
+    var showsErrorBanner: Bool { state.isDenied || state == .noSpeech || state == .failed }
+    /// Which System Settings pane the current denial points at (nil unless
+    /// we're in a denied state).
+    var deniedPane: V2PrivacyPane? {
+        switch state {
+        case .micDenied:    return .microphone
+        case .speechDenied: return .speechRecognition
+        default:            return nil
+        }
+    }
 
     // MARK: - Gestures (called by the mic button and the ⌥ accelerator)
 
@@ -223,31 +251,38 @@ final class V2DictationController: ObservableObject {
         dictationBase = currentDraft
         caption = ""
         state = .requestingPermission
-        // TCC invokes this completion on its own XPC queue. The closure must
-        // be explicitly @Sendable: otherwise Swift 6 inherits this class's
-        // @MainActor isolation at closure creation and traps BEFORE its body
-        // runs when TCC calls it off-main. Once inside, hop to the main queue
-        // to touch the controller's UI-facing state.
-        SFSpeechRecognizer.requestAuthorization { @Sendable [weak self] authStatus in
-            DispatchQueue.main.async {
-                guard let self else { return }
-                guard authStatus == .authorized else {
-                    self.state = .denied
-                    return
-                }
-                self.requestMicrophoneAccess()
-            }
-        }
-    }
-
-    private func requestMicrophoneAccess() {
-        // Same @Sendable boundary as the TCC callback above: AVFoundation
-        // does not promise a main-actor callback.
+        // Request the MICROPHONE first. This is the call that registers the
+        // app in System Settings ▸ Privacy ▸ Microphone, so it fires even when
+        // Speech Recognition turns out to be the real blocker. (Asking for
+        // Speech first — as this did before — meant a denied/blocked Speech
+        // grant returned early and the mic was NEVER requested: the app never
+        // appeared in the mic list, and the "off" banner pointed at the wrong
+        // pane.) Speech authorization follows only once the mic is granted.
+        //
+        // TCC/AVFoundation invoke these completions on their own queues, and
+        // the closures must be explicitly @Sendable: otherwise Swift 6
+        // inherits this class's @MainActor isolation at closure creation and
+        // traps BEFORE the body runs when called off-main. Hop to main inside.
         AVCaptureDevice.requestAccess(for: .audio) { @Sendable [weak self] granted in
             DispatchQueue.main.async {
                 guard let self else { return }
                 guard granted else {
-                    self.state = .denied
+                    self.state = .micDenied
+                    return
+                }
+                self.requestSpeechAuthorization()
+            }
+        }
+    }
+
+    private func requestSpeechAuthorization() {
+        // Bail if the session was cancelled while the mic prompt was up.
+        guard state == .requestingPermission else { return }
+        SFSpeechRecognizer.requestAuthorization { @Sendable [weak self] authStatus in
+            DispatchQueue.main.async {
+                guard let self else { return }
+                guard authStatus == .authorized else {
+                    self.state = .speechDenied
                     return
                 }
                 self.beginListening()
@@ -284,6 +319,17 @@ final class V2DictationController: ObservableObject {
 
         let inputNode = audioEngine.inputNode
         let format = inputNode.outputFormat(forBus: 0)
+        // Guard the tap format. A 0 Hz / 0-channel format (input device not
+        // ready, or mic access still settling right after the grant) makes
+        // installTap throw an Objective-C exception — which Swift CANNOT catch,
+        // so it takes the whole app down. This was a real crash-and-lose-work
+        // path; fail soft to .unavailable instead of installing a bad tap.
+        guard format.sampleRate > 0, format.channelCount > 0 else {
+            self.request = nil
+            self.requestBox = nil
+            state = .unavailable
+            return
+        }
         inputNode.installTap(onBus: 0, bufferSize: 1024, format: format) { @Sendable [weak self] buffer, _ in
             box.append(buffer)
             // Cheap RMS on the audio thread; hop to main only every ~3rd
@@ -573,7 +619,7 @@ struct V2ComposerDictationButton: View {
     @State private var engaged = false
     @State private var pressGen = 0
 
-    private var isBlocked: Bool { controller.state == .denied || controller.state == .unavailable }
+    private var isBlocked: Bool { controller.state.isDenied || controller.state == .unavailable }
     private var isActive: Bool { controller.state == .listening }
 
     var body: some View {
@@ -651,9 +697,9 @@ struct V2ComposerDictationButton: View {
     }
 
     private func openPrivacySettings() {
-        let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Microphone")
-            ?? URL(string: "x-apple.systempreferences:com.apple.preference.security")!
-        NSWorkspace.shared.open(url)
+        // Open the pane for whichever permission is actually off (mic vs
+        // speech), defaulting to Microphone if we're here for another reason.
+        NSWorkspace.shared.open((controller.deniedPane ?? .microphone).settingsURL)
     }
 
     private var helpText: String {
@@ -661,7 +707,8 @@ struct V2ComposerDictationButton: View {
         case .listening:
             return controller.mode == .pushToTalk ? "Release to send" : "Tap to stop dictating"
         case .transcribing:      return "Transcribing…"
-        case .denied:            return "Microphone or speech access is off — click to open System Settings → Privacy"
+        case .micDenied:         return "Microphone access is off — click to open System Settings ▸ Microphone"
+        case .speechDenied:      return "Speech Recognition is off — click to open System Settings ▸ Speech Recognition"
         case .unavailable:       return "Dictation isn't available right now — click to check System Settings"
         case .requestingPermission: return "Waiting for permission…"
         case .noSpeech, .failed, .idle:
@@ -791,7 +838,7 @@ struct V2VoiceErrorBanner: View {
 
     private var icon: String {
         switch controller.state {
-        case .denied:   return "⊘"
+        case .micDenied, .speechDenied: return "⊘"
         case .noSpeech: return "…"
         default:        return "✗"
         }
@@ -799,8 +846,10 @@ struct V2VoiceErrorBanner: View {
 
     private var text: String {
         switch controller.state {
-        case .denied:
-            return "Microphone access is off for Atelier — voice input needs it to hear you."
+        case .micDenied:
+            return "Microphone access is off for Atelier — turn it on to dictate."
+        case .speechDenied:
+            return "Speech Recognition is off for Atelier — it turns your voice into text (a separate toggle from the mic)."
         case .noSpeech:
             return "Didn't catch anything — check your mic input, or just type instead."
         default:
@@ -810,7 +859,7 @@ struct V2VoiceErrorBanner: View {
 
     private var actionLabel: String {
         switch controller.state {
-        case .denied:   return "open system settings"
+        case .micDenied, .speechDenied: return "open system settings"
         case .noSpeech: return "try again"
         default:        return "retry"
         }

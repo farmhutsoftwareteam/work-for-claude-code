@@ -827,10 +827,8 @@ struct V2LiveComposer: View {
     /// Error-banner action: a denied mic opens System Settings; no-speech /
     /// failed retry by listening again from the current draft.
     private func voiceBannerAction() {
-        if dictation.state == .denied {
-            let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Microphone")
-                ?? URL(string: "x-apple.systempreferences:com.apple.preference.security")!
-            NSWorkspace.shared.open(url)
+        if let pane = dictation.deniedPane {
+            NSWorkspace.shared.open(pane.settingsURL)
         } else {
             dictation.retry(currentDraft: draft)
         }
