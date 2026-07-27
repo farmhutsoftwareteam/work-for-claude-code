@@ -20,10 +20,24 @@ import SwiftUI
 /// torn down on the main actor; this box confines that one framework-sanctioned
 /// cross-thread use to a small, documented boundary.
 private final class V2SpeechRequestBox: @unchecked Sendable {
-    let request: SFSpeechAudioBufferRecognitionRequest
+    private let lock = NSLock()
+    private var request: SFSpeechAudioBufferRecognitionRequest
 
     init(_ request: SFSpeechAudioBufferRecognitionRequest) {
         self.request = request
+    }
+
+    /// Feed a buffer to whatever request is current. Called from the audio
+    /// thread; the lock guards the pointer swap done on the main actor when
+    /// dictation rotates to a fresh request for long-form continuation.
+    func append(_ buffer: AVAudioPCMBuffer) {
+        lock.lock(); let r = request; lock.unlock()
+        r.append(buffer)
+    }
+
+    /// Point the tap at a new request without disturbing the running engine.
+    func swap(_ newRequest: SFSpeechAudioBufferRecognitionRequest) {
+        lock.lock(); request = newRequest; lock.unlock()
     }
 }
 
@@ -71,12 +85,34 @@ final class V2DictationController: ObservableObject {
     private let recognizer: SFSpeechRecognizer?
     private let audioEngine = AVAudioEngine()
     private var request: SFSpeechAudioBufferRecognitionRequest?
+    /// The live tap → request bridge. Persists across request rotations so a
+    /// long rant continues seamlessly past the recognizer's ~1-minute
+    /// server cap and past every natural pause (each of which the recognizer
+    /// reports as a `final`).
+    private var requestBox: V2SpeechRequestBox?
     private var task: SFSpeechRecognitionTask?
-    /// The draft text as it stood the moment dictation started — every
-    /// partial result REPLACES the dictated tail rather than appending to
-    /// it, since SFSpeechRecognitionResult.bestTranscription is always the
-    /// full accumulated utterance, not a delta.
-    private var draftBeforeDictation = ""
+
+    /// The draft as it stood when dictation started — never mutated during a
+    /// session; dictated text is composed on top of it.
+    private var dictationBase = ""
+    /// Finalised segments accumulated this session (across rotations). The
+    /// live partial from the current request is appended after this.
+    private var committed = ""
+    /// Set when the user taps stop; the next `final` then tears down instead
+    /// of rotating into a new request.
+    private var stopping = false
+    /// Guards the rotate-on-error path from looping if recognition is truly
+    /// failing (vs. a benign segment-boundary error).
+    private var errorStreak = 0
+    /// Session-scoped fallback: if server recognition errors before producing
+    /// anything (e.g. offline), retry once on-device so a rant isn't lost.
+    private var useOnDevice = false
+    private var triedOnDeviceFallback = false
+    /// Bumped on every request rotation. A cancelled task can still deliver a
+    /// trailing (cancellation) callback after we've moved on; gating on this
+    /// makes handleResult ignore anything but the current request's task, so a
+    /// rotation can't cascade into spurious extra rotations.
+    private var generation = 0
     /// Called on every partial and final result with the draft text dictation
     /// should now show. The composer owns `draft`; this controller never
     /// touches it directly, so it stays agnostic of which composer holds it.
@@ -102,7 +138,7 @@ final class V2DictationController: ObservableObject {
             state = .unavailable
             return
         }
-        draftBeforeDictation = currentDraft
+        dictationBase = currentDraft
         state = .requestingPermission
         // TCC invokes this completion on its own XPC queue. The closure must
         // be explicitly @Sendable: otherwise Swift 6 inherits this class's
@@ -146,23 +182,23 @@ final class V2DictationController: ObservableObject {
         // the next installTap with "tap already installed."
         audioEngine.inputNode.removeTap(onBus: 0)
 
-        let request = SFSpeechAudioBufferRecognitionRequest()
-        request.shouldReportPartialResults = true
-        // Prefer on-device recognition when this Mac supports it — audio
-        // never leaves the machine, matching the diagnostics work's local-
-        // first posture. Falls back to Apple's server-based recognizer
-        // automatically when unsupported (older hardware, some locales).
-        if recognizer.supportsOnDeviceRecognition {
-            request.requiresOnDeviceRecognition = true
-        }
-        self.request = request
-        let requestBox = V2SpeechRequestBox(request)
+        committed = ""
+        stopping = false
+        errorStreak = 0
+        triedOnDeviceFallback = false
+
+        // The engine + tap are set up ONCE and feed the box; the recognition
+        // request underneath rotates for long-form continuation.
+        let first = makeRequest()
+        let box = V2SpeechRequestBox(first)
+        self.requestBox = box
+        self.request = first
         let tapState = V2AudioTapState()
 
         let inputNode = audioEngine.inputNode
         let format = inputNode.outputFormat(forBus: 0)
         inputNode.installTap(onBus: 0, bufferSize: 1024, format: format) { @Sendable [weak self] buffer, _ in
-            requestBox.request.append(buffer)
+            box.append(buffer)
             // Cheap RMS on the audio thread; hop to main only every ~3rd
             // buffer to drive the level meter without flooding the runloop.
             let rms = V2DictationController.rms(of: buffer)
@@ -178,30 +214,127 @@ final class V2DictationController: ObservableObject {
         } catch {
             inputNode.removeTap(onBus: 0)
             self.request = nil
+            self.requestBox = nil
             state = .unavailable
             return
         }
 
         startedAt = Date()
         state = .listening
-        // Results also arrive on an arbitrary queue, so this callback must
-        // not inherit the controller's main-actor isolation either.
+        startTask(for: first)
+    }
+
+    /// Build a recognition request. Server-based by default (materially more
+    /// accurate, and free — Apple only rate-limits it, which long-form
+    /// rotation stays under); `useOnDevice` flips it after an offline
+    /// fallback. Punctuation on so a rant reads like prose, not a run-on.
+    private func makeRequest() -> SFSpeechAudioBufferRecognitionRequest {
+        let request = SFSpeechAudioBufferRecognitionRequest()
+        request.shouldReportPartialResults = true
+        request.addsPunctuation = true
+        if useOnDevice, recognizer?.supportsOnDeviceRecognition == true {
+            request.requiresOnDeviceRecognition = true
+        }
+        return request
+    }
+
+    private func startTask(for request: SFSpeechAudioBufferRecognitionRequest) {
+        guard let recognizer else { return }
+        generation &+= 1
+        let gen = generation
+        task?.cancel()
+        // Results arrive on an arbitrary queue; keep this @Sendable and carry
+        // only Sendable values over the hop to the main actor.
         task = recognizer.recognitionTask(with: request) { @Sendable [weak self] result, error in
-            // Carry only Sendable values over the queue boundary. Neither
-            // SFSpeechRecognitionResult nor NSError is safe to capture in
-            // the main-actor closure directly.
             let transcript = result?.bestTranscription.formattedString
-            let shouldTeardown = error != nil || result?.isFinal == true
+            let isFinal = result?.isFinal == true
+            let errored = error != nil
             DispatchQueue.main.async {
-                guard let self else { return }
-                if let transcript {
-                    self.deliver(transcript)
-                }
-                if shouldTeardown {
-                    self.teardown()
-                }
+                self?.handleResult(generation: gen, transcript: transcript, isFinal: isFinal, errored: errored)
             }
         }
+    }
+
+    private func handleResult(generation gen: Int, transcript: String?, isFinal: Bool, errored: Bool) {
+        guard state == .listening, gen == generation else { return }
+
+        if let t = transcript, !t.isEmpty {
+            errorStreak = 0
+            if isFinal {
+                commit(t)
+                onUpdate?(composed(partial: ""))
+            } else {
+                onUpdate?(composed(partial: t))
+            }
+        }
+
+        if errored {
+            handleError()
+            return
+        }
+        if isFinal {
+            // A `final` is a SEGMENT boundary (a pause, or the ~1-min server
+            // cap), NOT the end of dictation — rotate into a fresh request and
+            // keep listening. Only a user stop ends it.
+            if stopping { teardown() } else { rotate() }
+        }
+    }
+
+    /// Start a fresh request under the still-running engine so dictation
+    /// continues seamlessly.
+    private func rotate() {
+        guard let box = requestBox, state == .listening else { teardown(); return }
+        let next = makeRequest()
+        box.swap(next)
+        self.request = next
+        startTask(for: next)
+    }
+
+    private func handleError() {
+        // Offline / server unreachable before we've captured anything → fall
+        // back to on-device once and keep going, so the rant isn't lost.
+        if committed.isEmpty, !triedOnDeviceFallback, !useOnDevice,
+           recognizer?.supportsOnDeviceRecognition == true, !stopping {
+            triedOnDeviceFallback = true
+            useOnDevice = true
+            rotate()
+            return
+        }
+        errorStreak += 1
+        // One benign segment-boundary error is fine to rotate through; a
+        // second consecutive one means recognition is actually failing.
+        if stopping || errorStreak >= 2 {
+            teardown()
+        } else {
+            rotate()
+        }
+    }
+
+    private func commit(_ segment: String) {
+        let s = segment.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !s.isEmpty else { return }
+        committed = committed.isEmpty ? s : committed + " " + s
+    }
+
+    /// Compose the visible draft: the pre-dictation base, then every
+    /// finalised segment, then the live partial — joined without doubling
+    /// spaces or clobbering the user's original text.
+    private func composed(partial: String) -> String {
+        var out = dictationBase
+        func append(_ piece: String) {
+            let p = piece.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !p.isEmpty else { return }
+            if out.isEmpty {
+                out = p
+            } else if out.hasSuffix(" ") || out.hasSuffix("\n") {
+                out += p
+            } else {
+                out += " " + p
+            }
+        }
+        append(committed)
+        append(partial)
+        return out
     }
 
     /// Root-mean-square amplitude of a mic buffer's first channel. Pure math,
@@ -227,31 +360,32 @@ final class V2DictationController: ObservableObject {
         mic.level = mic.level * 0.55 + scaled * 0.45
     }
 
-    private func deliver(_ transcript: String) {
-        guard !transcript.isEmpty else {
-            onUpdate?(draftBeforeDictation)
-            return
-        }
-        let joined = draftBeforeDictation.isEmpty ? transcript : draftBeforeDictation + " " + transcript
-        onUpdate?(joined)
-    }
-
     func stop() {
+        guard state == .listening else { return }
+        stopping = true
+        // endAudio() lets the recognizer finish honestly (last partial becomes
+        // final) rather than snapping the socket shut mid-word; the final then
+        // lands in handleResult, which tears down because `stopping` is set.
         request?.endAudio()
-        // endAudio() lets the recognizer finish honestly (last partial
-        // becomes final) rather than snapping the socket shut mid-word;
-        // teardown() itself runs from the recognitionTask completion once
-        // that final result lands, not from here.
+        // Safety net: if that closing `final` never arrives (a wedged task),
+        // don't strand the UI in .listening forever.
+        DispatchQueue.main.asyncAfter(deadline: .now() + 2) { [weak self] in
+            guard let self, self.stopping, self.state == .listening else { return }
+            self.teardown()
+        }
     }
 
     private func teardown() {
         if audioEngine.isRunning { audioEngine.stop() }
         audioEngine.inputNode.removeTap(onBus: 0)
-        request = nil
         task?.cancel()
         task = nil
+        request = nil
+        requestBox = nil
         mic.level = 0
         startedAt = nil
+        stopping = false
+        committed = ""
         if state == .listening || state == .requestingPermission { state = .idle }
     }
 }
