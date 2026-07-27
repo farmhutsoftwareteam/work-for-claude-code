@@ -117,10 +117,6 @@ final class CoTerminal: NSObject, ObservableObject, Identifiable {
     @Published private(set) var exitCode: Int32?
     /// Set on process exit — freezes the header's duration readout.
     @Published private(set) var endedAt: Date?
-    /// Pane folded to its header (Chrome download-shelf style). Lives on the
-    /// model so it survives tab switches; forced open when a secure prompt
-    /// appears (it requires the user's typing).
-    @Published var isCollapsed = false
     @Published private(set) var secureInput = false
     /// Agent-typed input, for the pane's attribution strip. Secure writes are
     /// rejected upstream, so secrets can never land here.
@@ -132,6 +128,54 @@ final class CoTerminal: NSObject, ObservableObject, Identifiable {
     private(set) var view: SwiftTerm.TerminalView!
     private var cols = 100, rows = 30
     private let ioQueue = DispatchQueue(label: "com.munyamakosa.work.coterm.io")
+
+    /// Fired on every `secureInput` transition (both directions) — the
+    /// floating window's ONLY auto-raise trigger. Set by the manager at
+    /// creation so a terminal never needs to know its own scope.
+    var onSecureInputChanged: ((Bool) -> Void)?
+
+    /// One glyph, one source of truth — the header, the shell-tab dot, and
+    /// the transcript receipt row all branched on isRunning/secureInput/
+    /// exitCode separately before this; centralising avoids three copies of
+    /// the same branching (and three chances for them to disagree).
+    enum Status: Equatable {
+        case running
+        case needsInput
+        case error(Int32)
+        case done
+    }
+
+    var status: Status {
+        if secureInput { return .needsInput }
+        if isRunning { return .running }
+        let code = exitCode ?? -1
+        return code == 0 ? .done : .error(code)
+    }
+
+    // Hoisted (bug-hunt LOW): compiling a fresh NSRegularExpression on every
+    // call. Read from the receipt strip's 1Hz tick — compile once, shared
+    // across every CoTerminal instead of duplicated per call. `nonisolated
+    // (unsafe)`: NSRegularExpression is immutable after construction, and
+    // lastOutputLine() itself is nonisolated (called off the main actor).
+    nonisolated(unsafe) private static let oscEscapeRegex = try? NSRegularExpression(pattern: "\u{1B}\\][^\u{07}]*\u{07}")
+    nonisolated(unsafe) private static let csiEscapeRegex = try? NSRegularExpression(pattern: "\u{1B}\\[[0-9;?]*[A-Za-z]")
+
+    /// Last non-empty, ANSI-stripped output line — the "still alive" pulse
+    /// for anywhere that can't show the live SwiftTerm view itself (the
+    /// transcript receipt row, the old collapsed-header tail).
+    nonisolated func lastOutputLine() -> String {
+        var clean = ring.read(since: nil).text
+        for regex in [Self.oscEscapeRegex, Self.csiEscapeRegex] {
+            guard let regex else { continue }
+            clean = regex.stringByReplacingMatches(
+                in: clean, range: NSRange(clean.startIndex..., in: clean), withTemplate: "")
+        }
+        return clean
+            .split(whereSeparator: { $0 == "\n" || $0 == "\r" })
+            .reversed()
+            .first { !$0.trimmingCharacters(in: .whitespaces).isEmpty }
+            .map(String.init) ?? "…"
+    }
 
     init(command: String, cwd: String) {
         self.command = command
@@ -191,6 +235,7 @@ final class CoTerminal: NSObject, ObservableObject, Identifiable {
         guard off != secureInput else { return }
         secureInput = off
         if off { ring.markSecure() } else { ring.clearSecure() }
+        onSecureInputChanged?(off)
     }
 
     // MARK: Tool-facing API (called on the main actor by the manager)
@@ -275,11 +320,6 @@ extension CoTerminal: LocalProcessDelegate {
             self.endedAt = Date()
             self.secureInput = false
             self.ring.clearSecure()
-            // Clean exit folds to the one-line header (✓ · exit 0 · duration)
-            // — a finished pane shouldn't keep costing ~262pt of the session
-            // column. Failures stay expanded: that output is exactly what
-            // the user needs to read next.
-            if exitCode == 0 { self.isCollapsed = true }
         }
     }
 
@@ -326,13 +366,66 @@ extension CoTerminal: @preconcurrency TerminalViewDelegate {
 final class CoTerminalManager: ObservableObject {
     static let shared = CoTerminalManager()
     @Published private(set) var byScope: [ObjectIdentifier: [CoTerminal]] = [:]
+    /// Forwards each terminal's own objectWillChange into ours — same idiom
+    /// V2AppState.newTab uses for StreamSession. Without this, everything
+    /// that renders live terminal state (the floating window's badge/tab
+    /// dots, the receipt strip) only observes the MANAGER, not the
+    /// individual CoTerminal where isRunning/exitCode/secureInput actually
+    /// live as @Published — a shell finishing or a secure prompt clearing
+    /// would change those fields with nothing telling SwiftUI to re-render.
+    private var forwarders: [UUID: AnyCancellable] = [:]
+
+    /// Floating-window UI state, scoped the same way terminals are — so it
+    /// survives tab switches instead of resetting (a plain @State on a
+    /// non-tab-keyed view would either stick to the first session forever or
+    /// reset on every switch; living here matches how `byScope` itself is
+    /// already scoped). Absent ⇒ open: the window should be visible the
+    /// moment the first shell of a session starts.
+    @Published private var windowOpen: [ObjectIdentifier: Bool] = [:]
+    @Published private var selected: [ObjectIdentifier: UUID] = [:]
 
     func terminals(for session: StreamSession) -> [CoTerminal] {
         byScope[ObjectIdentifier(session)] ?? []
     }
 
+    func isWindowOpen(for session: StreamSession) -> Bool {
+        windowOpen[ObjectIdentifier(session)] ?? true
+    }
+
+    func setWindowOpen(_ open: Bool, for session: StreamSession) {
+        windowOpen[ObjectIdentifier(session)] = open
+    }
+
+    /// The explicitly-selected terminal if it's still alive, else the most
+    /// recently started — never nil while `terminals(for:)` is non-empty.
+    func selectedTerminal(for session: StreamSession) -> CoTerminal? {
+        let scope = ObjectIdentifier(session)
+        let terms = byScope[scope] ?? []
+        if let id = selected[scope], let t = terms.first(where: { $0.id == id }) { return t }
+        return terms.max(by: { $0.startedAt < $1.startedAt })
+    }
+
+    func select(_ t: CoTerminal, for session: StreamSession) {
+        selected[ObjectIdentifier(session)] = t.id
+    }
+
+    /// The ONLY auto-raise trigger (design: "only 'needs input' auto-raises
+    /// the window and steals focus") — a shell blocked on a secure prompt is
+    /// the one state where staying hidden actively hurts: the agent CAN'T
+    /// answer it, so if the window is closed the session just hangs with no
+    /// visible reason. Running/done/error never force the window open.
+    private func noteNeedsInput(scope: ObjectIdentifier, terminalId: UUID) {
+        windowOpen[scope] = true
+        selected[scope] = terminalId
+    }
+
     func run(command: String, cwd: String, scope: ObjectIdentifier) -> CoTerminal {
         let t = CoTerminal(command: command, cwd: cwd)
+        t.onSecureInputChanged = { [weak self] isSecure in
+            guard isSecure else { return }
+            self?.noteNeedsInput(scope: scope, terminalId: t.id)
+        }
+        forwarders[t.id] = t.objectWillChange.sink { [weak self] _ in self?.objectWillChange.send() }
         byScope[scope, default: []].append(t)
         return t
     }
@@ -345,11 +438,23 @@ final class CoTerminalManager: ObservableObject {
         t.terminate()
         byScope[scope]?.removeAll { $0.id == t.id }
         if byScope[scope]?.isEmpty == true { byScope[scope] = nil }
+        if selected[scope] == t.id { selected[scope] = nil }
+        forwarders[t.id] = nil
     }
 
     func closeAll(scope: ObjectIdentifier) {
-        byScope[scope]?.forEach { $0.terminate() }
+        byScope[scope]?.forEach { $0.terminate(); forwarders[$0.id] = nil }
         byScope[scope] = nil
+        selected[scope] = nil
+        // Bug-hunt: this used to leave a stale entry behind. `byScope` keys
+        // on ObjectIdentifier(session) — a memory address malloc can reuse
+        // after the session deallocates (the exact risk this codebase's
+        // other session-scoped stores already avoid by keying on a stable
+        // instanceId instead). A leftover `windowOpen[scope] == false` could
+        // then make a BRAND NEW, unrelated session's floating window
+        // silently start closed the first time its address happens to
+        // collide with a freed one.
+        windowOpen[scope] = nil
     }
 
     // MARK: Tool dispatch (bridge calls this from a MainActor Task)

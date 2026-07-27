@@ -83,6 +83,15 @@ struct V2RootView: View {
                 .frame(maxHeight: .infinity)
             }
 
+            // Floating co-driven terminal window — non-blocking, so it sits
+            // ABOVE ordinary content but YIELDS to any blocking modal below
+            // (permission/ACP/file-peek/add-project all outrank it). Renders
+            // nothing itself when the active session has no co-driven shells.
+            if let session = appState.activeSession {
+                V2FloatingTerminalWindow(session: session)
+                    .zIndex(50)
+            }
+
             // Window-level permission modal — dims the whole window and
             // floats the request front-and-centre so it can't be missed.
             if let session = appState.activeSession, session.pendingPermission != nil {
@@ -258,9 +267,11 @@ struct V2RootView: View {
                         // once the inline delegation card has scrolled past;
                         // empty ⇒ renders nothing.
                         V2SubagentRunsStrip(session: session)
-                        // Co-driven terminal panes (#56) — shared PTYs Claude
-                        // and the user drive together; empty ⇒ renders nothing.
-                        CoTerminalStrip(session: session)
+                        // Co-driven terminal receipt (#56) — the live shell
+                        // itself lives in the floating window (below); this is
+                        // just the "it happened, here's where" row. Empty ⇒
+                        // renders nothing.
+                        V2CoTerminalReceiptStrip(session: session)
                     }
                     // Deliberately NOT keyed by tab id. Keying tore down and
                     // rebuilt the ENTIRE transcript tree on every tab switch —
