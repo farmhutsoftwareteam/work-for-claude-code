@@ -1385,10 +1385,37 @@ enum V2MCPAuth {
             if lower.contains("authorize") || lower.contains("oauth")
                 || lower.contains("/auth") || lower.contains("start-auth"),
                let u = URL(string: str) {
-                return u
+                return deduplicatingQuery(u)
             }
         }
         return nil
+    }
+
+    /// Collapse repeated query parameters, last value winning. Some
+    /// `claude mcp login` flows (seen intermittently on Supabase and other
+    /// PKCE servers) emit an authorize URL whose ENTIRE query is doubled —
+    /// `?client_id=A&…&client_id=A&…`. The authorization server then parses
+    /// each param as an array and rejects the request with
+    /// "Invalid input: expected string, received array" for client_id,
+    /// redirect_uri, scope, state, code_challenge, code_challenge_method and
+    /// resource. We can't fix the upstream emitter, but we own the single
+    /// point where the browser is opened — so sanitise here. Keeping the LAST
+    /// value also survives the older wrap-then-reprint case (a truncated first
+    /// copy followed by the full one). Non-duplicated URLs pass through
+    /// untouched, and re-encoding via URLComponents preserves the
+    /// percent-encoding of values like `resource` (itself a URL).
+    private static func deduplicatingQuery(_ url: URL) -> URL {
+        guard var comps = URLComponents(url: url, resolvingAgainstBaseURL: false),
+              let items = comps.queryItems, items.count > 1 else { return url }
+        var order: [String] = []
+        var lastValue: [String: String?] = [:]
+        for item in items {
+            if lastValue.index(forKey: item.name) == nil { order.append(item.name) }
+            lastValue[item.name] = item.value
+        }
+        guard order.count != items.count else { return url }   // nothing repeated
+        comps.queryItems = order.map { URLQueryItem(name: $0, value: lastValue[$0] ?? nil) }
+        return comps.url ?? url
     }
 
     private static func stripANSI(_ s: String) -> String {
