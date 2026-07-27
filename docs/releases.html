@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Changelog - Atelier</title>
-    <meta name="description" content="Every release of Atelier, dated and itemised. Latest: v2.11.12 (july 27, 2026).">
+    <meta name="description" content="Every release of Atelier, dated and itemised. Latest: v2.11.13 (july 27, 2026).">
     <link rel="canonical" href="https://work.munyamakosa.com/releases.html">
     <link rel="alternate" type="application/rss+xml" title="Atelier appcast" href="https://work.munyamakosa.com/appcast.xml">
 
@@ -184,13 +184,30 @@
         </div>
 
 
+    <article id="v2-11-13" class="release-article" style="display:grid;grid-template-columns:200px 1fr;gap:40px;padding:38px 0;border-bottom:1px solid var(--line);">
+      <div>
+        <div style="font-family:var(--helv);font-weight:500;font-size:22px;letter-spacing:-.01em;">
+          <a href="#v2-11-13" style="color:var(--ink);text-decoration:none;">v2.11.13</a>
+        </div>
+        <div style="font-family:var(--mono);font-size:11px;color:var(--mute);margin-top:6px;">2026 · jul 27</div>
+        <div style="display:inline-block;font-family:var(--mono);font-size:10px;letter-spacing:.08em;text-transform:uppercase;border:1px solid var(--line2);padding:3px 8px;margin-top:12px;">latest</div>
+        <div style="font-family:var(--mono);font-size:10px;color:var(--mute);margin-top:10px;">macOS 15.0+</div>
+      </div>
+      <div class="release-body" style="font-family:var(--helv);font-size:16px;line-height:1.6;color:rgba(27,28,30,.82);">
+        <h3>Voice input: permission + stability fixes</h3>
+        <ul>
+          <li><b>Fixed the microphone permission for voice input.</b> Atelier now asks for microphone access first, so it reliably shows up in System Settings → Privacy → Microphone — and if the toggle that's off is Speech Recognition (a separate one), the banner and the "open System Settings" button now send you to the right pane.</li>
+          <li><b>Fixed a crash when starting dictation.</b> If the mic wasn't ready the instant you started talking, dictation could take the whole app down; it now fails gracefully instead.</li>
+        </ul>
+      </div>
+    </article>
+
     <article id="v2-11-12" class="release-article" style="display:grid;grid-template-columns:200px 1fr;gap:40px;padding:38px 0;border-bottom:1px solid var(--line);">
       <div>
         <div style="font-family:var(--helv);font-weight:500;font-size:22px;letter-spacing:-.01em;">
           <a href="#v2-11-12" style="color:var(--ink);text-decoration:none;">v2.11.12</a>
         </div>
         <div style="font-family:var(--mono);font-size:11px;color:var(--mute);margin-top:6px;">2026 · jul 27</div>
-        <div style="display:inline-block;font-family:var(--mono);font-size:10px;letter-spacing:.08em;text-transform:uppercase;border:1px solid var(--line2);padding:3px 8px;margin-top:12px;">latest</div>
         <div style="font-family:var(--mono);font-size:10px;color:var(--mute);margin-top:10px;">macOS 15.0+</div>
       </div>
       <div class="release-body" style="font-family:var(--helv);font-size:16px;line-height:1.6;color:rgba(27,28,30,.82);">

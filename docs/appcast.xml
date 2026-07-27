@@ -6,6 +6,25 @@
         <description>Updates for Atelier</description>
         <language>en</language>
         <item>
+            <title>Version 2.11.13</title>
+            <pubDate>Mon, 27 Jul 2026 20:09:07 +0400</pubDate>
+            <sparkle:version>88</sparkle:version>
+            <sparkle:shortVersionString>2.11.13</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>15.0</sparkle:minimumSystemVersion>
+            <description><![CDATA[
+                <h3>Atelier 2.11.13 — voice input: permission + stability fixes</h3>
+                <ul>
+                    <li><b>Fixed the microphone permission for voice input.</b> Atelier now asks for microphone access first, so it reliably shows up in System Settings → Privacy → Microphone — and if the toggle that's off is Speech Recognition (a separate one), the banner and the "open System Settings" button now send you to the right pane.</li>
+                    <li><b>Fixed a crash when starting dictation.</b> If the mic wasn't ready the instant you started, dictation could take the whole app down; it now fails gracefully instead.</li>
+                </ul>
+            ]]></description>
+            <enclosure
+                url="https://work.munyamakosa.com/Atelier-2.11.13.dmg"
+                length="15575974"
+                type="application/octet-stream"
+                sparkle:edSignature="t2A16tskGtTOzAhk7/pd/PWxvTRLnH+c/p1MSRxIylizReu8ZPFqKOImfswrb0xKIbBbvEwnBHsRlhdn7QEqAw==" />
+        </item>
+        <item>
             <title>Version 2.11.12</title>
             <pubDate>Mon, 27 Jul 2026 17:31:01 +0400</pubDate>
             <sparkle:version>87</sparkle:version>
