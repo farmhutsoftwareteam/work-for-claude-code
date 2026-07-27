@@ -6,6 +6,28 @@
         <description>Updates for Atelier</description>
         <language>en</language>
         <item>
+            <title>Version 2.11.12</title>
+            <pubDate>Mon, 27 Jul 2026 17:31:01 +0400</pubDate>
+            <sparkle:version>87</sparkle:version>
+            <sparkle:shortVersionString>2.11.12</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>15.0</sparkle:minimumSystemVersion>
+            <description><![CDATA[
+                <h3>Atelier 2.11.12 — voice input, rebuilt</h3>
+                <ul>
+                    <li><b>Dictation is now a real voice surface, with two ways to talk.</b> Tap the mic for hands-free (tap again to stop; your words land in the composer to review, then hit ⏎), or hold the mic — or just hold ⌥ — to push-to-talk, which sends the moment you let go.</li>
+                    <li><b>You can see it hearing you.</b> A live caption strip streams your words in as you speak, with a voice-reactive dot and a blinking caret. The text only drops into the composer once you're done, so a half-heard phrase never clobbers what you already typed.</li>
+                    <li><b>Talk over the agent to correct it.</b> Start speaking while Atelier is working and it interrupts the current turn, so your correction becomes the next message.</li>
+                    <li><b>Clear recovery when something's off</b> — one-tap prompts for when microphone access is off (opens System Settings), when nothing was heard, or when a transcription didn't come through.</li>
+                    <li>Long-form dictation and the offline on-device fallback are preserved, and the same voice surface works in both Claude and Codex sessions.</li>
+                </ul>
+            ]]></description>
+            <enclosure
+                url="https://work.munyamakosa.com/Atelier-2.11.12.dmg"
+                length="15576315"
+                type="application/octet-stream"
+                sparkle:edSignature="iNpgRUR5Dd+rirRt+Hcs8NzwTVN31DFDaOg40JRUAIQBrYHv7hAJmzP4Vs+LaQQVho9AHU73cgLNPJeGVMDdDw==" />
+        </item>
+        <item>
             <title>Version 2.11.11</title>
             <pubDate>Mon, 27 Jul 2026 13:45:19 +0400</pubDate>
             <sparkle:version>86</sparkle:version>
