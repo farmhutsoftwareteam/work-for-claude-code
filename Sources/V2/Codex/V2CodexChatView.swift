@@ -1,4 +1,5 @@
 import SwiftUI
+import AppKit
 import UniformTypeIdentifiers
 
 /// Codex's transcript is V2LiveTranscript, the identical view Claude uses —
@@ -89,7 +90,22 @@ struct V2CodexComposer: View {
             attachments: attachments.items,
             onRemoveAttachment: attachments.remove
         ) {
-            composerBox
+            VStack(alignment: .leading, spacing: 9) {
+                // Voice input surfaces above the box — same as the Claude
+                // composer ("Voice input.dc.html").
+                if dictation.state == .listening || dictation.state == .transcribing {
+                    V2VoiceCaptionStrip(controller: dictation)
+                }
+                if dictation.showsErrorBanner {
+                    V2VoiceErrorBanner(controller: dictation, onAction: voiceBannerAction)
+                }
+                composerBox
+                    .overlay {
+                        if dictation.state == .listening {
+                            Rectangle().stroke(v2.del, lineWidth: 1)
+                        }
+                    }
+            }
         } helper: {
             helperRow
         }
@@ -98,6 +114,9 @@ struct V2CodexComposer: View {
             if draft.isEmpty { draft = session.composerDraft }
             cachedHeight = V2ComposerMetrics.height(for: draft)
             dictation.onUpdate = { draft = $0 }
+            dictation.onSubmit = { send() }
+            dictation.canBargeIn = { isWorking }
+            dictation.onBargeIn = { session.interrupt() }
         }
         .onDisappear {
             // Same reasoning as the Claude composer: the tab going
@@ -121,6 +140,23 @@ struct V2CodexComposer: View {
                 .frame(width: 0, height: 0)
                 .disabled(!isWorking)
         )
+        .modifier(V2OptionPushToTalk(
+            enabled: canType,
+            engage: { dictation.holdStart(currentDraft: draft) },
+            release: { dictation.holdEnd() }
+        ))
+    }
+
+    /// Error-banner action: denied → System Settings; no-speech / failed →
+    /// listen again from the current draft.
+    private func voiceBannerAction() {
+        if dictation.state == .denied {
+            let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Microphone")
+                ?? URL(string: "x-apple.systempreferences:com.apple.preference.security")!
+            NSWorkspace.shared.open(url)
+        } else {
+            dictation.retry(currentDraft: draft)
+        }
     }
 
     private var composerBox: some View {
@@ -152,7 +188,13 @@ struct V2CodexComposer: View {
                 .frame(height: cachedHeight)
 
                 V2ComposerAttachButton(enabled: canType, action: chooseAttachments)
-                V2ComposerDictationButton(controller: dictation, enabled: canType, action: { dictation.toggle(currentDraft: draft) })
+                V2ComposerDictationButton(
+                    controller: dictation,
+                    enabled: canType,
+                    onTap: { dictation.tap(currentDraft: draft) },
+                    onHoldStart: { dictation.holdStart(currentDraft: draft) },
+                    onHoldEnd: { dictation.holdEnd() }
+                )
                 V2ComposerTurnButton(
                     isWorking: isWorking,
                     canSend: canSend,

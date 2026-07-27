@@ -75,13 +75,30 @@ struct V2LiveComposer: View {
             attachments: attachments.items,
             onRemoveAttachment: attachments.remove
         ) {
-            // Slash-command popover floats above the composer when the draft
-            // starts with "/" and no space has been typed yet.
-            ZStack(alignment: .bottomLeading) {
-                composerBox
-                if paletteOpen {
-                    slashPopover
-                        .offset(y: -(cachedHeight + 36))
+            VStack(alignment: .leading, spacing: 9) {
+                // Live voice caption while recording / transcribing, and the
+                // denied / no-speech / failed banners — all above the input,
+                // per "Voice input.dc.html".
+                if dictation.state == .listening || dictation.state == .transcribing {
+                    V2VoiceCaptionStrip(controller: dictation)
+                }
+                if dictation.showsErrorBanner {
+                    V2VoiceErrorBanner(controller: dictation, onAction: voiceBannerAction)
+                }
+                // Slash-command popover floats above the composer when the draft
+                // starts with "/" and no space has been typed yet.
+                ZStack(alignment: .bottomLeading) {
+                    composerBox
+                        .overlay {
+                            // Recording turns the input's border rec (design).
+                            if dictation.state == .listening {
+                                Rectangle().stroke(v2.del, lineWidth: 1)
+                            }
+                        }
+                    if paletteOpen {
+                        slashPopover
+                            .offset(y: -(cachedHeight + 36))
+                    }
                 }
             }
         } helper: {
@@ -93,6 +110,13 @@ struct V2LiveComposer: View {
             // torn down while the tab was off-screen).
             if draft.isEmpty { draft = session.composerDraft }
             dictation.onUpdate = { draft = $0 }
+            // Push-to-talk release-to-send.
+            dictation.onSubmit = { sendCurrent() }
+            // Barge-in: starting voice mid-turn interrupts it so the spoken
+            // correction becomes the next message (lands for review, since the
+            // interrupted turn is still tearing down).
+            dictation.canBargeIn = { isWorking }
+            dictation.onBargeIn = { session.interrupt() }
         }
         .onDisappear {
             // The tab going off-screen tears down this @State/@StateObject
@@ -122,6 +146,13 @@ struct V2LiveComposer: View {
                 .frame(width: 0, height: 0)
                 .disabled(!isWorking)
         )
+        // Hold ⌥ (alone) to push-to-talk; release sends. Aborts on any other
+        // key so ⌥+arrow / ⌥⌫ text navigation is untouched.
+        .modifier(V2OptionPushToTalk(
+            enabled: canType,
+            engage: { dictation.holdStart(currentDraft: draft) },
+            release: { dictation.holdEnd() }
+        ))
         .enableInjection()
     }
 
@@ -204,7 +235,13 @@ struct V2LiveComposer: View {
             .frame(height: cachedHeight)
 
                 V2ComposerAttachButton(enabled: canType, action: openImagePicker)
-                V2ComposerDictationButton(controller: dictation, enabled: canType, action: toggleDictation)
+                V2ComposerDictationButton(
+                    controller: dictation,
+                    enabled: canType,
+                    onTap: { dictation.tap(currentDraft: draft) },
+                    onHoldStart: { dictation.holdStart(currentDraft: draft) },
+                    onHoldEnd: { dictation.holdEnd() }
+                )
                 V2ComposerTurnButton(
                     isWorking: isWorking,
                     canSend: canSend,
@@ -787,8 +824,16 @@ struct V2LiveComposer: View {
 
     // MARK: - Dictation
 
-    private func toggleDictation() {
-        dictation.toggle(currentDraft: draft)
+    /// Error-banner action: a denied mic opens System Settings; no-speech /
+    /// failed retry by listening again from the current draft.
+    private func voiceBannerAction() {
+        if dictation.state == .denied {
+            let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Microphone")
+                ?? URL(string: "x-apple.systempreferences:com.apple.preference.security")!
+            NSWorkspace.shared.open(url)
+        } else {
+            dictation.retry(currentDraft: draft)
+        }
     }
 
     // MARK: - Image picker
