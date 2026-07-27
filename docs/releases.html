@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Changelog - Atelier</title>
-    <meta name="description" content="Every release of Atelier, dated and itemised. Latest: v2.11.10 (july 27, 2026).">
+    <meta name="description" content="Every release of Atelier, dated and itemised. Latest: v2.11.11 (july 27, 2026).">
     <link rel="canonical" href="https://work.munyamakosa.com/releases.html">
     <link rel="alternate" type="application/rss+xml" title="Atelier appcast" href="https://work.munyamakosa.com/appcast.xml">
 
@@ -184,13 +184,31 @@
         </div>
 
 
+    <article id="v2-11-11" class="release-article" style="display:grid;grid-template-columns:200px 1fr;gap:40px;padding:38px 0;border-bottom:1px solid var(--line);">
+      <div>
+        <div style="font-family:var(--helv);font-weight:500;font-size:22px;letter-spacing:-.01em;">
+          <a href="#v2-11-11" style="color:var(--ink);text-decoration:none;">v2.11.11</a>
+        </div>
+        <div style="font-family:var(--mono);font-size:11px;color:var(--mute);margin-top:6px;">2026 · jul 27</div>
+        <div style="display:inline-block;font-family:var(--mono);font-size:10px;letter-spacing:.08em;text-transform:uppercase;border:1px solid var(--line2);padding:3px 8px;margin-top:12px;">latest</div>
+        <div style="font-family:var(--mono);font-size:10px;color:var(--mute);margin-top:10px;">macOS 15.0+</div>
+      </div>
+      <div class="release-body" style="font-family:var(--helv);font-size:16px;line-height:1.6;color:rgba(27,28,30,.82);">
+        <h3>A real shell window, and another MCP sign-in fix</h3>
+        <ul>
+          <li><b>The co-driven terminal is now a proper floating window.</b> When the agent (or you, with ⌘⇧T) opens a shell you both share, it no longer stacks a full terminal pane directly above your composer — it floats in its own draggable panel, with a tab for each concurrent shell and a status badge (running / needs you / done / failed).</li>
+          <li>The window only pulls itself to the front and grabs your keyboard when a shell genuinely needs you to type something (like a password prompt) — everything else stays out of your way until you open it.</li>
+          <li>Fixed another case of MCP sign-in (Supabase and other OAuth providers) failing with a malformed authorization link.</li>
+        </ul>
+      </div>
+    </article>
+
     <article id="v2-11-10" class="release-article" style="display:grid;grid-template-columns:200px 1fr;gap:40px;padding:38px 0;border-bottom:1px solid var(--line);">
       <div>
         <div style="font-family:var(--helv);font-weight:500;font-size:22px;letter-spacing:-.01em;">
           <a href="#v2-11-10" style="color:var(--ink);text-decoration:none;">v2.11.10</a>
         </div>
         <div style="font-family:var(--mono);font-size:11px;color:var(--mute);margin-top:6px;">2026 · jul 27</div>
-        <div style="display:inline-block;font-family:var(--mono);font-size:10px;letter-spacing:.08em;text-transform:uppercase;border:1px solid var(--line2);padding:3px 8px;margin-top:12px;">latest</div>
         <div style="font-family:var(--mono);font-size:10px;color:var(--mute);margin-top:10px;">macOS 15.0+</div>
       </div>
       <div class="release-body" style="font-family:var(--helv);font-size:16px;line-height:1.6;color:rgba(27,28,30,.82);">

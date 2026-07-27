@@ -6,6 +6,26 @@
         <description>Updates for Atelier</description>
         <language>en</language>
         <item>
+            <title>Version 2.11.11</title>
+            <pubDate>Mon, 27 Jul 2026 13:45:19 +0400</pubDate>
+            <sparkle:version>86</sparkle:version>
+            <sparkle:shortVersionString>2.11.11</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>15.0</sparkle:minimumSystemVersion>
+            <description><![CDATA[
+                <h3>Atelier 2.11.11 — a real shell window, and another MCP sign-in fix</h3>
+                <ul>
+                    <li><b>The co-driven terminal is now a proper floating window.</b> When the agent (or you, with ⌘⇧T) opens a shell you both share, it no longer stacks a full terminal pane directly above your composer — it floats in its own draggable panel, with a tab for each concurrent shell and a status badge (running / needs you / done / failed).</li>
+                    <li>The window only pulls itself to the front and grabs your keyboard when a shell genuinely needs you to type something (like a password prompt) — everything else stays out of your way until you open it.</li>
+                    <li>Fixed another case of MCP sign-in (Supabase and other OAuth providers) failing with a malformed authorization link.</li>
+                </ul>
+            ]]></description>
+            <enclosure
+                url="https://work.munyamakosa.com/Atelier-2.11.11.dmg"
+                length="15513071"
+                type="application/octet-stream"
+                sparkle:edSignature="b6AXIWdRwzKS+p7TaaF80i8E8ptZEeO7xCil5wYjVnqkee0Rc300n0H8ICqXhPZLLUSkuDCKTql2yKcDBEwkAw==" />
+        </item>
+        <item>
             <title>Version 2.11.10</title>
             <pubDate>Mon, 27 Jul 2026 12:37:12 +0400</pubDate>
             <sparkle:version>85</sparkle:version>
