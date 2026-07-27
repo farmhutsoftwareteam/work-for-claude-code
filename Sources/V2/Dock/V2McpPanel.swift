@@ -1373,7 +1373,20 @@ enum V2MCPAuth {
     private static func extractAuthURL(_ s: String) -> URL? {
         // Pull every https URL out of the (possibly prefixed/wrapped) output and
         // pick the OAuth one. Matches "Open this URL: https://…/authorize?…".
-        guard let re = try? NSRegularExpression(pattern: "https://[^\\s\"'<>]+") else { return nil }
+        //
+        // Matched against URI-SAFE characters only (RFC 3986 unreserved +
+        // reserved + the '%' used for pct-encoded triplets) rather than
+        // "anything but whitespace/quotes/brackets". Some terminals'
+        // hyperlink escape (OSC 8: ESC ] 8 ; ; <BEL|ESC\>) wraps the printed
+        // URL for clickability, and its CLOSING tag sits directly after the
+        // URL with no whitespace — the old permissive class swallowed those
+        // raw control bytes straight into the "URL", which downstream
+        // (percent-encoded again by deduplicatingQuery) surfaced as literal
+        // "%1B%5D8;;%07" glued onto the real query. A raw ESC/BEL byte is
+        // never legitimate inside a well-formed URL, so simply not matching
+        // control bytes at all fixes this regardless of which escape family
+        // produced them — no need to enumerate/strip every possible sequence.
+        guard let re = try? NSRegularExpression(pattern: "https://[A-Za-z0-9\\-._~:/?#\\[\\]@!$&'()*+,;=%]+") else { return nil }
         let ns = s as NSString
         let matches = re.matches(in: s, range: NSRange(location: 0, length: ns.length))
         for m in matches {
@@ -1406,19 +1419,44 @@ enum V2MCPAuth {
     /// percent-encoding of values like `resource` (itself a URL).
     private static func deduplicatingQuery(_ url: URL) -> URL {
         guard var comps = URLComponents(url: url, resolvingAgainstBaseURL: false),
-              let items = comps.queryItems, items.count > 1 else { return url }
+              let raw = comps.percentEncodedQuery else { return url }
+        let pairs = raw.components(separatedBy: "&")
+        guard pairs.count > 1 else { return url }
+        // Work entirely on the RAW percent-encoded string — never route a
+        // value through URLQueryItem/.queryItems, which decodes-then-
+        // re-encodes on assignment. redirect_uri and resource are THEMSELVES
+        // URLs (full of %3A/%2F), so that round-trip re-escapes the '%' in
+        // their already-encoded form — %3A becomes %253A — which is exactly
+        // what corrupted a legitimate single-encoded URL into a
+        // double-encoded one the authorization server then rejects (or, per
+        // this report, crashes on). Splitting/rejoining the already-encoded
+        // string byte-for-byte can't introduce that: nothing here decodes.
         var order: [String] = []
-        var lastValue: [String: String?] = [:]
-        for item in items {
-            if lastValue.index(forKey: item.name) == nil { order.append(item.name) }
-            lastValue[item.name] = item.value
+        var lastValue: [String: String] = [:]
+        for pair in pairs {
+            let parts = pair.split(separator: "=", maxSplits: 1, omittingEmptySubsequences: false)
+            let key = String(parts[0])
+            let value = parts.count > 1 ? String(parts[1]) : ""
+            if lastValue[key] == nil { order.append(key) }
+            lastValue[key] = value
         }
-        guard order.count != items.count else { return url }   // nothing repeated
-        comps.queryItems = order.map { URLQueryItem(name: $0, value: lastValue[$0] ?? nil) }
+        guard order.count != pairs.count else { return url }   // nothing repeated
+        comps.percentEncodedQuery = order.map { "\($0)=\(lastValue[$0] ?? "")" }.joined(separator: "&")
         return comps.url ?? url
     }
 
     private static func stripANSI(_ s: String) -> String {
-        s.replacingOccurrences(of: "\u{1B}\\[[0-9;?]*[A-Za-z]", with: "", options: .regularExpression)
+        // CSI sequences (cursor movement, color, etc: ESC [ ... letter) —
+        // the original coverage.
+        var out = s.replacingOccurrences(of: "\u{1B}\\[[0-9;?]*[A-Za-z]", with: "", options: .regularExpression)
+        // OSC sequences (ESC ] ... terminated by BEL or ESC \) — terminal
+        // hyperlinks (OSC 8) are the one that bit us: some CLI output wraps
+        // a printed URL in one for clickability, and its closing tag has no
+        // whitespace before it, so leaving OSC unstripped here let a control
+        // byte or two survive into text this app then treats as plain.
+        out = out.replacingOccurrences(
+            of: "\u{1B}\\][^\u{07}\u{1B}]*(?:\u{07}|\u{1B}\\\\)",
+            with: "", options: .regularExpression)
+        return out
     }
 }
