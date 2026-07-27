@@ -5,6 +5,13 @@ Native macOS SwiftUI app wrapping Claude Code. Build/run the dev app:
 requires `xcodegen generate` (the `.xcodeproj` is gitignored, regenerated from
 `project.yml`).
 
+**Releasing:** `./release.sh <version>`. From an agent / co-driven session
+(driving this through the atelier-terminal bridge), run `SKIP_TEST_GATE=1
+./release.sh <version>` — the default Step-1 XCTest gate runs `xcodebuild …
+test`, whose TEST_HOST is Atelier.app, so it launches a SECOND Atelier
+instance and can tear down the running session (and the bridge) mid-release.
+Compile-verify only; run the test suite from a normal shell instead.
+
 ## Performance — must follow (full detail + checklist in PERFORMANCE.md)
 
 The hot path is a transcript that streams 50–100 tokens/sec while the window
