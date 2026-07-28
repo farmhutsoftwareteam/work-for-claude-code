@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Changelog - Atelier</title>
-    <meta name="description" content="Every release of Atelier, dated and itemised. Latest: v2.11.13 (july 27, 2026).">
+    <meta name="description" content="Every release of Atelier, dated and itemised. Latest: v2.11.14 (july 28, 2026).">
     <link rel="canonical" href="https://work.munyamakosa.com/releases.html">
     <link rel="alternate" type="application/rss+xml" title="Atelier appcast" href="https://work.munyamakosa.com/appcast.xml">
 
@@ -184,13 +184,32 @@
         </div>
 
 
+    <article id="v2-11-14" class="release-article" style="display:grid;grid-template-columns:200px 1fr;gap:40px;padding:38px 0;border-bottom:1px solid var(--line);">
+      <div>
+        <div style="font-family:var(--helv);font-weight:500;font-size:22px;letter-spacing:-.01em;">
+          <a href="#v2-11-14" style="color:var(--ink);text-decoration:none;">v2.11.14</a>
+        </div>
+        <div style="font-family:var(--mono);font-size:11px;color:var(--mute);margin-top:6px;">2026 · jul 28</div>
+        <div style="display:inline-block;font-family:var(--mono);font-size:10px;letter-spacing:.08em;text-transform:uppercase;border:1px solid var(--line2);padding:3px 8px;margin-top:12px;">latest</div>
+        <div style="font-family:var(--mono);font-size:10px;color:var(--mute);margin-top:10px;">macOS 15.0+</div>
+      </div>
+      <div class="release-body" style="font-family:var(--helv);font-size:16px;line-height:1.6;color:rgba(27,28,30,.82);">
+        <h3>MCP recovery, and a fix for lost chats</h3>
+        <ul>
+          <li><b>Fixed the app and a dev build clobbering each other's open chats.</b> Your workspace — which chats you have open — is now saved per build, so running a development build alongside the shipped app no longer overwrites each other's tabs.</li>
+          <li><b>A failed MCP server is no longer a dead end.</b> When a server (Supabase, Kapso, and the like) shows “failed,” you can Reconnect it right from the panel, and a “why?” button shows the actual reason. If it just needs sign-in, that option appears after it retries.</li>
+          <li><b>A server that drops mid-conversation now says so</b> — a one-line note in the transcript instead of silently going dark until you open the MCP panel.</li>
+          <li>A server stuck “starting” too long is now treated as a reconnectable failure rather than an endless spinner.</li>
+        </ul>
+      </div>
+    </article>
+
     <article id="v2-11-13" class="release-article" style="display:grid;grid-template-columns:200px 1fr;gap:40px;padding:38px 0;border-bottom:1px solid var(--line);">
       <div>
         <div style="font-family:var(--helv);font-weight:500;font-size:22px;letter-spacing:-.01em;">
           <a href="#v2-11-13" style="color:var(--ink);text-decoration:none;">v2.11.13</a>
         </div>
         <div style="font-family:var(--mono);font-size:11px;color:var(--mute);margin-top:6px;">2026 · jul 27</div>
-        <div style="display:inline-block;font-family:var(--mono);font-size:10px;letter-spacing:.08em;text-transform:uppercase;border:1px solid var(--line2);padding:3px 8px;margin-top:12px;">latest</div>
         <div style="font-family:var(--mono);font-size:10px;color:var(--mute);margin-top:10px;">macOS 15.0+</div>
       </div>
       <div class="release-body" style="font-family:var(--helv);font-size:16px;line-height:1.6;color:rgba(27,28,30,.82);">

@@ -6,6 +6,27 @@
         <description>Updates for Atelier</description>
         <language>en</language>
         <item>
+            <title>Version 2.11.14</title>
+            <pubDate>Tue, 28 Jul 2026 11:34:16 +0400</pubDate>
+            <sparkle:version>89</sparkle:version>
+            <sparkle:shortVersionString>2.11.14</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>15.0</sparkle:minimumSystemVersion>
+            <description><![CDATA[
+                <h3>Atelier 2.11.14 — MCP recovery, and a fix for lost chats</h3>
+                <ul>
+                    <li><b>Fixed the app and a dev build clobbering each other's open chats.</b> Your workspace (which chats you have open) is now saved per build, so running a development build alongside the shipped app no longer overwrites each other's tabs.</li>
+                    <li><b>A failed MCP server is no longer a dead end.</b> When a server (Supabase, Kapso, and the like) shows “failed,” you can Reconnect it right from the panel, and a “why?” button shows the actual reason. If it just needs sign-in, that option appears after it retries.</li>
+                    <li><b>A server that drops mid-conversation now says so</b> — a one-line note in the transcript instead of silently going dark until you open the MCP panel.</li>
+                    <li>A server stuck “starting” too long is now treated as a reconnectable failure rather than an endless spinner.</li>
+                </ul>
+            ]]></description>
+            <enclosure
+                url="https://work.munyamakosa.com/Atelier-2.11.14.dmg"
+                length="15625733"
+                type="application/octet-stream"
+                sparkle:edSignature="NTlcjHXiG3j3noa+TgiAjtIUlTjgkKkHjL3b968B/ULKvOrP6OeY9zSyioI6rWF9cEIGhU1GBH20uZIcxgK6Dw==" />
+        </item>
+        <item>
             <title>Version 2.11.13</title>
             <pubDate>Mon, 27 Jul 2026 20:09:07 +0400</pubDate>
             <sparkle:version>88</sparkle:version>
