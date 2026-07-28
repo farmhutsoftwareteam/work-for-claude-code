@@ -949,7 +949,7 @@ final class V2AppState: ObservableObject {
     /// they'll pick the server up whenever they next start. Returns how many
     /// live sessions were reconnected.
     @discardableResult
-    func reconnectSessions(inProject projectCwd: String, afterAuthOf serverName: String) -> Int {
+    func reconnectSessions(inProject projectCwd: String, afterAuthOf serverName: String, note: String? = nil) -> Int {
         guard let binary = claudeBinary else { return 0 }
         let target = URL(fileURLWithPath: projectCwd).standardizedFileURL.path
         var count = 0
@@ -972,7 +972,7 @@ final class V2AppState: ObservableObject {
             let mode = defaultPermissionMode
             restartAfterStop(tabId: tab.id, session: session) {
                 session.start(cwd: cwd, claudeURL: binary, resumeId: resume, model: model, permissionMode: mode)
-                session.appendSystemNote("\(serverName) signed in — reconnected.")
+                session.appendSystemNote(note ?? "\(serverName) signed in — reconnected.")
             }
             count += 1
         }

@@ -95,6 +95,8 @@ struct V2McpPanel: View {
     @State private var authHandles: [String: V2AuthHandle] = [:]   // cancel handles
     @State private var authFailedServer: String?   // last server whose sign-in failed
     @State private var authNote: String?
+    @State private var reconnecting: Set<String> = []   // servers mid-reconnect
+    @State private var stalledServers: Set<String> = []   // "starting" past the timeout
     /// "Available everywhere" starts collapsed — project-scoped servers are
     /// the ones actually in play for whatever you're looking at (user
     /// feedback, 2026-07-14).
@@ -1019,7 +1021,22 @@ struct V2McpPanel: View {
         // the view, re-arms on session swap via instanceId (never
         // ObjectIdentifier — the address-reuse bug).
         .task(id: session.instanceId) {
+            // Track how long each server has been "starting" so a wedged one
+            // stops reading as normal startup forever — after 30s it's marked
+            // stalled (a reconnectable failure), closing the "pending never
+            // times out" gap.
+            var startingSince: [String: Date] = [:]
             while !Task.isCancelled {
+                let now = Date()
+                var stalledNow: Set<String> = []
+                var stillStarting: [String: Date] = [:]
+                for s in session.mcpServers where V2MCPStatus(raw: s.status) == .starting {
+                    let since = startingSince[s.name] ?? now
+                    stillStarting[s.name] = since
+                    if now.timeIntervalSince(since) > 30 { stalledNow.insert(s.name) }
+                }
+                startingSince = stillStarting
+                if stalledServers != stalledNow { stalledServers = stalledNow }
                 session.refreshMCPStatus()
                 try? await Task.sleep(nanoseconds: 5_000_000_000)
             }
@@ -1029,19 +1046,15 @@ struct V2McpPanel: View {
     // MARK: - Row
 
     private func serverRow(_ server: MCPServerInfo, memberLabel: String? = nil, indented: Bool = false) -> some View {
-        let status = (server.status ?? "unknown").lowercased()
-        let isConnected = status == "connected" || status == "ready"
-        let needsAuth = status == "needs-auth"
-        let isFailed = status == "failed" || status == "error"
+        let st = V2MCPStatus(raw: server.status)
 
         return HStack(spacing: 11) {
             if indented {
                 Spacer().frame(width: 16)
             }
-            // Brand glyph tinted by live status: ink = connected, faint =
-            // pending/needs-auth, red = failed.
-            V2ServiceLogo(name: server.name, size: indented ? 14 : 17,
-                          tint: isConnected ? v2.ink : (isFailed ? v2.del : v2.faint))
+            // Brand glyph tinted by live status: ink = connected, red = failed,
+            // faint = starting/unknown.
+            V2ServiceLogo(name: server.name, size: indented ? 14 : 17, tint: glyphTint(st))
 
             VStack(alignment: .leading, spacing: 2) {
                 Text(memberLabel ?? displayName(server.name))
@@ -1054,18 +1067,12 @@ struct V2McpPanel: View {
                     .lineLimit(1).truncationMode(.tail)
             }
             Spacer()
-            if needsAuth {
-                authButton(server.name)
-            } else {
-                Text(statusLabel(status))
-                    .font(.system(size: 11, design: .monospaced))
-                    .foregroundColor(statusColor(isConnected: isConnected, needsAuth: needsAuth, failed: isFailed))
-            }
+            liveRowAction(server.name, status: st)
         }
         .padding(.horizontal, 18)
         .padding(.vertical, 13)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .opacity(isFailed ? 0.55 : 1.0)
+        .opacity(st == .failed || st == .disabled ? 0.7 : 1.0)
         .overlay(alignment: .bottom) {
             Rectangle().fill(v2.line).frame(height: 1)
         }
@@ -1125,21 +1132,106 @@ struct V2McpPanel: View {
         }
     }
 
-    private func statusLabel(_ status: String) -> String {
+    /// Row trailing content: a recovery ACTION when there's one to offer
+    /// (sign in for needs-auth, reconnect for a hard failure), otherwise the
+    /// plain status label. `failed` used to be a dead end — reconnect restarts
+    /// the session so the server re-attempts; if the real problem is auth,
+    /// claude then reports needs-auth and the sign-in button appears next poll.
+    @ViewBuilder
+    private func liveRowAction(_ name: String, status: V2MCPStatus) -> some View {
+        let stalled = status == .starting && stalledServers.contains(name)
         switch status {
-        case "connected", "ready":   return "on"
-        case "pending":              return "starting"
-        case "needs-auth":           return "needs auth"
-        case "failed", "error":      return "failed"
-        default:                     return status
+        case .needsAuth:
+            authButton(name)
+        case .failed:
+            failedActions(name)
+        case .starting where stalled:
+            // Been "starting" too long — treat it as a reconnectable failure
+            // rather than an eternal spinner.
+            failedActions(name)
+        default:
+            Text(status.label)
+                .font(.system(size: 11, design: .monospaced))
+                .foregroundColor(statusTint(status))
         }
     }
 
-    private func statusColor(isConnected: Bool, needsAuth: Bool, failed: Bool) -> Color {
-        if failed       { return v2.del }
-        if needsAuth    { return v2.del.opacity(0.75) }
-        if isConnected  { return v2.mute }
-        return v2.faint
+    /// A failed/stalled server offers both "why?" (fetch the reason) and
+    /// "reconnect" — no longer a dead end.
+    private func failedActions(_ name: String) -> some View {
+        HStack(spacing: 6) {
+            whyButton(name)
+            reconnectButton(name)
+        }
+    }
+
+    private func whyButton(_ name: String) -> some View {
+        Button { diagnose(name) } label: {
+            Text("why?")
+                .font(.system(size: 10.5, design: .monospaced))
+                .foregroundColor(v2.mute)
+                .padding(.horizontal, 9).padding(.vertical, 4)
+                .overlay(Rectangle().stroke(v2.line2, lineWidth: 1))
+        }
+        .buttonStyle(.plain)
+        .help("Show why this server failed (runs `claude mcp get`).")
+    }
+
+    /// Pull the failure reason on demand — the status poll only carries
+    /// name+status, so "why" has to be fetched. Surfaces in the note banner.
+    private func diagnose(_ name: String) {
+        guard let bin = appState.claudeBinary else { authNote = "Can't find the claude binary."; return }
+        let cwd = projectCwd ?? NSHomeDirectory()
+        authNote = "\(name): checking why…"
+        Task {
+            let reason = await V2MCPDiagnose.reason(claudeBinary: bin, name: name, cwd: cwd)
+            let clean = String(reason.suffix(280))
+            authNote = "\(name): \(clean.isEmpty ? "no details reported by `claude mcp get`." : clean)"
+        }
+    }
+
+    private func glyphTint(_ s: V2MCPStatus) -> Color {
+        switch s {
+        case .connected: return v2.ink
+        case .failed:    return v2.del
+        case .needsAuth: return v2.del.opacity(0.75)
+        default:         return v2.faint
+        }
+    }
+
+    private func statusTint(_ s: V2MCPStatus) -> Color {
+        switch s {
+        case .connected: return v2.mute
+        case .failed:    return v2.del
+        case .needsAuth: return v2.del.opacity(0.75)
+        default:         return v2.faint
+        }
+    }
+
+    private func reconnectButton(_ name: String) -> some View {
+        let busy = reconnecting.contains(name)
+        return Button { if !busy { reconnectServer(name) } } label: {
+            Text(busy ? "reconnecting…" : "reconnect")
+                .font(.system(size: 10.5, design: .monospaced))
+                .foregroundColor(busy ? v2.mute : v2.del)
+                .padding(.horizontal, 9).padding(.vertical, 4)
+                .background(v2.card)
+                .overlay(Rectangle().stroke(busy ? v2.line2 : v2.del, lineWidth: 1))
+        }
+        .buttonStyle(.plain)
+        .help("Reconnect this server (restarts the session). If it actually needs sign-in, that option appears after it retries.")
+    }
+
+    /// Restart the project's live session(s) so a failed server re-attempts
+    /// its connection — the same reconnect path as post-sign-in.
+    private func reconnectServer(_ name: String) {
+        let cwd = projectCwd ?? NSHomeDirectory()
+        reconnecting.insert(name)
+        let n = appState.reconnectSessions(inProject: cwd, afterAuthOf: name, note: "\(name): reconnecting to retry…")
+        authNote = n > 0
+            ? "\(name): reconnecting your session to retry…"
+            : "\(name): no live session here to reconnect — it'll retry on your next session."
+        DispatchQueue.main.asyncAfter(deadline: .now() + 3) { reconnecting.remove(name) }
     }
 
     /// MCP names from system/init can be raw ("filesystem") or qualified
@@ -1166,7 +1258,72 @@ struct V2McpPanel: View {
     }
 }
 
-// MARK: - MCP OAuth via `claude mcp login` (hidden PTY)
+// MARK: - MCP status + OAuth
+
+/// Normalised MCP connection condition. Collapses the raw status strings
+/// claude's `mcp_status` control response emits (plus the nil/unknown gaps)
+/// into the states the UI actually acts on, so every row — and both the Claude
+/// and Codex panels — reasons about the same set.
+enum V2MCPStatus: Equatable {
+    case connected    // "connected" / "ready"
+    case starting     // "pending" / "connecting" — still coming up
+    case needsAuth    // OAuth sign-in required
+    case failed       // hard error: exited non-zero / unreachable
+    case disabled     // configured but turned off
+    case unknown      // nil / unrecognised
+
+    init(raw: String?) {
+        switch (raw ?? "").lowercased() {
+        case "connected", "ready":                                        self = .connected
+        case "pending", "starting", "connecting":                         self = .starting
+        case "needs-auth", "needs_auth", "needs auth", "unauthenticated":  self = .needsAuth
+        case "failed", "error":                                           self = .failed
+        case "disabled", "off":                                           self = .disabled
+        default:                                                          self = .unknown
+        }
+    }
+
+    var label: String {
+        switch self {
+        case .connected: return "on"
+        case .starting:  return "starting"
+        case .needsAuth: return "needs auth"
+        case .failed:    return "failed"
+        case .disabled:  return "off"
+        case .unknown:   return "unknown"
+        }
+    }
+}
+
+/// Runs `claude mcp get <name>` to fetch WHY a server failed — the mcp_status
+/// poll only carries name+status, so the reason has to be pulled on demand.
+/// Runs off the main thread (the subprocess can take a moment).
+enum V2MCPDiagnose {
+    static func reason(claudeBinary: URL, name: String, cwd: String) async -> String {
+        await withCheckedContinuation { cont in
+            DispatchQueue.global(qos: .userInitiated).async {
+                let p = Process()
+                p.executableURL = claudeBinary
+                p.arguments = ["mcp", "get", name]
+                p.currentDirectoryURL = URL(fileURLWithPath: cwd)
+                let pipe = Pipe()
+                p.standardOutput = pipe
+                p.standardError = pipe
+                do { try p.run() } catch {
+                    cont.resume(returning: "couldn't run claude: \(error.localizedDescription)")
+                    return
+                }
+                let data = pipe.fileHandleForReading.readDataToEndOfFile()
+                p.waitUntilExit()
+                var out = String(data: data, encoding: .utf8) ?? ""
+                // Strip ANSI so the note banner stays readable.
+                out = out.replacingOccurrences(
+                    of: "\u{1B}\\[[0-9;]*[A-Za-z]", with: "", options: .regularExpression)
+                cont.resume(returning: out.trimmingCharacters(in: .whitespacesAndNewlines))
+            }
+        }
+    }
+}
 
 /// Outcome of an MCP sign-in attempt, so the UI can say exactly what happened
 /// and offer the right next step (retry / cancel / manual terminal).

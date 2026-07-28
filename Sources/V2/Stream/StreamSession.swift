@@ -1822,10 +1822,30 @@ final class StreamSession: ObservableObject, V2TranscriptSource {
             if cr.response.requestId.hasPrefix("mcp_status"),
                cr.response.subtype == "success",
                let arr = cr.response.response?.dig("mcpServers")?.asArray {
-                mcpServers = arr.compactMap { m in
+                let updated = arr.compactMap { m -> MCPServerInfo? in
                     guard let name = m.dig("name")?.asString else { return nil }
                     return MCPServerInfo(name: name, status: m.dig("status")?.asString)
                 }
+                // Surface a server that JUST regressed (connected/starting →
+                // failed/needs-auth) as a one-line transcript note — otherwise
+                // a mid-session MCP dropping is invisible unless you happen to
+                // open the MCP panel. Only on the transition, and only once we
+                // have a prior snapshot (skips the first poll after init).
+                if !mcpServers.isEmpty {
+                    let prior = Dictionary(mcpServers.map { ($0.name, V2MCPStatus(raw: $0.status)) },
+                                           uniquingKeysWith: { first, _ in first })
+                    for s in updated {
+                        let now = V2MCPStatus(raw: s.status)
+                        guard now == .failed || now == .needsAuth,
+                              let was = prior[s.name], was == .connected || was == .starting
+                        else { continue }
+                        let what = now == .needsAuth ? "needs sign-in" : "disconnected"
+                        transcript.append(.systemNote(
+                            kind: .info,
+                            text: "MCP server “\(s.name)” \(what) — open the MCP panel to reconnect."))
+                    }
+                }
+                mcpServers = updated
             }
             // Reply to refreshUsage() — the typed plan-usage meters. A nil
             // parse (API-key auth reports rate_limits_available: false)
