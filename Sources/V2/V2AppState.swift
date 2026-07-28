@@ -571,8 +571,20 @@ final class V2AppState: ObservableObject {
     }
     private static let workspaceKey = "v2.workspace"
     private static var workspaceFileURL: URL {
-        FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
-            .appendingPathComponent("com.munyamakosa.work", isDirectory: true)
+        // Key the workspace file by the ACTUAL running bundle id. Debug runs as
+        // com.munyamakosa.work.dev and the shipped app as com.munyamakosa.work;
+        // hardcoding the prod id here made BOTH builds read/write the SAME
+        // v2-workspace.json, so running the dev build and the shipped app on one
+        // Mac clobbered each other's saved tabs. Its UserDefaults counterpart is
+        // already per-bundle-id — this aligns the file with it. Prod's path is
+        // unchanged (its bundle id IS com.munyamakosa.work), so no migration.
+        //
+        // NOTE: other app-support data (pricing/usage caches, attachments) stays
+        // under the fixed prod folder on purpose — that data is build-agnostic
+        // and worth sharing. The workspace (which tabs YOU had open) is not.
+        let bundleID = Bundle.main.bundleIdentifier ?? "com.munyamakosa.work"
+        return FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+            .appendingPathComponent(bundleID, isDirectory: true)
             .appendingPathComponent("v2-workspace.json")
     }
 
