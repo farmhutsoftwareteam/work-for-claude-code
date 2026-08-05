@@ -33,7 +33,7 @@ struct MCPMarketplaceView: View {
                 VStack(alignment: .leading, spacing: 2) {
                     Text("MCP Marketplace")
                         .font(.system(size: 15, weight: .semibold))
-                    Text("Browse the official Model Context Protocol registry")
+                    Text("Popular servers, plus the official registry")
                         .font(.system(size: 11))
                         .foregroundStyle(.tertiary)
                 }
@@ -83,6 +83,10 @@ struct MCPMarketplaceView: View {
             Group {
                 if let err = errorMessage {
                     errorState(err)
+                } else if query.isEmpty {
+                    // Curated popular servers, always available (offline too),
+                    // above whatever the registry returns for the empty query.
+                    presetsAndResults
                 } else if results.isEmpty && !isLoading {
                     emptyState
                 } else {
@@ -116,6 +120,49 @@ struct MCPMarketplaceView: View {
             }
             .padding(16)
         }
+    }
+
+    /// Curated presets first (one-click, offline), then any registry hits for
+    /// the empty query.
+    private var presetsAndResults: some View {
+        ScrollView {
+            LazyVStack(alignment: .leading, spacing: 10) {
+                Text("POPULAR")
+                    .font(.system(size: 10, weight: .semibold)).kerning(1)
+                    .foregroundStyle(.tertiary)
+                ForEach(MCPPreset.catalog) { presetRow($0) }
+                if !results.isEmpty {
+                    Text("FROM THE REGISTRY")
+                        .font(.system(size: 10, weight: .semibold)).kerning(1)
+                        .foregroundStyle(.tertiary)
+                        .padding(.top, 10)
+                    ForEach(results) { mcpCard($0) }
+                }
+            }
+            .padding(16)
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+    }
+
+    private func presetRow(_ p: MCPPreset) -> some View {
+        HStack(alignment: .top, spacing: 12) {
+            Image(systemName: p.remote ? "link" : "terminal")
+                .font(.system(size: 12))
+                .foregroundStyle(.secondary)
+                .frame(width: 18)
+            VStack(alignment: .leading, spacing: 3) {
+                Text(p.title).font(.system(size: 14, weight: .semibold))
+                Text(p.subtitle)
+                    .font(.system(size: 12))
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            Spacer(minLength: 12)
+            V2ChipButton(label: "add", prominent: true) { onInstall(p.draft) }
+        }
+        .padding(12)
+        .background(Color.primary.opacity(0.03))
+        .overlay(Rectangle().stroke(Color.primary.opacity(0.10), lineWidth: 1))
     }
 
     @ViewBuilder
