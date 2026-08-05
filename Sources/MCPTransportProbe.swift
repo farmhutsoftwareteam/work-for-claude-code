@@ -119,3 +119,87 @@ enum MCPTransportProbe {
         return (try? JSONSerialization.data(withJSONObject: obj)) ?? Data("{}".utf8)
     }()
 }
+
+// MARK: - Add-time connection test (stage 3)
+
+extension MCPTransportProbe {
+
+    /// Outcome of a live pre-save connection test — so a bad config is caught
+    /// at add-time instead of failing silently at connect time (the anti-
+    /// pattern the deep-research report found even in Claude Code itself).
+    enum Health: Equatable {
+        case ok(String)        // reachable and spoke MCP, or a resolvable command
+        case needsAuth         // reachable but wants sign-in (401/403) — not a failure
+        case failed(String)    // couldn't connect / not resolvable — human-readable reason
+    }
+
+    /// Test a server before it's written. Remote → POST `initialize` and read
+    /// the status (401/403 means a healthy server that simply needs sign-in).
+    /// Local → confirm the command actually resolves on PATH; a full
+    /// spawn+handshake is deliberately NOT done, since `npx …` would download
+    /// and run the server as a side effect of merely *adding* it.
+    static func test(_ transport: MCPServer.Transport, timeout: TimeInterval = 6) async -> Health {
+        switch transport {
+        case .http(let u), .sse(let u): return await testRemote(u, timeout: timeout)
+        case .stdio(let command, _):    return await testCommand(command)
+        case .sdk, .unknown:            return .failed("This transport type can't be tested here.")
+        }
+    }
+
+    private static func testRemote(_ urlStr: String, timeout: TimeInterval) async -> Health {
+        guard looksRemote(urlStr), let url = URL(string: urlStr) else {
+            return .failed("That doesn't look like a valid https URL.")
+        }
+        let session = URLSession(configuration: config(timeout))
+        defer { session.invalidateAndCancel() }
+        var post = URLRequest(url: url)
+        post.httpMethod = "POST"
+        post.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        post.setValue("application/json, text/event-stream", forHTTPHeaderField: "Accept")
+        post.httpBody = initializeBody
+        guard let (_, resp) = try? await session.bytes(for: post),
+              let http = resp as? HTTPURLResponse else {
+            return .failed("Couldn't reach the server — check the URL and your connection.")
+        }
+        switch http.statusCode {
+        case 200...299: return .ok("Server responded to the MCP handshake.")
+        case 401, 403:  return .needsAuth
+        case 404:       return .failed("No MCP endpoint at that URL (404).")
+        case 405:       return .failed("That endpoint doesn't accept the MCP handshake (405).")
+        default:        return .failed("Server returned HTTP \(http.statusCode).")
+        }
+    }
+
+    private static func testCommand(_ command: String) async -> Health {
+        let cmd = command.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !cmd.isEmpty else { return .failed("No command to run.") }
+        if cmd.hasPrefix("/") {
+            return FileManager.default.isExecutableFile(atPath: cmd)
+                ? .ok("Command found.")
+                : .failed("No executable at \(cmd).")
+        }
+        // Resolve through a login shell's PATH (npx/uvx/node live there, not in
+        // this process's minimal environment).
+        return await withCheckedContinuation { cont in
+            DispatchQueue.global(qos: .userInitiated).async {
+                let p = Process()
+                p.executableURL = URL(fileURLWithPath: "/bin/zsh")
+                p.arguments = ["-lc", "command -v \(shellQuote(cmd))"]
+                p.standardOutput = Pipe()
+                p.standardError = Pipe()
+                do { try p.run() } catch {
+                    cont.resume(returning: .failed("Couldn't check the command: \(error.localizedDescription)"))
+                    return
+                }
+                p.waitUntilExit()
+                cont.resume(returning: p.terminationStatus == 0
+                    ? .ok("Command “\(cmd)” found on your PATH.")
+                    : .failed("Command not found on your PATH: \(cmd). Is it installed?"))
+            }
+        }
+    }
+
+    private static func shellQuote(_ s: String) -> String {
+        "'" + s.replacingOccurrences(of: "'", with: "'\\''") + "'"
+    }
+}

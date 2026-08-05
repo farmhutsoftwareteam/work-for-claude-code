@@ -54,6 +54,11 @@ struct MCPEditor: View {
     @State private var smartInput = ""
     @State private var detectedTransport: MCPTransportProbe.Result?
     @State private var showAdvanced = false
+    /// Live add-time connection test (stage 3) — reachability + MCP handshake
+    /// for remote, PATH resolution for a command. Cleared whenever the config
+    /// changes so a stale ✓ never lingers.
+    @State private var testResult: MCPTransportProbe.Health?
+    @State private var testing = false
 
     enum TransportType: String, CaseIterable {
         case stdio, http, sse
@@ -199,8 +204,16 @@ struct MCPEditor: View {
             // Footer — Atelier chip, not native .borderedProminent (the
             // rounded blue Apple button reads as a foreign object in the
             // graphite/ivory system; see V2ChipButton's doc comment).
-            HStack {
+            HStack(spacing: 8) {
+                if testing {
+                    ProgressView().controlSize(.small)
+                    Text("testing…").font(.system(size: 11)).foregroundStyle(.secondary)
+                } else if let testResult {
+                    testResultLabel(testResult)
+                }
                 Spacer()
+                V2ChipButton(label: "test", action: runTest)
+                    .disabled(testing || isSaving)
                 if isSaving {
                     ProgressView().controlSize(.small)
                         .padding(.trailing, 6)
@@ -249,6 +262,8 @@ struct MCPEditor: View {
                 draft.env = [:]
             }
         }
+        // A live test result goes stale the moment the config changes.
+        .onChange(of: draft.transport) { _, _ in testResult = nil }
     }
 
     // MARK: - Form sections
@@ -677,6 +692,34 @@ struct MCPEditor: View {
         if let cwd = tag.stripPrefix("local:")   { return .local(cwd: cwd) }
         if let cwd = tag.stripPrefix("project:") { return .project(cwd: cwd) }
         return nil
+    }
+
+    // MARK: - Test connection (stage 3)
+
+    private func runTest() {
+        guard !testing, !isSaving else { return }
+        testing = true
+        testResult = nil
+        let transport = draft.transport
+        Task { @MainActor in
+            testResult = await MCPTransportProbe.test(transport)
+            testing = false
+        }
+    }
+
+    @ViewBuilder
+    private func testResultLabel(_ h: MCPTransportProbe.Health) -> some View {
+        switch h {
+        case .ok(let msg):
+            Label(msg, systemImage: "checkmark.circle.fill")
+                .foregroundStyle(.green).font(.system(size: 11)).lineLimit(2)
+        case .needsAuth:
+            Label("Reachable — it'll ask you to sign in after you add it.", systemImage: "person.crop.circle.badge.questionmark")
+                .foregroundStyle(.orange).font(.system(size: 11)).lineLimit(2)
+        case .failed(let reason):
+            Label(reason, systemImage: "xmark.circle.fill")
+                .foregroundStyle(.red).font(.system(size: 11)).lineLimit(2)
+        }
     }
 
     // MARK: - Save
