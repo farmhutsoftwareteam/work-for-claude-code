@@ -665,12 +665,21 @@ struct MCPEditor: View {
             .disabled(isEditMode)
             .help(isEditMode ? "Scope can't change in edit mode — delete and re-add to move" : "")
 
-            // Plain-language hint clarifying what each scope does.
+            // Plain-language hint clarifying what each scope does. Project
+            // scope is louder (orange): it's the one scope that commits to git
+            // and is shared with the team, so a mistake there actually leaks.
             Text(scopeHint)
                 .font(.system(size: 10))
-                .foregroundStyle(.tertiary)
+                .foregroundStyle(isSharedScope ? Color.orange : Color.secondary.opacity(0.6))
                 .fixedSize(horizontal: false, vertical: true)
         }
+    }
+
+    /// Project scope is the only one that leaves your machine — worth a louder
+    /// treatment in the UI.
+    private var isSharedScope: Bool {
+        if case .project = scope { return true }
+        return false
     }
 
     private var scopeHint: String {
@@ -680,7 +689,7 @@ struct MCPEditor: View {
         case .local:
             return "Available only in this project, only to you. This is what `claude mcp add` does by default."
         case .project:
-            return "Available to anyone who clones this repo. Commits to .mcp.json."
+            return "Shared with your whole team — commits to .mcp.json in the repo. Anyone who clones it gets this server, and Claude asks each person to approve it before first use. Don't put a literal secret here; use a ${ENV_VAR} reference."
         }
     }
 
