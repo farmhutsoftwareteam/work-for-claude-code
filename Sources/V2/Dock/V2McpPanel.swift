@@ -97,6 +97,7 @@ struct V2McpPanel: View {
     @State private var authNote: String?
     @State private var reconnecting: Set<String> = []   // servers mid-reconnect
     @State private var stalledServers: Set<String> = []   // "starting" past the timeout
+    @State private var pendingApproval: Set<String> = []   // project (.mcp.json) servers awaiting approval
     /// "Available everywhere" starts collapsed — project-scoped servers are
     /// the ones actually in play for whatever you're looking at (user
     /// feedback, 2026-07-14).
@@ -1021,6 +1022,7 @@ struct V2McpPanel: View {
         // the view, re-arms on session swap via instanceId (never
         // ObjectIdentifier — the address-reuse bug).
         .task(id: session.instanceId) {
+            await refreshApproval()
             // Track how long each server has been "starting" so a wedged one
             // stops reading as normal startup forever — after 30s it's marked
             // stalled (a reconnectable failure), closing the "pending never
@@ -1140,19 +1142,26 @@ struct V2McpPanel: View {
     @ViewBuilder
     private func liveRowAction(_ name: String, status: V2MCPStatus) -> some View {
         let stalled = status == .starting && stalledServers.contains(name)
-        switch status {
-        case .needsAuth:
-            authButton(name)
-        case .failed:
-            failedActions(name)
-        case .starting where stalled:
-            // Been "starting" too long — treat it as a reconnectable failure
-            // rather than an eternal spinner.
-            failedActions(name)
-        default:
-            Text(status.label)
-                .font(.system(size: 11, design: .monospaced))
-                .foregroundColor(statusTint(status))
+        if pendingApproval.contains(name) {
+            // Project server (.mcp.json) awaiting Claude's approval — the real
+            // fix is approve, not sign-in (which is what this used to wrongly
+            // offer for a project server, and which could never work).
+            approveButton(name)
+        } else {
+            switch status {
+            case .needsAuth:
+                authButton(name)
+            case .failed:
+                failedActions(name)
+            case .starting where stalled:
+                // Been "starting" too long — treat it as a reconnectable failure
+                // rather than an eternal spinner.
+                failedActions(name)
+            default:
+                Text(status.label)
+                    .font(.system(size: 11, design: .monospaced))
+                    .foregroundColor(statusTint(status))
+            }
         }
     }
 
@@ -1232,6 +1241,50 @@ struct V2McpPanel: View {
             ? "\(name): reconnecting your session to retry…"
             : "\(name): no live session here to reconnect — it'll retry on your next session."
         DispatchQueue.main.asyncAfter(deadline: .now() + 3) { reconnecting.remove(name) }
+    }
+
+    // MARK: - Project-server approval (self-heal)
+
+    private func approveButton(_ name: String) -> some View {
+        let busy = reconnecting.contains(name)
+        return Button { if !busy { approveServer(name) } } label: {
+            Text(busy ? "approving…" : "approve")
+                .font(.system(size: 10.5, design: .monospaced))
+                .foregroundColor(busy ? v2.mute : v2.ink)
+                .padding(.horizontal, 9).padding(.vertical, 4)
+                .background(v2.card)
+                .overlay(Rectangle().stroke(busy ? v2.line2 : v2.ink, lineWidth: 1))
+        }
+        .buttonStyle(.plain)
+        .help("This server comes from the project's .mcp.json and needs your approval before Claude will run it (a security gate on servers a cloned repo could ship). Approve it and reconnect.")
+    }
+
+    /// Grant the project-scope approval Claude is waiting on, then reconnect —
+    /// the self-heal for the "expo … review it first / sign in to retry" trap.
+    private func approveServer(_ name: String) {
+        guard let cwd = projectCwd else { return }
+        reconnecting.insert(name)
+        do {
+            try MCPApproval.approve(cwd: cwd, server: name)
+            _ = appState.reconnectSessions(inProject: cwd, afterAuthOf: name, note: "\(name): approved — reconnected.")
+            authNote = "\(name): approved — reconnecting to connect it…"
+            Task { await refreshApproval(); await store.reloadMCPs() }
+        } catch {
+            authNote = "\(name): couldn't approve — \(error.localizedDescription)"
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 3) { reconnecting.remove(name) }
+    }
+
+    /// Recompute which of this project's .mcp.json servers are still pending
+    /// approval. File IO runs off the main actor; called on appear + after an
+    /// approve (approval state only changes on those, so no need to poll it).
+    @MainActor
+    private func refreshApproval() async {
+        guard let cwd = projectCwd else { pendingApproval = []; return }
+        let names = store.projectMCPs[cwd]?.map(\.name) ?? []
+        guard !names.isEmpty else { pendingApproval = []; return }
+        let pend = await Task.detached { MCPApproval.pending(cwd: cwd, names: names) }.value
+        pendingApproval = pend
     }
 
     /// MCP names from system/init can be raw ("filesystem") or qualified
