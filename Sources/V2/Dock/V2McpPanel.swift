@@ -1150,7 +1150,10 @@ struct V2McpPanel: View {
         } else {
             switch status {
             case .needsAuth:
-                authButton(name)
+                HStack(spacing: 6) {
+                    authButton(name)
+                    askAgentButton(name)
+                }
             case .failed:
                 failedActions(name)
             case .starting where stalled:
@@ -1171,6 +1174,7 @@ struct V2McpPanel: View {
         HStack(spacing: 6) {
             whyButton(name)
             reconnectButton(name)
+            askAgentButton(name)
         }
     }
 
@@ -1285,6 +1289,41 @@ struct V2McpPanel: View {
         guard !names.isEmpty else { pendingApproval = []; return }
         let pend = await Task.detached { MCPApproval.pending(cwd: cwd, names: names) }.value
         pendingApproval = pend
+    }
+
+    // MARK: - Ask the agent (agent-driven repair / in-chat sign-in)
+
+    private func askAgentButton(_ name: String) -> some View {
+        Button { askAgent(name) } label: {
+            Text("ask agent")
+                .font(.system(size: 10.5, design: .monospaced))
+                .foregroundColor(v2.mute)
+                .padding(.horizontal, 9).padding(.vertical, 4)
+                .overlay(Rectangle().stroke(v2.line2, lineWidth: 1))
+        }
+        .buttonStyle(.plain)
+        .help("Hand this to the agent — it diagnoses in the co-driven terminal and, if the server needs sign-in, runs `claude mcp login` so you finish in the browser. It never sees your credentials.")
+    }
+
+    /// Hand a broken/needs-auth server to the agent. Per the MCP spec (and
+    /// Claude Code's own model) the agent can TRIGGER sign-in but must never
+    /// handle the secret — the browser + your consent do that — so the
+    /// instruction is explicit: run `claude mcp login` in the shared terminal,
+    /// never ask the user for a token. This is the research's recommended
+    /// detect → prompt → `claude mcp login` → confirm pattern, one tap.
+    private func askAgent(_ name: String) {
+        guard let s = appState.activeSession else {
+            authNote = "No active Claude session here to ask."
+            return
+        }
+        if s.state == .working || s.state == .awaitingPermission {
+            authNote = "\(name): finish the current turn first, then ask the agent."
+            return
+        }
+        s.send(text: """
+        The MCP server "\(name)" isn't working in this session. Please fix it: run `claude mcp get \(name)` in a co-driven terminal to see why. If it needs sign-in, run `claude mcp login \(name)` so I can complete the sign-in in the browser. Fix any config error or missing dependency you find, then reconnect and tell me whether it connected. Do not ask me for — or handle — any credential yourself; the browser handles sign-in.
+        """)
+        authNote = "\(name): asked the agent — watch the chat and the shared terminal."
     }
 
     /// MCP names from system/init can be raw ("filesystem") or qualified
