@@ -47,6 +47,13 @@ struct MCPEditor: View {
     /// Saving a literal token/key into it is the "oops, pushed a secret"
     /// class of accident — intercept once with a choice, don't hard-block.
     @State private var showSecretWarning = false
+    /// Single-field Add: the one input (a URL or a command) we auto-detect the
+    /// transport from, so the user never has to pick stdio/HTTP/SSE — the #1
+    /// MCP-setup anti-pattern. Only used in `.add` mode (see usesSmartField);
+    /// edit / marketplace / use-in-project already carry a concrete transport.
+    @State private var smartInput = ""
+    @State private var detectedTransport: MCPTransportProbe.Result?
+    @State private var showAdvanced = false
 
     enum TransportType: String, CaseIterable {
         case stdio, http, sse
@@ -71,6 +78,14 @@ struct MCPEditor: View {
 
     private var isUseInProject: Bool {
         if case .useInProject = mode { return true }
+        return false
+    }
+
+    /// Fresh "New MCP Server" add — the only mode that gets the single smart
+    /// field. Edit / marketplace / use-in-project all arrive with a concrete
+    /// transport already, so they keep the explicit fields untouched.
+    private var usesSmartField: Bool {
+        if case .add = mode { return true }
         return false
     }
 
@@ -154,12 +169,19 @@ struct MCPEditor: View {
             // Form
             ScrollView {
                 VStack(alignment: .leading, spacing: 20) {
-                    nameField
-                    typePicker
-                    transportFields
-                    envEditor
-                    advancedAuthSection
-                    advancedServerOptionsSection
+                    if usesSmartField {
+                        smartField
+                        nameField
+                        envEditor
+                        advancedDisclosure
+                    } else {
+                        nameField
+                        typePicker
+                        transportFields
+                        envEditor
+                        advancedAuthSection
+                        advancedServerOptionsSection
+                    }
                     scopePicker
 
                     if let error = errorMessage {
@@ -353,6 +375,102 @@ struct MCPEditor: View {
             TextField("https://…", text: Binding(get: { url }, set: set))
                 .textFieldStyle(.roundedBorder)
         }
+    }
+
+    // MARK: - Single-field Add (stage 2)
+
+    /// One input for the whole "what server?" question. Paste a URL for a
+    /// remote server or the command for a local one; MCPTransportProbe figures
+    /// out the transport so the picker never has to be touched.
+    private var smartField: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Label("Server", systemImage: "sparkles")
+                .font(.system(size: 12, weight: .semibold))
+                .foregroundStyle(.secondary)
+            TextField("Paste a URL — or a command like  npx -y @scope/server", text: $smartInput)
+                .textFieldStyle(.roundedBorder)
+                .onChange(of: smartInput) { _, new in applySmartInput(new) }
+            if let d = detectedTransport, !smartInput.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                detectedHint(d)
+            } else {
+                Text("An https URL adds a remote server; anything else runs as a local command. We detect the exact protocol for you.")
+                    .font(.system(size: 10))
+                    .foregroundStyle(.tertiary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func detectedHint(_ r: MCPTransportProbe.Result) -> some View {
+        HStack(spacing: 6) {
+            switch r {
+            case .http, .sse:
+                Image(systemName: "link").font(.system(size: 10))
+                Text("Remote server — we'll confirm the exact protocol when you save.")
+                    .font(.system(size: 10))
+            case .stdio(let c, _):
+                Image(systemName: "terminal").font(.system(size: 10))
+                Text(c.isEmpty ? "Local command." : "Local command: \(c)")
+                    .font(.system(size: 10))
+            }
+        }
+        .foregroundStyle(.secondary)
+    }
+
+    /// Fill the draft from the smart field as the user types (instant, no
+    /// network). The async probe at save-time only refines remote http-vs-sse.
+    private func applySmartInput(_ input: String) {
+        let trimmed = input.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { detectedTransport = nil; return }
+        let r = MCPTransportProbe.classify(trimmed)
+        detectedTransport = r
+        // Set the transport BEFORE selectedType so onChange(of: selectedType)
+        // sees a matching type and no-ops instead of clobbering the args.
+        draft.transport = r.transport
+        switch r {
+        case .stdio: selectedType = .stdio
+        case .http:  selectedType = .http
+        case .sse:   selectedType = .sse
+        }
+        if draft.name.isEmpty, let s = suggestedName(from: r) { draft.name = s }
+    }
+
+    /// A sensible default server name from the input, so the user rarely types
+    /// one: the meaningful host label for a URL, or the package/command name.
+    private func suggestedName(from r: MCPTransportProbe.Result) -> String? {
+        switch r {
+        case .http(let u), .sse(let u):
+            guard let host = URL(string: u)?.host else { return nil }
+            let skip: Set<String> = ["mcp", "api", "www", "app", "server", "gateway"]
+            let labels = host.split(separator: ".").map(String.init)
+            return labels.first { !skip.contains($0.lowercased()) } ?? labels.first
+        case .stdio(let c, let args):
+            let pkg = args.last { !$0.hasPrefix("-") }
+            let base = (pkg?.split(separator: "/").last).map(String.init) ?? (c.isEmpty ? nil : c)
+            return base?
+                .replacingOccurrences(of: "@", with: "")
+                .replacingOccurrences(of: "server-", with: "")
+        }
+    }
+
+    /// The explicit transport/auth/timeout controls, folded away in add mode —
+    /// there for power users or to override the auto-detection.
+    private var advancedDisclosure: some View {
+        DisclosureGroup(isExpanded: $showAdvanced) {
+            VStack(alignment: .leading, spacing: 20) {
+                typePicker
+                transportFields
+                advancedAuthSection
+                advancedServerOptionsSection
+            }
+            .padding(.top, 10)
+        } label: {
+            Text("Advanced — transport, auth, timeout")
+                .font(.system(size: 12, weight: .semibold))
+                .foregroundStyle(.secondary)
+        }
+        .tint(.secondary)
     }
 
     @ViewBuilder
@@ -582,6 +700,30 @@ struct MCPEditor: View {
     }
 
     private func save() {
+        guard !isSaving else { return }
+        // Single-field Add of a REMOTE server: classify() defaulted the
+        // transport to modern Streamable HTTP; refine it with the async spec
+        // probe (http vs deprecated SSE) before the write. Local commands and
+        // all non-add modes skip straight to validation.
+        let remoteURL: String? = {
+            switch draft.transport {
+            case .http(let u), .sse(let u): return u
+            default: return nil
+            }
+        }()
+        if usesSmartField, let u = remoteURL, MCPTransportProbe.looksRemote(u) {
+            isSaving = true
+            Task { @MainActor in
+                draft.transport = await MCPTransportProbe.detect(u).transport
+                isSaving = false
+                validateAndSave()
+            }
+            return
+        }
+        validateAndSave()
+    }
+
+    private func validateAndSave() {
         // Guard against double-invocation (rapid clicks, keyboard repeat)
         guard !isSaving else { return }
 
