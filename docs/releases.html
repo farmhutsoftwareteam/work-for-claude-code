@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Changelog - Atelier</title>
-    <meta name="description" content="Every release of Atelier, dated and itemised. Latest: v2.11.14 (july 28, 2026).">
+    <meta name="description" content="Every release of Atelier, dated and itemised. Latest: v2.11.15 (august 5, 2026).">
     <link rel="canonical" href="https://work.munyamakosa.com/releases.html">
     <link rel="alternate" type="application/rss+xml" title="Atelier appcast" href="https://work.munyamakosa.com/appcast.xml">
 
@@ -184,13 +184,32 @@
         </div>
 
 
+    <article id="v2-11-15" class="release-article" style="display:grid;grid-template-columns:200px 1fr;gap:40px;padding:38px 0;border-bottom:1px solid var(--line);">
+      <div>
+        <div style="font-family:var(--helv);font-weight:500;font-size:22px;letter-spacing:-.01em;">
+          <a href="#v2-11-15" style="color:var(--ink);text-decoration:none;">v2.11.15</a>
+        </div>
+        <div style="font-family:var(--mono);font-size:11px;color:var(--mute);margin-top:6px;">2026 · aug 5</div>
+        <div style="display:inline-block;font-family:var(--mono);font-size:10px;letter-spacing:.08em;text-transform:uppercase;border:1px solid var(--line2);padding:3px 8px;margin-top:12px;">latest</div>
+        <div style="font-family:var(--mono);font-size:10px;color:var(--mute);margin-top:10px;">macOS 15.0+</div>
+      </div>
+      <div class="release-body" style="font-family:var(--helv);font-size:16px;line-height:1.6;color:rgba(27,28,30,.82);">
+        <h3>Adding an MCP server, rebuilt</h3>
+        <ul>
+          <li><b>Add a server with one field.</b> Paste a URL <i>or</i> a command and Atelier detects the transport for you instead of asking you to pick stdio / HTTP / SSE, and auto-suggests a name. Manual controls fold into “Advanced”.</li>
+          <li><b>Test before you save.</b> A “test” button (and a check on save) actually connects and tells you ✓ / needs-sign-in / what went wrong — so a bad config is caught up front, not later.</li>
+          <li><b>One-click popular servers.</b> A “Popular” section installs well-known servers (Filesystem, Git, Fetch, Playwright, GitHub, and more) straight into a prefilled editor.</li>
+          <li><b>Clearer scope.</b> Project scope now spells out the team-sharing + git-commit + per-person approval it implies, and steers you to <code>${ENV_VAR}</code> references over committed secrets.</li>
+        </ul>
+      </div>
+    </article>
+
     <article id="v2-11-14" class="release-article" style="display:grid;grid-template-columns:200px 1fr;gap:40px;padding:38px 0;border-bottom:1px solid var(--line);">
       <div>
         <div style="font-family:var(--helv);font-weight:500;font-size:22px;letter-spacing:-.01em;">
           <a href="#v2-11-14" style="color:var(--ink);text-decoration:none;">v2.11.14</a>
         </div>
         <div style="font-family:var(--mono);font-size:11px;color:var(--mute);margin-top:6px;">2026 · jul 28</div>
-        <div style="display:inline-block;font-family:var(--mono);font-size:10px;letter-spacing:.08em;text-transform:uppercase;border:1px solid var(--line2);padding:3px 8px;margin-top:12px;">latest</div>
         <div style="font-family:var(--mono);font-size:10px;color:var(--mute);margin-top:10px;">macOS 15.0+</div>
       </div>
       <div class="release-body" style="font-family:var(--helv);font-size:16px;line-height:1.6;color:rgba(27,28,30,.82);">

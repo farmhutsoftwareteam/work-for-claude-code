@@ -6,6 +6,27 @@
         <description>Updates for Atelier</description>
         <language>en</language>
         <item>
+            <title>Version 2.11.15</title>
+            <pubDate>Wed, 05 Aug 2026 15:55:45 +0200</pubDate>
+            <sparkle:version>90</sparkle:version>
+            <sparkle:shortVersionString>2.11.15</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>15.0</sparkle:minimumSystemVersion>
+            <description><![CDATA[
+                <h3>Atelier 2.11.15 — adding an MCP server, rebuilt</h3>
+                <ul>
+                    <li><b>Add a server with one field.</b> Paste a URL <i>or</i> a command (<code>npx -y @scope/server</code>) and Atelier detects the transport for you instead of asking you to pick stdio / HTTP / SSE, and auto-suggests a name. The manual controls fold into “Advanced”.</li>
+                    <li><b>Test before you save.</b> A “test” button (and an automatic check on save) actually connects — a remote server's handshake, or confirming a local command exists on your PATH — and tells you ✓ / needs-sign-in / what went wrong, so a bad config is caught up front.</li>
+                    <li><b>One-click popular servers.</b> A new “Popular” section installs well-known servers (Filesystem, Git, Fetch, Memory, Playwright, GitHub, and more) straight into a prefilled editor — no hunting GitHub, no hand-writing a command.</li>
+                    <li><b>Clearer scope.</b> Project scope now spells out that it's shared with your team, commits to <code>.mcp.json</code>, and asks each teammate to approve it — and steers you to <code>${ENV_VAR}</code> references instead of committing a secret.</li>
+                </ul>
+            ]]></description>
+            <enclosure
+                url="https://work.munyamakosa.com/Atelier-2.11.15.dmg"
+                length="15762500"
+                type="application/octet-stream"
+                sparkle:edSignature="yW3HxVe1SpQ7CqDRk9eCusAwbpMz113c+i3r3JR7R94i79OLoYN/Va02aOPdHb6FKznyzrPDyzcR6zSVRxt0BQ==" />
+        </item>
+        <item>
             <title>Version 2.11.14</title>
             <pubDate>Tue, 28 Jul 2026 11:34:16 +0400</pubDate>
             <sparkle:version>89</sparkle:version>
