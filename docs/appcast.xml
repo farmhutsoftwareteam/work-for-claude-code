@@ -6,6 +6,27 @@
         <description>Updates for Atelier</description>
         <language>en</language>
         <item>
+            <title>Version 2.11.17</title>
+            <pubDate>Wed, 05 Aug 2026 21:57:00 +0200</pubDate>
+            <sparkle:version>92</sparkle:version>
+            <sparkle:shortVersionString>2.11.17</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>15.0</sparkle:minimumSystemVersion>
+            <description><![CDATA[
+                <h3>Atelier 2.11.17 — Skill Packs</h3>
+                <ul>
+                    <li><b>Featured packs.</b> Skills → <b>skill packs →</b> opens a curated catalog — Matt Pocock (verified · MIT), Anthropic (official), Expo (community). Expand a pack to see its skills and the command that runs each one (<code>/tdd</code>, <code>/code-review</code>, <code>/prototype</code>, …).</li>
+                    <li><b>Set up the essentials in one click</b> — adds the recommended packs, with a clear note that skills can run tools and read files.</li>
+                    <li><b>Add a pack from a repo.</b> The old "do it in a terminal" dead-end is now a working field — paste an <code>owner/repo</code> and Atelier registers the whole marketplace.</li>
+                    <li>Packs install as Claude Code plugins, so they stay updatable — official auto-updates; third-party packs get a <b>check for updates</b> button and a restart hint.</li>
+                </ul>
+            ]]></description>
+            <enclosure
+                url="https://work.munyamakosa.com/Atelier-2.11.17.dmg"
+                length="15946272"
+                type="application/octet-stream"
+                sparkle:edSignature="HfvDKqpKnckLstqkVeiguaE7Bp5hKw3H8HzNy0RIfLvtpTbOwl/AXN8N94Xrgv7TDdnmmkKp6fkXPiZPvk12BQ==" />
+        </item>
+        <item>
             <title>Version 2.11.16</title>
             <pubDate>Wed, 05 Aug 2026 17:47:40 +0200</pubDate>
             <sparkle:version>91</sparkle:version>
