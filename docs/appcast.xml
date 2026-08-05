@@ -6,6 +6,25 @@
         <description>Updates for Atelier</description>
         <language>en</language>
         <item>
+            <title>Version 2.11.16</title>
+            <pubDate>Wed, 05 Aug 2026 17:47:40 +0200</pubDate>
+            <sparkle:version>91</sparkle:version>
+            <sparkle:shortVersionString>2.11.16</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>15.0</sparkle:minimumSystemVersion>
+            <description><![CDATA[
+                <h3>Atelier 2.11.16 — MCP self-heal</h3>
+                <ul>
+                    <li><b>Approve a project server in one click.</b> A server from a repo's <code>.mcp.json</code> that's waiting on Claude's one-time approval now shows an <b>approve</b> button — it grants the approval and reconnects — instead of a "sign in to retry" prompt that could never fix it (approval isn't sign-in).</li>
+                    <li><b>“Ask agent” to fix a stuck server.</b> On a failing or needs-sign-in server, hand it to the agent: it diagnoses in the shared co-driven terminal and, if the server needs sign-in, runs the login so you finish in your <b>browser</b> — the agent never sees or handles your credentials.</li>
+                </ul>
+            ]]></description>
+            <enclosure
+                url="https://work.munyamakosa.com/Atelier-2.11.16.dmg"
+                length="15788043"
+                type="application/octet-stream"
+                sparkle:edSignature="/tWPghxnZ4qcbtbrLNV32V/1Q5F+CilhEDsyBdJ/NLBtX1xK4d00qTrcpgIyW3LlW7IaxkR89MhR74WofAWeBA==" />
+        </item>
+        <item>
             <title>Version 2.11.15</title>
             <pubDate>Wed, 05 Aug 2026 15:55:45 +0200</pubDate>
             <sparkle:version>90</sparkle:version>
