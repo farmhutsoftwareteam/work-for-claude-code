@@ -1,0 +1,215 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<title>Atelier — Skill Packs (prototype)</title>
+<style>
+  :root{
+    --ink:#1b1c1e; --ink2:rgba(27,28,30,.62);
+    --paper:#e9eae8; --paper2:#f3f4f2; --paper3:#dcdedb; --card:#fbfbfa;
+    --line:rgba(27,28,30,.16); --line2:rgba(27,28,30,.30); --mute:rgba(27,28,30,.52); --faint:rgba(27,28,30,.36);
+    --done:#3f6f57; --done-bg:rgba(63,111,87,.10); --rec:#9c5249; --rec-bg:rgba(156,82,73,.09);
+    --helv:'Helvetica Neue',Helvetica,Arial,sans-serif; --mono:'IBM Plex Mono',ui-monospace,monospace;
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;height:100%;}
+  body{background:var(--paper);color:var(--ink);font-family:var(--helv);-webkit-font-smoothing:antialiased;}
+  .win{width:940px;margin:24px auto;background:var(--paper);border:1px solid var(--line2);}
+  .titlebar{height:44px;display:flex;align-items:center;gap:12px;padding:0 16px;background:var(--paper2);border-bottom:1px solid var(--line);}
+  .dots{display:flex;gap:8px;}
+  .dot{width:12px;height:12px;border-radius:50%;background:var(--paper3);border:1px solid var(--line2);}
+  .brand{display:flex;align-items:center;gap:9px;margin-left:4px;}
+  .brand b{font-weight:500;font-size:15px;letter-spacing:-.01em;}
+  .brand .crumb{font-family:var(--mono);font-size:11px;color:var(--faint);}
+  .mono-label{font-family:var(--mono);font-size:10px;letter-spacing:.12em;text-transform:uppercase;color:var(--faint);}
+  .body{padding:22px 24px 28px;}
+  .intro h1{font-size:22px;font-weight:500;letter-spacing:-.02em;margin:0 0 4px;}
+  .intro p{font-size:13px;color:var(--ink2);margin:0;max-width:640px;line-height:1.5;}
+
+  /* recommended hero */
+  .hero{margin-top:18px;border:1px solid var(--ink);background:var(--card);padding:16px 18px;display:flex;align-items:center;gap:18px;}
+  .hero .txt{flex:1;}
+  .hero .txt .t{font-size:15px;font-weight:500;}
+  .hero .txt .s{font-size:12px;color:var(--ink2);margin-top:3px;}
+  .chip{font-family:var(--mono);font-size:11.5px;padding:8px 15px;border:1px solid var(--ink);background:var(--ink);color:var(--paper);cursor:pointer;}
+  .chip.ghost{background:var(--card);color:var(--ink);}
+  .chip.small{font-size:10.5px;padding:5px 11px;}
+  .chip[disabled]{cursor:default;opacity:.6;}
+
+  .secrow{display:flex;align-items:center;gap:10px;margin:26px 0 12px;}
+  .secrow .rule{flex:1;height:1px;background:var(--line);}
+
+  /* pack card */
+  .pack{border:1px solid var(--line2);background:var(--card);margin-bottom:14px;}
+  .pack .head{display:flex;align-items:flex-start;gap:14px;padding:15px 16px;cursor:pointer;}
+  .mark{width:30px;height:30px;border:1px solid var(--line2);display:flex;align-items:center;justify-content:center;flex:none;background:var(--paper2);}
+  .mark svg{width:18px;height:18px;overflow:visible;}
+  .pack .meta{flex:1;min-width:0;}
+  .pack .meta .row1{display:flex;align-items:center;gap:9px;}
+  .pack .name{font-size:15px;font-weight:500;letter-spacing:-.01em;}
+  .badge{font-family:var(--mono);font-size:9px;letter-spacing:.06em;text-transform:uppercase;padding:2px 6px;border:1px solid var(--line2);color:var(--mute);}
+  .badge.verified{border-color:var(--done);color:var(--done);}
+  .badge.official{border-color:var(--ink);color:var(--ink);}
+  .pack .src{font-family:var(--mono);font-size:10.5px;color:var(--faint);margin-top:3px;}
+  .pack .desc{font-size:12.5px;color:var(--ink2);margin-top:6px;line-height:1.5;}
+  .pack .side{display:flex;flex-direction:column;align-items:flex-end;gap:8px;flex:none;}
+  .autoline{display:flex;align-items:center;gap:5px;font-family:var(--mono);font-size:10px;color:var(--done);}
+  .autoline .d{width:6px;height:6px;border-radius:50%;background:var(--done);}
+  .autoline.off{color:var(--faint);} .autoline.off .d{background:var(--faint);}
+
+  /* skills list (expanded) */
+  .skills{border-top:1px solid var(--line);display:none;}
+  .pack.open .skills{display:block;}
+  .pack.open .caret{transform:rotate(90deg);}
+  .caret{font-size:10px;color:var(--faint);transition:transform .12s;margin-left:auto;align-self:center;}
+  .skill{display:flex;align-items:flex-start;gap:12px;padding:11px 16px 11px 60px;border-bottom:1px solid var(--line);}
+  .skill:last-child{border-bottom:none;}
+  .skill .sk-name{font-family:var(--mono);font-size:12.5px;font-weight:500;}
+  .skill .sk-desc{font-size:11.5px;color:var(--ink2);margin-top:2px;line-height:1.45;}
+  .sk-head{display:flex;align-items:center;gap:8px;flex-wrap:wrap;}
+  .cmd{font-family:var(--mono);font-size:11.5px;font-weight:500;color:var(--rec);border:1px solid var(--rec);padding:1px 7px;background:var(--rec-bg);white-space:nowrap;}
+  .sk-title{font-size:12.5px;font-weight:500;}
+  .invoke-note{padding:9px 16px 9px 60px;font-family:var(--mono);font-size:10.5px;color:var(--mute);background:var(--paper2);border-bottom:1px solid var(--line);}
+  .skill .sk-body{flex:1;min-width:0;}
+  /* toggle */
+  .tog{width:34px;height:19px;border:1px solid var(--line2);background:var(--paper2);position:relative;cursor:pointer;flex:none;margin-top:2px;}
+  .tog .knob{position:absolute;top:1px;left:1px;width:15px;height:15px;background:var(--mute);transition:left .12s,background .12s;}
+  .tog.on{border-color:var(--done);background:var(--done-bg);}
+  .tog.on .knob{left:16px;background:var(--done);}
+
+  .footer{margin-top:22px;display:flex;gap:10px;align-items:center;padding-top:16px;border-top:1px solid var(--line);}
+  .footer .note{font-size:11px;color:var(--faint);flex:1;line-height:1.5;}
+  code{font-family:var(--mono);font-size:.92em;background:var(--paper3);padding:1px 4px;}
+</style>
+</head>
+<body>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <symbol id="dt" viewBox="0 0 64 64" fill="none" stroke="currentColor" stroke-width="6" stroke-linecap="square"><rect x="7" y="7" width="50" height="50"/><path d="M32 7 L32 24 L46 28 L46 36 L32 40 L32 57"/></symbol>
+</svg>
+
+<div class="win">
+  <div class="titlebar">
+    <div class="dots"><span class="dot"></span><span class="dot"></span><span class="dot"></span></div>
+    <div class="brand">
+      <svg viewBox="0 0 64 64" style="width:19px;height:19px;overflow:visible;color:var(--ink)"><use href="#dt"/></svg>
+      <b>atelier</b><span class="crumb">extensions · skill packs</span>
+    </div>
+  </div>
+
+  <div class="body">
+    <div class="intro">
+      <h1>Skill packs</h1>
+      <p>Vetted collections that make your agent measurably better — installed through Claude Code's own plugin system, so they stay current automatically and nothing of yours is redistributed. Turn a pack on and every session gets its skills.</p>
+    </div>
+
+    <!-- recommended defaults -->
+    <div class="hero">
+      <div class="mark" style="border-color:var(--ink)"><svg viewBox="0 0 64 64" style="color:var(--ink)"><use href="#dt"/></svg></div>
+      <div class="txt">
+        <div class="t">Set up the essentials</div>
+        <div class="s">Install our recommended packs (Matt Pocock + Anthropic) in one step. Auto-updates on. You can turn any skill off later.</div>
+      </div>
+      <button class="chip" id="essentials" onclick="installEssentials()">install essentials</button>
+    </div>
+
+    <div class="secrow"><span class="mono-label">featured packs</span><span class="rule"></span><span class="mono-label">3</span></div>
+
+    <!-- Matt Pocock -->
+    <div class="pack open" data-pack="matt">
+      <div class="head" onclick="toggleOpen(this)">
+        <div class="mark"><svg viewBox="0 0 64 64" style="color:var(--rec)"><use href="#dt"/></svg></div>
+        <div class="meta">
+          <div class="row1"><span class="name">Matt Pocock's Skills</span><span class="badge verified">verified</span><span class="badge">v1.2.0</span></div>
+          <div class="src">github.com/mattpocock/skills · plugin · 22 skills</div>
+          <div class="desc">A battle-tested engineering + productivity kit: spec-first planning, TDD, code review, plan-grilling, tickets, prototyping, handoffs, and more. Widely regarded as one of the strongest public skill sets.</div>
+        </div>
+        <div class="side">
+          <button class="chip small" onclick="event.stopPropagation();installPack('matt')" data-install="matt">install pack</button>
+          <div class="autoline off" data-auto="matt"><span class="d"></span>installs · then auto-updates</div>
+        </div>
+        <span class="caret">▶</span>
+      </div>
+      <div class="skills">
+        <div class="invoke-note">type the command to run a skill — or just describe the task and the agent picks it automatically when it fits</div>
+        <div class="skill"><div class="sk-body"><div class="sk-head"><span class="cmd">/tdd</span><span class="sk-title">Test-driven development</span></div><div class="sk-desc">Drives a red→green→refactor loop with a failing test first.</div></div><div class="tog on" onclick="tog(this)"><div class="knob"></div></div></div>
+        <div class="skill"><div class="sk-body"><div class="sk-head"><span class="cmd">/code-review</span><span class="sk-title">Review the diff</span></div><div class="sk-desc">Reviews a diff for correctness + reuse/simplification, most-severe first.</div></div><div class="tog on" onclick="tog(this)"><div class="knob"></div></div></div>
+        <div class="skill"><div class="sk-body"><div class="sk-head"><span class="cmd">/grilling</span><span class="sk-title">Grill a plan</span></div><div class="sk-desc">Stress-tests a plan through rounds of frontier-based questions before you commit.</div></div><div class="tog on" onclick="tog(this)"><div class="knob"></div></div></div>
+        <div class="skill"><div class="sk-body"><div class="sk-head"><span class="cmd">/to-tickets</span><span class="sk-title">Break into tickets</span></div><div class="sk-desc">Turns a rough goal into agent-ready tickets grounded in real file paths.</div></div><div class="tog on" onclick="tog(this)"><div class="knob"></div></div></div>
+        <div class="skill"><div class="sk-body"><div class="sk-head"><span class="cmd">/prototype</span><span class="sk-title">Prototype in HTML</span></div><div class="sk-desc">Builds a self-contained HTML demo as the primary artifact on a throwaway branch.</div></div><div class="tog on" onclick="tog(this)"><div class="knob"></div></div></div>
+        <div class="skill"><div class="sk-body"><div class="sk-head"><span class="cmd">/handoff</span><span class="cmd">/teach</span><span class="cmd">/wait-what</span><span class="sk-title">+16 more</span></div><div class="sk-desc">Every skill has its own command; full list here after install, each toggles independently.</div></div><div class="tog on" onclick="tog(this)"><div class="knob"></div></div></div>
+      </div>
+    </div>
+
+    <!-- Anthropic -->
+    <div class="pack" data-pack="anthropic">
+      <div class="head" onclick="toggleOpen(this)">
+        <div class="mark"><svg viewBox="0 0 64 64" style="color:var(--ink)"><use href="#dt"/></svg></div>
+        <div class="meta">
+          <div class="row1"><span class="name">Anthropic Skills</span><span class="badge official">official</span></div>
+          <div class="src">github.com/anthropics/skills · plugin</div>
+          <div class="desc">First-party skills from Anthropic — document handling (pptx, pdf, xlsx), canvas design, and more.</div>
+        </div>
+        <div class="side">
+          <button class="chip small" onclick="event.stopPropagation();installPack('anthropic')" data-install="anthropic">install pack</button>
+          <div class="autoline off" data-auto="anthropic"><span class="d"></span>installs · then auto-updates</div>
+        </div>
+        <span class="caret">▶</span>
+      </div>
+      <div class="skills">
+        <div class="skill"><div class="sk-body"><div class="sk-head"><span class="cmd">/pptx</span><span class="cmd">/pdf</span><span class="cmd">/xlsx</span></div><div class="sk-desc">Create, read, and edit Office + PDF documents.</div></div><div class="tog on" onclick="tog(this)"><div class="knob"></div></div></div>
+        <div class="skill"><div class="sk-body"><div class="sk-head"><span class="cmd">/canvas-design</span></div><div class="sk-desc">Produce polished visual art in PNG/PDF.</div></div><div class="tog on" onclick="tog(this)"><div class="knob"></div></div></div>
+      </div>
+    </div>
+
+    <!-- community example -->
+    <div class="pack" data-pack="community">
+      <div class="head" onclick="toggleOpen(this)">
+        <div class="mark"><svg viewBox="0 0 64 64" style="color:var(--mute)"><use href="#dt"/></svg></div>
+        <div class="meta">
+          <div class="row1"><span class="name">Superpowers</span><span class="badge">community</span></div>
+          <div class="src">github.com/obra/superpowers · plugin</div>
+          <div class="desc">A popular community pack. Not vetted by Atelier — review before enabling.</div>
+        </div>
+        <div class="side">
+          <button class="chip small ghost" onclick="event.stopPropagation();installPack('community')" data-install="community">install pack</button>
+          <div class="autoline off" data-auto="community"><span class="d"></span>installs · then auto-updates</div>
+        </div>
+        <span class="caret">▶</span>
+      </div>
+      <div class="skills"><div class="skill"><div class="sk-body"><div class="sk-head"><span class="cmd">/brainstorming</span><span class="cmd">/debugging</span><span class="sk-title">…</span></div><div class="sk-desc">Full list + commands shown here after install.</div></div><div class="tog on" onclick="tog(this)"><div class="knob"></div></div></div></div>
+    </div>
+
+    <div class="footer">
+      <div class="note">Don't see a pack? Paste any GitHub repo or plugin marketplace and Atelier adds it. Skills can carry tool permissions — Atelier shows you what a pack can do before it's enabled, and only <b>verified</b> packs are auto-suggested.</div>
+      <button class="chip ghost small">add from repo…</button>
+      <button class="chip ghost small">add marketplace…</button>
+    </div>
+  </div>
+</div>
+
+<script>
+  function toggleOpen(head){ head.parentElement.classList.toggle('open'); }
+  function tog(el){ el.classList.toggle('on'); }
+  function installPack(id){
+    const btn = document.querySelector('[data-install="'+id+'"]');
+    btn.textContent = 'installing…'; btn.disabled = true;
+    setTimeout(()=>{
+      btn.textContent = 'installed ✓'; btn.classList.remove('ghost');
+      btn.style.borderColor = 'var(--done)'; btn.style.color = 'var(--done)'; btn.style.background='var(--done-bg)';
+      const auto = document.querySelector('[data-auto="'+id+'"]');
+      auto.classList.remove('off'); auto.textContent='';
+      const d=document.createElement('span'); d.className='d'; auto.appendChild(d);
+      auto.appendChild(document.createTextNode('auto-updating · on'));
+    }, 900);
+  }
+  function installEssentials(){
+    const b=document.getElementById('essentials'); b.textContent='installing…'; b.disabled=true;
+    installPack('matt'); installPack('anthropic');
+    setTimeout(()=>{ b.textContent='essentials installed ✓'; b.style.background='var(--done)'; b.style.borderColor='var(--done)';},900);
+  }
+</script>
+</body>
+</html>

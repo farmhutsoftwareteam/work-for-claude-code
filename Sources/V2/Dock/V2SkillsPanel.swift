@@ -375,12 +375,13 @@ struct V2SkillsPanel: View {
                 .foregroundColor(v2.faint)
             Spacer()
             Button { showingMarketplace = true } label: {
-                Text("browse marketplace →")
+                Text("skill packs →")
                     .font(.system(size: 10.5, design: .monospaced))
                     .foregroundColor(v2.ink)
                     .underline()
             }
             .buttonStyle(.plain)
+            .help("Browse featured skill packs and add them in one click")
         }
         .padding(.horizontal, 18)
         .padding(.vertical, 11)

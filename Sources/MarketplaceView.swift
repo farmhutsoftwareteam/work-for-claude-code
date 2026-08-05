@@ -104,21 +104,38 @@ enum MarketplaceInstaller {
     /// Shell out to `claude plugin <action> <plugin>@<marketplace>`.
     /// We don't block the UI on this; stdout/stderr stream back to the caller.
     static func run(_ action: Action, plugin: MarketplacePlugin) async throws -> String {
-        let claude = resolveClaudeBinary()
-        let pluginId = "\(plugin.name)@\(plugin.marketplace)"
+        try await runClaude(["plugin", action.rawValue, "\(plugin.name)@\(plugin.marketplace)"])
+    }
 
+    /// `claude plugin marketplace add <source>` — register a whole pack
+    /// (marketplace) so its plugins become installable. `source` is an
+    /// owner/repo shorthand, a git URL, or a local path. Idempotent enough for
+    /// our use: re-adding a registered marketplace is tolerated by the caller.
+    static func addMarketplace(_ source: String) async throws -> String {
+        try await runClaude(["plugin", "marketplace", "add", source])
+    }
+
+    /// `claude plugin marketplace update [name]` — re-pull a registered
+    /// marketplace from its source (no name = all). This is how a pack picks up
+    /// newly published skills; a per-plugin `.update` then applies them.
+    static func updateMarketplace(_ name: String?) async throws -> String {
+        try await runClaude(["plugin", "marketplace", "update"] + (name.map { [$0] } ?? []))
+    }
+
+    /// Shared runner: resolve the `claude` binary, run it with the enriched
+    /// dev-tool PATH, capture stdout/stderr, throw a readable error on nonzero
+    /// exit. GUI apps inherit launchd's stripped PATH, and `claude plugin …`
+    /// routinely shells out to node/npx/git — hence enrichedEnvironment().
+    private static func runClaude(_ args: [String]) async throws -> String {
+        let claude = resolveClaudeBinary()
         let process = Process()
         process.executableURL = URL(fileURLWithPath: claude)
-        process.arguments = ["plugin", action.rawValue, pluginId]
+        process.arguments = args
         let out = Pipe()
         let err = Pipe()
         process.standardOutput = out
         process.standardError = err
         process.standardInput = FileHandle.nullDevice
-        // GUI apps inherit launchd's stripped PATH. `claude plugin install`
-        // routinely shells out to node/npx/git, which won't resolve without
-        // the user's real dev-tool paths. Mirror TerminalsController's
-        // enriched PATH so marketplace installs actually work on fresh Macs.
         process.environment = Self.enrichedEnvironment()
 
         try process.run()
