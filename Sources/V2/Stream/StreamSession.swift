@@ -308,6 +308,31 @@ final class StreamSession: ObservableObject, V2TranscriptSource {
     /// fresh" option instead of a cryptic "stream closed". nil = no error.
     @Published private(set) var endError: String?
 
+    /// True when the running session's Claude auth (OAuth/subscription token)
+    /// expired mid-stream — the turn failed because of sign-in, not content.
+    /// Drives the inline "Sign back in" strip; cleared on a fresh spawn or by
+    /// markReauthResolved() after re-login.
+    @Published private(set) var requiresReauth = false
+
+    /// Clears the re-auth flag once the user signs back in. The respawn path
+    /// also clears it via start(); the UI calls this first so the strip
+    /// dismisses immediately instead of waiting on the restart.
+    func markReauthResolved() { requiresReauth = false }
+
+    /// Whether an error-result string is a Claude sign-in / token-expiry
+    /// failure rather than a content error — kept specific so unrelated errors
+    /// never pop a spurious sign-in prompt.
+    static func isAuthError(_ raw: String) -> Bool {
+        let s = raw.lowercased()
+        let needles = [
+            "oauth", "invalid api key", "authentication_error", "authentication error",
+            "unauthorized", "not authenticated", "not logged in",
+            "/login", "claude login", "log in again", "sign in again",
+            "session expired", "token expired", "credentials expired"
+        ]
+        return needles.contains { s.contains($0) }
+    }
+
     /// Set true while an `api_retry` is in flight.
     @Published private(set) var isRetrying: Bool = false
 
@@ -739,6 +764,7 @@ final class StreamSession: ObservableObject, V2TranscriptSource {
         // Reset the "saw a live event" tracker + any prior error for this spawn.
         sawLiveEvent = false
         endError = nil
+        requiresReauth = false
         // No streaming block is open on a fresh spawn (the transcript is kept,
         // but the next reply starts a new block).
         flushPending = false
@@ -1750,6 +1776,12 @@ final class StreamSession: ObservableObject, V2TranscriptSource {
                 if raw.contains("No conversation found") {
                     // Unresumable session — handled by the empty-state + fresh CTA.
                     endError = "This conversation's history is no longer available — it may have been cleared."
+                } else if Self.isAuthError(raw) {
+                    // Claude's OAuth/subscription token expired mid-session —
+                    // flag it so the composer shows a "Sign back in" strip
+                    // instead of a dead-end red note. Keep the raw note too.
+                    requiresReauth = true
+                    transcript.append(.systemNote(kind: .error, text: raw))
                 } else {
                     // Any other error (e.g. "Claude Fable 5 is currently
                     // unavailable") — show it inline so it's never silent.

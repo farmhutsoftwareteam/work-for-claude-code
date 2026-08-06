@@ -49,6 +49,11 @@ final class ClaudeAuthManager: ObservableObject {
     @Published private(set) var loginState: LoginState = .idle
 
     private var loginProcess: Process?
+    /// The binary used for the in-flight login — reused to re-check status the
+    /// moment login exits, so `status` actually flips to .loggedIn. Nothing
+    /// else re-checks after a login; without this the sign-in sheet never
+    /// auto-dismisses and a mid-session re-auth can't detect completion.
+    private var loginBinary: URL?
     private var stdinPipe: Pipe?
     private var stdoutPipe: Pipe?
     private var stderrPipe: Pipe?
@@ -108,6 +113,7 @@ final class ClaudeAuthManager: ObservableObject {
     /// the pasted code back over the same process's stdin.
     func beginLogin(binary: URL) {
         guard loginProcess == nil else { return }
+        loginBinary = binary
         loginState = .waitingForURL
         stdoutBuffer = ""
         stderrBuffer = ""
@@ -203,6 +209,10 @@ final class ClaudeAuthManager: ObservableObject {
         cleanup()
         if exitStatus == 0 {
             loginState = .idle
+            // Nothing else re-checks auth after a login — refresh here so
+            // `status` flips to .loggedIn (dismisses the sheet, and lets a
+            // mid-session re-auth detect completion and respawn the session).
+            if let loginBinary { Task { await checkStatus(binary: loginBinary) } }
         } else if wasSubmitting {
             let detail = stderrBuffer.trimmingCharacters(in: .whitespacesAndNewlines)
             loginState = .failed(detail.isEmpty ? "Sign-in failed — the code may have been wrong or expired." : detail)

@@ -316,7 +316,12 @@ struct V2RootView: View {
                         }
                     }
                 } else if let session = tab.streamSession {
-                    if session.isObserving {
+                    if session.requiresReauth {
+                        // Claude auth expired mid-stream — replace the composer
+                        // with a sign-back-in strip (typing into a signed-out
+                        // session would just fail the same way again).
+                        V2ReauthStrip(auth: appState.claudeAuth, tab: tab, session: session)
+                    } else if session.isObserving {
                         // Observer tabs REPLACE the composer, never merely
                         // disable it — read-only must read as a deliberate
                         // mode, and no input field means no takeover
@@ -814,5 +819,68 @@ struct V2DovetailMark: View {
             context.stroke(path, with: .color(.primary), style: stroke)
         }
         .frame(width: size, height: size)
+    }
+}
+
+/// Replaces the composer when a live Claude session's OAuth/subscription token
+/// expired mid-stream. Observes `ClaudeAuthManager` directly (so the post-login
+/// `.loggedIn` transition reliably fires `onChange`) and reuses the existing
+/// browser sign-in sheet; on success it respawns the session with `--resume`
+/// so the conversation picks up exactly where it left off.
+private struct V2ReauthStrip: View {
+    @Environment(\.v2) private var v2
+    @EnvironmentObject private var appState: V2AppState
+    @ObservedObject var auth: ClaudeAuthManager
+    let tab: TerminalTab
+    @ObservedObject var session: StreamSession
+    @State private var showSignIn = false
+
+    var body: some View {
+        HStack(spacing: 12) {
+            Image(systemName: "person.crop.circle.badge.exclamationmark")
+                .font(.system(size: 14))
+                .foregroundColor(v2.del)
+            VStack(alignment: .leading, spacing: 2) {
+                Text("Your Claude session signed out.")
+                    .font(.system(size: 12.5, weight: .medium))
+                    .foregroundColor(v2.ink)
+                Text("Sign back in to keep going — this conversation stays put.")
+                    .font(.system(size: 10.5, design: .monospaced))
+                    .foregroundColor(v2.faint)
+            }
+            Spacer(minLength: 8)
+            Button { showSignIn = true } label: {
+                Text("Sign in")
+                    .font(.system(size: 11.5, design: .monospaced))
+                    .foregroundColor(v2.paper)
+                    .padding(.horizontal, 16).padding(.vertical, 8)
+                    .background(v2.ink)
+            }
+            .buttonStyle(.plain)
+        }
+        .padding(.horizontal, 26).padding(.vertical, 14)
+        .overlay(alignment: .top) { Rectangle().fill(v2.line).frame(height: 1) }
+        .task {
+            // Make the global auth state reflect reality (the token really is
+            // dead) so the post-login `.loggedIn` transition is a real change
+            // that dismisses the sheet and triggers the respawn below.
+            if let binary = appState.claudeBinary {
+                await auth.checkStatus(binary: binary)
+            }
+        }
+        .sheet(isPresented: $showSignIn) {
+            V2ClaudeSignInSheet(auth: auth).environmentObject(appState)
+        }
+        .onChange(of: auth.status) { _, newStatus in
+            guard case .loggedIn = newStatus, session.requiresReauth else { return }
+            session.markReauthResolved()
+            let reconnected = appState.reconnectSessions(
+                inProject: tab.projectCwd, afterAuthOf: "claude",
+                note: "signed back in — reconnecting…"
+            )
+            // reconnectSessions only respawns LIVE sessions; if this one had
+            // terminated, start it fresh (resume id is preserved — no endError).
+            if reconnected == 0 { appState.startActiveSession() }
+        }
     }
 }
