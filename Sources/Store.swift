@@ -1340,14 +1340,37 @@ final class Store: ObservableObject {
         }
 
         for marketplace in marketplaces {
-            let marketplaceName = marketplace.lastPathComponent
-            let pluginsDir = marketplace.appendingPathComponent("plugins")
-            guard let pluginDirs = try? fm.contentsOfDirectory(at: pluginsDir, includingPropertiesForKeys: nil) else {
-                continue
+            let dirName = marketplace.lastPathComponent
+
+            // AUTHORITATIVE: read the marketplace manifest for the real name +
+            // each plugin's source path. Plugin layout is NOT a fixed
+            // `plugins/<name>/` dir — e.g. mattpocock/skills declares one plugin
+            // with source "./" and keeps its skills under <root>/skills/<cat>/
+            // <skill>/. The old fixed-path scan found neither the plugin nor the
+            // (nested) skills, so an installed pack showed up nowhere.
+            let manifestURL = marketplace
+                .appendingPathComponent(".claude-plugin")
+                .appendingPathComponent("marketplace.json")
+            var marketplaceName = dirName
+            var declared: [(name: String, source: String)] = []
+            if let data = try? Data(contentsOf: manifestURL),
+               let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
+                marketplaceName = (obj["name"] as? String) ?? dirName
+                for raw in obj["plugins"] as? [[String: Any]] ?? [] {
+                    guard let name = raw["name"] as? String else { continue }
+                    declared.append((name, (raw["source"] as? String) ?? "./"))
+                }
+            }
+            // Legacy fallback: a `plugins/<name>/` layout with no usable manifest.
+            if declared.isEmpty {
+                let pluginsDir = marketplace.appendingPathComponent("plugins")
+                if let pluginDirs = try? fm.contentsOfDirectory(at: pluginsDir, includingPropertiesForKeys: nil) {
+                    declared = pluginDirs.map { ($0.lastPathComponent, "plugins/\($0.lastPathComponent)") }
+                }
             }
 
-            for pluginDir in pluginDirs {
-                let pluginName = pluginDir.lastPathComponent
+            for (pluginName, source) in declared {
+                let pluginDir = marketplace.appendingPathComponent(source).standardizedFileURL
                 let pluginId = "\(pluginName)@\(marketplaceName)"
                 let isEnabled = enabledPlugins[pluginId] ?? false
 
@@ -1358,26 +1381,7 @@ final class Store: ObservableObject {
                     isEnabled: isEnabled
                 ))
 
-                var skills: [ClaudeSkill] = []
-
-                // 1) Skills inside skills/ subdirectory (standard layout)
-                let skillsDir = pluginDir.appendingPathComponent("skills")
-                if let skillDirs = try? fm.contentsOfDirectory(at: skillsDir, includingPropertiesForKeys: nil) {
-                    for skillDir in skillDirs {
-                        if let skill = parseSkillDir(skillDir, source: .plugin(name: pluginName)) {
-                            skills.append(skill)
-                        }
-                    }
-                }
-
-                // 2) Plugin-as-skill pattern: SKILL.md sits at the plugin root
-                //    (e.g. claude-reflect). Treat the plugin itself as a skill.
-                if fm.fileExists(atPath: pluginDir.appendingPathComponent("SKILL.md").path) {
-                    if let skill = parseSkillDir(pluginDir, source: .plugin(name: pluginName)) {
-                        skills.append(skill)
-                    }
-                }
-
+                let skills = pluginSkills(in: pluginDir, pluginName: pluginName)
                 if !skills.isEmpty {
                     allPluginSkills[pluginId] = skills.sorted { $0.name < $1.name }
                 }
@@ -1409,6 +1413,35 @@ final class Store: ObservableObject {
 
         plugins.sort { ($0.isEnabled ? 0 : 1, $0.name) < ($1.isEnabled ? 0 : 1, $1.name) }
         return (plugins, allPluginSkills, allPluginMCPs)
+    }
+
+    /// Every skill a plugin ships: its root SKILL.md (plugin-as-skill, e.g.
+    /// claude-reflect) plus every SKILL.md at ANY depth under its `skills/` dir.
+    /// The old scan only looked at immediate children of `skills/`, so packs
+    /// that group skills into categories (mattpocock: skills/engineering/
+    /// code-review/SKILL.md) surfaced zero skills.
+    private nonisolated static func pluginSkills(in pluginDir: URL, pluginName: String) -> [ClaudeSkill] {
+        let fm = FileManager.default
+        var skills: [ClaudeSkill] = []
+
+        if fm.fileExists(atPath: pluginDir.appendingPathComponent("SKILL.md").path),
+           let skill = parseSkillDir(pluginDir, source: .plugin(name: pluginName)) {
+            skills.append(skill)
+        }
+
+        let skillsDir = pluginDir.appendingPathComponent("skills")
+        if let enumerator = fm.enumerator(at: skillsDir, includingPropertiesForKeys: nil,
+                                          options: [.skipsHiddenFiles]) {
+            var seen = Set<String>()
+            for case let url as URL in enumerator where url.lastPathComponent == "SKILL.md" {
+                let dir = url.deletingLastPathComponent().standardizedFileURL
+                guard seen.insert(dir.path).inserted else { continue }
+                if let skill = parseSkillDir(dir, source: .plugin(name: pluginName)) {
+                    skills.append(skill)
+                }
+            }
+        }
+        return skills
     }
 
     // MARK: Parse standalone skills
