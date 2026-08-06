@@ -14,7 +14,10 @@ struct V2SkillsPanel: View {
     @EnvironmentObject private var appState: V2AppState
     @EnvironmentObject private var store: Store
 
-    @State private var expandedPlugins: Set<String> = []
+    /// Plugin sections default to EXPANDED (a freshly-added pack's skills must
+    /// be visible on the Skills page immediately, not hidden under a collapsed
+    /// row) — so we track which the user has explicitly collapsed, not expanded.
+    @State private var collapsedPlugins: Set<String> = []
     @State private var editing: EditTarget?
     @State private var showingMarketplace = false
     @State private var showingAddFromRepo = false
@@ -126,6 +129,19 @@ struct V2SkillsPanel: View {
                 .font(.system(size: 15, weight: .medium))
                 .kerning(-0.15)
             Spacer()
+            Button { showingMarketplace = true } label: {
+                HStack(spacing: 5) {
+                    Image(systemName: "sparkles")
+                    Text("packs")
+                }
+                .font(.system(size: 10.5, design: .monospaced))
+                .foregroundColor(v2.paper)
+                .padding(.horizontal, 9)
+                .padding(.vertical, 5)
+                .background(v2.ink)
+            }
+            .buttonStyle(.plain)
+            .help("Browse featured skill packs — add curated packs in one click")
             Button { showingNewChooser = true } label: {
                 Text("+ new")
                     .font(.system(size: 10.5, design: .monospaced))
@@ -151,6 +167,12 @@ struct V2SkillsPanel: View {
     /// a GitHub/GitLab URL, install one already written by someone else).
     private var newSkillChooser: some View {
         VStack(spacing: 0) {
+            chooserRow(
+                title: "Browse skill packs",
+                subtitle: "Curated packs — Matt Pocock, Anthropic, Expo — add in one click",
+                action: { showingNewChooser = false; showingMarketplace = true }
+            )
+            Rectangle().fill(v2.line).frame(height: 1)
             chooserRow(
                 title: "Add with Claude",
                 subtitle: "Describe it — Claude drafts the SKILL.md, you review before it saves",
@@ -185,14 +207,23 @@ struct V2SkillsPanel: View {
     }
 
     private var emptyState: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text("No skills found.")
+        VStack(alignment: .leading, spacing: 10) {
+            Text("No skills yet.")
                 .font(.system(size: 12, design: .monospaced))
                 .foregroundColor(v2.mute)
-            Text("Drop a folder with SKILL.md into ~/.claude/skills/, or click + new above.")
+            Text("Add a curated pack in one click, write one with Claude (+ new), or drop a folder with SKILL.md into ~/.claude/skills/.")
                 .font(.system(size: 10.5, design: .monospaced))
                 .lineSpacing(10.5 * 0.5)
                 .foregroundColor(v2.faint)
+            Button { showingMarketplace = true } label: {
+                Text("browse skill packs →")
+                    .font(.system(size: 11, design: .monospaced))
+                    .foregroundColor(v2.paper)
+                    .padding(.horizontal, 12).padding(.vertical, 7)
+                    .background(v2.ink)
+            }
+            .buttonStyle(.plain)
+            .padding(.top, 2)
         }
         .padding(18)
     }
@@ -220,10 +251,10 @@ struct V2SkillsPanel: View {
         // pluginId is "name@marketplace" (ClaudePlugin.id shape) — show just
         // the name, keep the full id for the expand-state key.
         let displayName = pluginId.split(separator: "@").first.map(String.init) ?? pluginId
-        let expanded = expandedPlugins.contains(pluginId)
+        let expanded = !collapsedPlugins.contains(pluginId)
         return VStack(spacing: 0) {
             Button {
-                if expanded { expandedPlugins.remove(pluginId) } else { expandedPlugins.insert(pluginId) }
+                if expanded { collapsedPlugins.insert(pluginId) } else { collapsedPlugins.remove(pluginId) }
             } label: {
                 HStack(spacing: 8) {
                     Image(systemName: "chevron.down")
