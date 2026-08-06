@@ -6,6 +6,25 @@
         <description>Updates for Atelier</description>
         <language>en</language>
         <item>
+            <title>Version 2.11.27</title>
+            <pubDate>Thu, 06 Aug 2026 16:46:07 +0200</pubDate>
+            <sparkle:version>102</sparkle:version>
+            <sparkle:shortVersionString>2.11.27</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>15.0</sparkle:minimumSystemVersion>
+            <description><![CDATA[
+                <h3>Atelier 2.11.27 — Text stays put, and see every file the agent touched</h3>
+                <ul>
+                    <li><b>Transcript text no longer disappears.</b> Reply text could briefly blank out while it streamed, and rows could collapse as you scrolled a long conversation — both from the native text views momentarily reporting a wrong height mid-relayout. Now each row holds its last good height, so nothing vanishes while streaming or scrolling. Expanded <b>Thinking</b> blocks also stay expanded when scrolled away and back.</li>
+                    <li><b>New Changes panel.</b> A <b>Changes</b> tab in the right dock lists every file the agent edited, wrote, or created this session — one reviewable list with per-file diffs. Writes outside the project are flagged, and it resets when you clear the conversation.</li>
+                </ul>
+            ]]></description>
+            <enclosure
+                url="https://work.munyamakosa.com/Atelier-2.11.27.dmg"
+                length="16246091"
+                type="application/octet-stream"
+                sparkle:edSignature="3Cf4R9GnDPBDTigwrt5yBeGoxBtVW9QKpVfrW7L5Lznuu3NW6lXoeucYo6cEnr9fMAVVP2ZL0fz5SlFAAd9tCg==" />
+        </item>
+        <item>
             <title>Version 2.11.26</title>
             <pubDate>Thu, 06 Aug 2026 15:12:30 +0200</pubDate>
             <sparkle:version>101</sparkle:version>
