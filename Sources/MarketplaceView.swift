@@ -96,6 +96,15 @@ enum MarketplaceLoader {
 
 // MARK: - Install runner
 
+/// One entry from `claude plugin marketplace list --json`. Carries `repo`,
+/// which is how a featured pack resolves its real marketplace `name` (the two
+/// differ: mattpocock/skills → name "mattpocock").
+struct RegisteredMarketplace: Decodable, Hashable {
+    let name: String
+    let repo: String?
+    let installLocation: String?
+}
+
 enum MarketplaceInstaller {
     enum Action: String {
         case install, uninstall, update
@@ -120,6 +129,17 @@ enum MarketplaceInstaller {
     /// newly published skills; a per-plugin `.update` then applies them.
     static func updateMarketplace(_ name: String?) async throws -> String {
         try await runClaude(["plugin", "marketplace", "update"] + (name.map { [$0] } ?? []))
+    }
+
+    /// `claude plugin marketplace list --json` decoded — the source of truth for
+    /// mapping a pack's `repo` to its actually-registered marketplace `name`.
+    /// Returns [] on any failure (caller treats "not registered" the same way).
+    static func listMarketplaces() async -> [RegisteredMarketplace] {
+        guard let out = try? await runClaude(["plugin", "marketplace", "list", "--json"]),
+              let data = out.data(using: .utf8),
+              let list = try? JSONDecoder().decode([RegisteredMarketplace].self, from: data)
+        else { return [] }
+        return list
     }
 
     /// Shared runner: resolve the `claude` binary, run it with the enriched

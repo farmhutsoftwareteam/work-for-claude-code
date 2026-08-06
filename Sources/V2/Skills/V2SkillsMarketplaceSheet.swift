@@ -1,18 +1,26 @@
-// Skill marketplace browsing (#64) — the marketplace overlay from
-// "Skills management.dc.html", promoted to the "Skill Packs" discovery surface
-// (#11). Leads with a curated featured-packs section (essentials one-click +
-// verified/official/community pack cards) driven by the `claude plugin` CLI, so
-// packs install as plugins and stay claude-updatable. Below it, the original
-// two real sources remain:
-//   1. Registered Claude plugin marketplaces (MarketplaceLoader scans
-//      ~/.claude/plugins/marketplaces/*/.claude-plugin/marketplace.json) crossed
-//      with store.pluginSkills for skill-level "install just this one" via
-//      SkillOperations.cloneToPersonal (a static, editable fork).
-//   2. Add a whole pack from a repo (`claude plugin marketplace add`) or a
-//      single skill from a repo (V2AddSkillFromRepoSheet git-clone).
+// Skill marketplace browsing (#64) — the "Skill Packs" discovery surface (#11).
+// Leads with a curated featured-packs section driven by the `claude plugin` CLI:
+// packs install as plugins (auto-enabled at user scope) and stay updatable.
+//
+// The add flow is a real state machine — adding → installing → done/failed —
+// with the marketplace resolved by REPO, not a guessed name (the earlier bug:
+// a wrong name matched nothing, installed nothing, and the button silently
+// reverted with no success or error). Zero resolvable plugins now throws a
+// visible error instead of a silent no-op.
+//
+// Below the featured section, the original per-skill sources remain: install a
+// single skill from a registered marketplace (cloneToPersonal), or add a whole
+// pack / single skill from a repo.
 
 import SwiftUI
 import Inject
+
+private enum PackPhase: Equatable {
+    case idle
+    case adding        // registering the marketplace
+    case installing    // installing + enabling the pack's plugins
+    case failed(String)
+}
 
 struct V2SkillsMarketplaceSheet: View {
     @ObserveInjection private var inject
@@ -26,8 +34,9 @@ struct V2SkillsMarketplaceSheet: View {
     @State private var showingAddFromRepo = false
 
     // Featured-packs state
-    @State private var registered: [Marketplace] = []   // cached MarketplaceLoader.loadAll()
-    @State private var busyPacks: Set<String> = []       // pack ids mid add/update
+    @State private var registered: [Marketplace] = []          // MarketplaceLoader.loadAll() — offered plugins + header count
+    @State private var marketplaceNameByRepo: [String: String] = [:]  // repo → real registered name (from CLI --json)
+    @State private var phase: [String: PackPhase] = [:]        // pack.id → phase
     @State private var expandedPacks: Set<String> = []
     @State private var actionError: String?
     @State private var showRestartHint = false
@@ -99,7 +108,7 @@ struct V2SkillsMarketplaceSheet: View {
     }
 
     private var essentialsBusy: Bool {
-        SkillPack.essentials.contains { busyPacks.contains($0.id) }
+        SkillPack.essentials.contains { isBusy($0) }
     }
 
     private var essentialsHero: some View {
@@ -115,10 +124,11 @@ struct V2SkillsMarketplaceSheet: View {
                         .fixedSize(horizontal: false, vertical: true)
                 }
                 Spacer(minLength: 8)
-                V2ChipButton(label: essentialsBusy ? "setting up…" : "set up essentials", prominent: true) {
-                    setUpEssentials()
+                if essentialsBusy {
+                    progressChip("setting up…")
+                } else {
+                    V2ChipButton(label: "set up essentials", prominent: true) { setUpEssentials() }
                 }
-                .disabled(essentialsBusy)
             }
             Text("Skills can run tools and read files in your projects. Review a pack before enabling it.")
                 .font(.system(size: 9.5, design: .monospaced))
@@ -134,7 +144,6 @@ struct V2SkillsMarketplaceSheet: View {
         let plugins = packPlugins(pack)
         let installedCount = plugins.count
         let enabledCount = plugins.filter(\.isEnabled).count
-        let busy = busyPacks.contains(pack.id)
         let expanded = expandedPacks.contains(pack.id)
         return VStack(alignment: .leading, spacing: 0) {
             HStack(alignment: .top, spacing: 12) {
@@ -164,7 +173,7 @@ struct V2SkillsMarketplaceSheet: View {
                     statusLine(pack, installedCount: installedCount, enabledCount: enabledCount)
                 }
                 Spacer(minLength: 8)
-                primaryButton(pack, busy: busy, installedCount: installedCount, enabledCount: enabledCount)
+                packControl(pack, installedCount: installedCount, enabledCount: enabledCount)
             }
             .padding(14)
             .contentShape(Rectangle())
@@ -193,47 +202,79 @@ struct V2SkillsMarketplaceSheet: View {
             .overlay(Rectangle().stroke(color.opacity(0.6), lineWidth: 1))
     }
 
+    /// The status line under the blurb: an error message when the last add
+    /// failed, an enabled/update state when installed, otherwise a teaser.
     @ViewBuilder
     private func statusLine(_ pack: SkillPack, installedCount: Int, enabledCount: Int) -> some View {
-        HStack(spacing: 8) {
-            if enabledCount > 0 {
+        if case .failed(let msg) = phase[pack.id] {
+            HStack(spacing: 6) {
+                Image(systemName: "exclamationmark.triangle")
+                    .font(.system(size: 9)).foregroundColor(v2.del)
+                Text(msg)
+                    .font(.system(size: 9.5, design: .monospaced))
+                    .foregroundColor(v2.del)
+                    .lineLimit(2)
+            }
+        } else if enabledCount > 0 {
+            HStack(spacing: 8) {
                 Circle().fill(v2.add).frame(width: 6, height: 6)
                 Text("enabled")
-                    .font(.system(size: 9, design: .monospaced))
-                    .foregroundColor(v2.add)
+                    .font(.system(size: 9, design: .monospaced)).foregroundColor(v2.add)
                 Text("·").font(.system(size: 9, design: .monospaced)).foregroundColor(v2.faint)
                 Text(pack.autoUpdatesByDefault ? "auto-updates on" : "updates: manual")
-                    .font(.system(size: 9, design: .monospaced))
-                    .foregroundColor(v2.mute)
-                if !pack.autoUpdatesByDefault {
+                    .font(.system(size: 9, design: .monospaced)).foregroundColor(v2.mute)
+                if !pack.autoUpdatesByDefault, !isBusy(pack) {
                     Button { checkUpdates(pack) } label: {
                         Text("check for updates")
                             .font(.system(size: 9, design: .monospaced))
-                            .foregroundColor(v2.ink)
-                            .underline()
+                            .foregroundColor(v2.ink).underline()
                     }
                     .buttonStyle(.plain)
-                    .disabled(busyPacks.contains(pack.id))
                 }
+            }
+        } else {
+            Text(pack.skillCount > 0 ? "~\(pack.skillCount) skills · \(pack.publisher)" : "by \(pack.publisher)")
+                .font(.system(size: 9, design: .monospaced))
+                .foregroundColor(v2.mute)
+        }
+    }
+
+    /// The primary control on the right: a live spinner while working, a
+    /// "try again" on failure, or add/enable/enabled from the real state.
+    @ViewBuilder
+    private func packControl(_ pack: SkillPack, installedCount: Int, enabledCount: Int) -> some View {
+        switch phase[pack.id] ?? .idle {
+        case .adding:
+            progressChip("adding…")
+        case .installing:
+            progressChip("installing…")
+        case .failed:
+            V2ChipButton(label: "try again", prominent: true) { triggerAdd(pack) }
+        case .idle:
+            let fullyEnabled = installedCount > 0 && enabledCount == installedCount
+            if fullyEnabled {
+                Text("enabled ✓")
+                    .font(.system(size: 11, design: .monospaced))
+                    .foregroundColor(v2.add)
+                    .padding(.horizontal, 12).padding(.vertical, 5)
+                    .overlay(Rectangle().stroke(v2.add.opacity(0.6), lineWidth: 1))
+            } else if installedCount > 0 {
+                V2ChipButton(label: "enable", prominent: true) { triggerAdd(pack) }
             } else {
-                Text(pack.skillCount > 0 ? "~\(pack.skillCount) skills · \(pack.publisher)" : "by \(pack.publisher)")
-                    .font(.system(size: 9, design: .monospaced))
-                    .foregroundColor(v2.mute)
+                V2ChipButton(label: "add pack", prominent: true) { triggerAdd(pack) }
             }
         }
     }
 
-    private func primaryButton(_ pack: SkillPack, busy: Bool, installedCount: Int, enabledCount: Int) -> some View {
-        let fullyEnabled = installedCount > 0 && enabledCount == installedCount
-        let label: String
-        if busy { label = "adding…" }
-        else if fullyEnabled { label = "enabled ✓" }
-        else if installedCount > 0 { label = "enable" }
-        else { label = "add pack" }
-        return V2ChipButton(label: label, prominent: !fullyEnabled) {
-            if !fullyEnabled && !busy { triggerAdd(pack) }
+    private func progressChip(_ label: String) -> some View {
+        HStack(spacing: 7) {
+            ProgressView().controlSize(.small).scaleEffect(0.7)
+            Text(label)
+                .font(.system(size: 11, design: .monospaced))
+                .foregroundColor(v2.mute)
         }
-        .disabled(busy || fullyEnabled)
+        .padding(.horizontal, 10).padding(.vertical, 4)
+        .overlay(Rectangle().stroke(v2.line2, lineWidth: 1))
     }
 
     @ViewBuilder
@@ -347,8 +388,6 @@ struct V2SkillsMarketplaceSheet: View {
         VStack(alignment: .leading, spacing: 8) {
             sectionLabel("add from a repo", icon: "point.3.connected.trianglepath.dotted")
 
-            // Add a whole pack (marketplace) — the old dead-end ("do it in a
-            // terminal") is now a working field.
             VStack(alignment: .leading, spacing: 10) {
                 Text("Add a pack (marketplace)")
                     .font(.system(size: 13, weight: .medium))
@@ -365,10 +404,11 @@ struct V2SkillsMarketplaceSheet: View {
                         .background(v2.paper2)
                         .overlay(Rectangle().stroke(v2.line2, lineWidth: 1))
                         .onSubmit { addPackFromRepo() }
-                    V2ChipButton(label: addingPack ? "adding…" : "add pack", prominent: true) {
-                        addPackFromRepo()
+                    if addingPack {
+                        progressChip("adding…")
+                    } else {
+                        V2ChipButton(label: "add pack", prominent: true) { addPackFromRepo() }
                     }
-                    .disabled(addingPack || addPackField.trimmingCharacters(in: .whitespaces).isEmpty)
                 }
             }
             .padding(14)
@@ -376,7 +416,6 @@ struct V2SkillsMarketplaceSheet: View {
             .overlay(Rectangle().stroke(v2.line2, lineWidth: 1))
             .padding(.horizontal, 26)
 
-            // Add a single skill (git clone into personal) — existing flow.
             HStack(spacing: 12) {
                 VStack(alignment: .leading, spacing: 3) {
                     Text("Add a single skill")
@@ -419,10 +458,10 @@ struct V2SkillsMarketplaceSheet: View {
 
     private var restartBar: some View {
         HStack(spacing: 10) {
-            Image(systemName: "arrow.clockwise")
+            Image(systemName: "checkmark.circle")
                 .font(.system(size: 10, weight: .medium))
-                .foregroundColor(v2.mute)
-            Text("Restart your session to load newly enabled skills.")
+                .foregroundColor(v2.add)
+            Text("Pack added — restart your session to load the new skills.")
                 .font(.system(size: 10.5, design: .monospaced))
                 .foregroundColor(v2.ink)
             Spacer()
@@ -443,17 +482,32 @@ struct V2SkillsMarketplaceSheet: View {
 
     private var totalMarketSkills: Int { marketplaceRows.count }
 
-    /// One row per (plugin, skill) — flattens store.pluginSkills, which already
-    /// covers every registered plugin regardless of enabled state.
     private var marketplaceRows: [(pluginId: String, skill: ClaudeSkill)] {
         store.pluginSkills.keys.sorted().flatMap { pluginId in
             (store.pluginSkills[pluginId] ?? []).map { (pluginId, $0) }
         }
     }
 
-    /// Live skill teaser for a pack with no curated preview — pulled from the
-    /// already-parsed pluginSkills for the pack's marketplace, deduped by
-    /// command so ForEach ids stay unique, capped so the card stays compact.
+    private func isBusy(_ pack: SkillPack) -> Bool {
+        switch phase[pack.id] ?? .idle {
+        case .adding, .installing: return true
+        default: return false
+        }
+    }
+
+    /// The installed plugins that belong to this pack — resolved via the pack's
+    /// REPO → real marketplace name map, then filtered to the named subset when
+    /// the pack targets specific plugins in a larger marketplace.
+    private func packPlugins(_ pack: SkillPack) -> [ClaudePlugin] {
+        guard let name = marketplaceNameByRepo[pack.repo] else { return [] }
+        return store.plugins.filter { plugin in
+            plugin.marketplace == name
+                && (pack.pluginNames.map { $0.contains(plugin.name) } ?? true)
+        }
+    }
+
+    /// Live skill teaser for a pack with no curated preview — deduped by
+    /// command, capped so the card stays compact.
     private func livePreview(_ pack: SkillPack) -> [SkillPack.PreviewSkill] {
         let ids = Set(packPlugins(pack).map(\.id))
         var seen = Set<String>()
@@ -470,16 +524,6 @@ struct V2SkillsMarketplaceSheet: View {
         return out
     }
 
-    /// The installed plugins that belong to this pack — the whole marketplace,
-    /// or just the named subset when the pack targets specific plugins in a
-    /// larger marketplace (e.g. the official one). Drives card counts + preview.
-    private func packPlugins(_ pack: SkillPack) -> [ClaudePlugin] {
-        store.plugins.filter { plugin in
-            plugin.marketplace == pack.marketplace
-                && (pack.pluginNames.map { $0.contains(plugin.name) } ?? true)
-        }
-    }
-
     // MARK: - Actions
 
     private func toggleExpand(_ pack: SkillPack) {
@@ -488,79 +532,97 @@ struct V2SkillsMarketplaceSheet: View {
     }
 
     private func reloadRegistered() async {
+        let markets = await MarketplaceInstaller.listMarketplaces()
+        var map: [String: String] = [:]
+        for m in markets { if let repo = m.repo { map[repo] = m.name } }
+        marketplaceNameByRepo = map
         registered = await Task.detached { MarketplaceLoader.loadAll() }.value
     }
 
-    /// Add a featured pack: register its marketplace if needed, then install +
-    /// enable every plugin it ships. Idempotent — skips the add when already
-    /// registered and skips install for plugins already present, so re-running
-    /// (or the essentials loop hitting an already-added pack) is safe.
+    /// Add a featured pack, resolving the marketplace by REPO (never a guessed
+    /// name): register it if needed, read the plugins it actually offers,
+    /// install + enable the pack's subset. Throws (→ visible .failed state) if
+    /// the marketplace can't be registered or exposes no matching plugins —
+    /// never a silent no-op.
     private func addPack(_ pack: SkillPack) async {
+        phase[pack.id] = .adding
         do {
-            if let repo = pack.repo, !registered.contains(where: { $0.name == pack.marketplace }) {
-                _ = try await MarketplaceInstaller.addMarketplace(repo)
-                await store.loadExtensions()
-                await reloadRegistered()
+            // 1. Resolve the marketplace name from the repo — registering it if
+            //    it isn't already present.
+            var markets = await MarketplaceInstaller.listMarketplaces()
+            var marketName = markets.first { $0.repo == pack.repo }?.name
+            if marketName == nil {
+                _ = try await MarketplaceInstaller.addMarketplace(pack.repo)
+                markets = await MarketplaceInstaller.listMarketplaces()
+                marketName = markets.first { $0.repo == pack.repo }?.name
             }
-            let available = registered.first { $0.name == pack.marketplace }?.plugins ?? []
-            let plugins = pack.pluginNames.map { names in available.filter { names.contains($0.name) } } ?? available
+            guard let marketName else {
+                throw SkillPackError.message("Couldn't register this pack's marketplace — check your connection.")
+            }
+
+            // 2. Which plugins does the (now-cloned) marketplace actually offer?
+            let offered = await Task.detached { MarketplaceLoader.loadAll() }.value
+                .first { $0.name == marketName }?.plugins ?? []
+            let targets = pack.pluginNames.map { names in offered.filter { names.contains($0.name) } } ?? offered
+            guard !targets.isEmpty else {
+                throw SkillPackError.message("No installable skills found in this pack.")
+            }
+
+            // 3. Install (auto-enables) any not already installed, then ensure
+            //    each is enabled.
+            phase[pack.id] = .installing
             let installedIds = Set(store.plugins.map(\.id))
-            for plugin in plugins {
-                let pid = "\(plugin.name)@\(pack.marketplace)"
+            for plugin in targets {
+                let pid = "\(plugin.name)@\(marketName)"
                 if !installedIds.contains(pid) {
                     _ = try await MarketplaceInstaller.run(.install, plugin: plugin)
                 }
-                try SkillOperations.setPluginEnabled(true, pluginId: pid)
+                try? SkillOperations.setPluginEnabled(true, pluginId: pid)
             }
+
             await store.loadExtensions()
             await reloadRegistered()
+            phase[pack.id] = .idle
             onInstalled()
             showRestartHint = true
         } catch {
-            actionError = error.localizedDescription
+            phase[pack.id] = .failed(error.localizedDescription)
         }
     }
 
     private func triggerAdd(_ pack: SkillPack) {
-        busyPacks.insert(pack.id)
-        Task {
-            await addPack(pack)
-            busyPacks.remove(pack.id)
-        }
+        Task { await addPack(pack) }
     }
 
     private func setUpEssentials() {
         Task {
-            for pack in SkillPack.essentials {
-                busyPacks.insert(pack.id)
-                await addPack(pack)
-                busyPacks.remove(pack.id)
-            }
+            for pack in SkillPack.essentials { await addPack(pack) }
         }
     }
 
-    /// Pull the pack's marketplace from source, then update each of its
-    /// installed plugins. `.update` per plugin is best-effort — a plugin already
-    /// current isn't a failure worth aborting the batch for.
+    /// Pull the pack's marketplace from source, then update each installed
+    /// plugin. Best-effort per plugin — one already-current plugin shouldn't
+    /// abort the batch.
     private func checkUpdates(_ pack: SkillPack) {
-        busyPacks.insert(pack.id)
+        guard let marketName = marketplaceNameByRepo[pack.repo] else { return }
+        phase[pack.id] = .installing
         Task {
             do {
-                _ = try await MarketplaceInstaller.updateMarketplace(pack.marketplace)
-                for plugin in store.plugins where plugin.marketplace == pack.marketplace {
+                _ = try await MarketplaceInstaller.updateMarketplace(marketName)
+                for plugin in store.plugins where plugin.marketplace == marketName {
                     let mp = MarketplacePlugin(
-                        id: plugin.id, marketplace: pack.marketplace, name: plugin.name,
+                        id: plugin.id, marketplace: marketName, name: plugin.name,
                         description: "", category: nil, author: nil, homepage: nil
                     )
                     _ = try? await MarketplaceInstaller.run(.update, plugin: mp)
                 }
                 await store.loadExtensions()
                 await reloadRegistered()
+                phase[pack.id] = .idle
                 showRestartHint = true
             } catch {
-                actionError = error.localizedDescription
+                phase[pack.id] = .failed(error.localizedDescription)
             }
-            busyPacks.remove(pack.id)
         }
     }
 
