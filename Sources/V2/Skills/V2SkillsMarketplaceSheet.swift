@@ -27,6 +27,7 @@ struct V2SkillsMarketplaceSheet: View {
     @Environment(\.v2) private var v2
     @Environment(\.dismiss) private var dismiss
     @EnvironmentObject private var store: Store
+    @EnvironmentObject private var appState: V2AppState
 
     var onInstalled: () -> Void
 
@@ -39,7 +40,7 @@ struct V2SkillsMarketplaceSheet: View {
     @State private var phase: [String: PackPhase] = [:]        // pack.id → phase
     @State private var expandedPacks: Set<String> = []
     @State private var actionError: String?
-    @State private var showRestartHint = false
+    @State private var reloadNote: String?
     @State private var addPackField = ""
     @State private var addingPack = false
 
@@ -54,7 +55,7 @@ struct V2SkillsMarketplaceSheet: View {
                 }
                 .padding(.bottom, 20)
             }
-            if showRestartHint { restartBar }
+            if reloadNote != nil { reloadNoteBar }
         }
         .frame(width: 860, height: 640)
         .background(v2.paper2)
@@ -456,22 +457,15 @@ struct V2SkillsMarketplaceSheet: View {
 
     // MARK: - Restart hint
 
-    private var restartBar: some View {
+    private var reloadNoteBar: some View {
         HStack(spacing: 10) {
             Image(systemName: "checkmark.circle")
                 .font(.system(size: 10, weight: .medium))
                 .foregroundColor(v2.add)
-            Text("Pack added — restart your session to load the new skills.")
+            Text(reloadNote ?? "")
                 .font(.system(size: 10.5, design: .monospaced))
                 .foregroundColor(v2.ink)
             Spacer()
-            Button { showRestartHint = false } label: {
-                Text("dismiss")
-                    .font(.system(size: 10.5, design: .monospaced))
-                    .foregroundColor(v2.faint)
-                    .underline()
-            }
-            .buttonStyle(.plain)
         }
         .padding(.horizontal, 20).padding(.vertical, 10)
         .background(v2.addBg)
@@ -544,7 +538,8 @@ struct V2SkillsMarketplaceSheet: View {
     /// install + enable the pack's subset. Throws (→ visible .failed state) if
     /// the marketplace can't be registered or exposes no matching plugins —
     /// never a silent no-op.
-    private func addPack(_ pack: SkillPack) async {
+    @discardableResult
+    private func addPack(_ pack: SkillPack) async -> Bool {
         phase[pack.id] = .adding
         do {
             // 1. Resolve the marketplace name from the repo — registering it if
@@ -584,19 +579,53 @@ struct V2SkillsMarketplaceSheet: View {
             await reloadRegistered()
             phase[pack.id] = .idle
             onInstalled()
-            showRestartHint = true
+            return true
         } catch {
             phase[pack.id] = .failed(error.localizedDescription)
+            return false
         }
     }
 
     private func triggerAdd(_ pack: SkillPack) {
-        Task { await addPack(pack) }
+        Task {
+            if await addPack(pack) { await reloadActiveSession() }
+        }
     }
 
     private func setUpEssentials() {
         Task {
-            for pack in SkillPack.essentials { await addPack(pack) }
+            var added = false
+            for pack in SkillPack.essentials { if await addPack(pack) { added = true } }
+            if added { await reloadActiveSession() }
+        }
+    }
+
+    /// Auto-reload the active session so newly added skills come live — no
+    /// "please restart" button to press. Guarded so it never kills a turn
+    /// that's mid-stream (reconnectSessions restarts with --resume, which for
+    /// a live .working session would throw away the in-flight reply).
+    private func reloadActiveSession() async {
+        guard let tab = appState.activeTab, let session = tab.streamSession else { return }
+        switch session.state {
+        case .ready, .hibernated:
+            let n = appState.reconnectSessions(
+                inProject: tab.projectCwd, afterAuthOf: "skill-packs",
+                note: "skills added — session reloaded."
+            )
+            flashReloadNote(n > 0 ? "session reloaded ✓ — new skills are live" : "added ✓")
+        case .idle, .terminated:
+            flashReloadNote("added ✓ — skills load when you start a session")
+        default:
+            // Mid-turn — don't interrupt the stream; they load next session.
+            flashReloadNote("added ✓ — new skills load on your next session")
+        }
+    }
+
+    private func flashReloadNote(_ note: String) {
+        reloadNote = note
+        Task {
+            try? await Task.sleep(nanoseconds: 4_500_000_000)
+            if reloadNote == note { reloadNote = nil }
         }
     }
 
@@ -619,7 +648,7 @@ struct V2SkillsMarketplaceSheet: View {
                 await store.loadExtensions()
                 await reloadRegistered()
                 phase[pack.id] = .idle
-                showRestartHint = true
+                await reloadActiveSession()
             } catch {
                 phase[pack.id] = .failed(error.localizedDescription)
             }

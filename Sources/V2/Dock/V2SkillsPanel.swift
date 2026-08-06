@@ -96,6 +96,7 @@ struct V2SkillsPanel: View {
         }
         .sheet(isPresented: $showingMarketplace) {
             V2SkillsMarketplaceSheet(onInstalled: { reload() })
+                .environmentObject(appState)
         }
         .sheet(isPresented: $showingAddFromRepo) {
             V2AddSkillFromRepoSheet(onInstalled: { reload() })
