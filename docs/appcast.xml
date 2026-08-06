@@ -6,6 +6,24 @@
         <description>Updates for Atelier</description>
         <language>en</language>
         <item>
+            <title>Version 2.11.22</title>
+            <pubDate>Thu, 06 Aug 2026 10:38:48 +0200</pubDate>
+            <sparkle:version>97</sparkle:version>
+            <sparkle:shortVersionString>2.11.22</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>15.0</sparkle:minimumSystemVersion>
+            <description><![CDATA[
+                <h3>Atelier 2.11.22 — Installed packs actually show up</h3>
+                <ul>
+                    <li><b>Fixed: an added pack's skills didn't show, and its card kept saying "add pack."</b> Atelier now reads each marketplace's manifest to discover its plugins — instead of assuming a fixed folder layout many packs don't use — and finds skills nested in category folders. So an installed pack appears in the Skills list and its card flips to "enabled ✓".</li>
+                </ul>
+            ]]></description>
+            <enclosure
+                url="https://work.munyamakosa.com/Atelier-2.11.22.dmg"
+                length="16033185"
+                type="application/octet-stream"
+                sparkle:edSignature="RYwczkGT03cn/oWMQFG9RIDKwYIaTxixyrx7Yex95mseF5wcKBaZRx4oi/Asg/zZeBhWaDQDkfMVT5hhj66nCQ==" />
+        </item>
+        <item>
             <title>Version 2.11.21</title>
             <pubDate>Thu, 06 Aug 2026 09:58:58 +0200</pubDate>
             <sparkle:version>96</sparkle:version>
