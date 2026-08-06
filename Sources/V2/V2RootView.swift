@@ -65,6 +65,8 @@ struct V2RootView: View {
 
                                 mainBody
 
+                                mcpAttentionStrip
+
                                 composerOrControls
                             }
                         case .usage:
@@ -292,6 +294,25 @@ struct V2RootView: View {
             V2ProjectHome()
         } else {
             emptyState
+        }
+    }
+
+    /// A prominent, mostly session-independent MCP fix banner in the chat area:
+    /// Claude → "approve" a `.mcp.json` project server (file-driven, works with
+    /// NO session); Codex → "sign in" to an MCP server that needs OAuth (Codex
+    /// has no approval gate). Each strip observes its own source and renders
+    /// nothing when there's nothing to fix.
+    @ViewBuilder
+    private var mcpAttentionStrip: some View {
+        if let tab = appState.activeTab {
+            if tab.provider == .codex, let session = tab.codexSession {
+                V2CodexMcpSigninStrip(session: session)
+            } else if tab.provider != .codex {
+                V2ClaudeMcpApprovalStrip(cwd: tab.projectCwd)
+            }
+        } else if let cwd = appState.selectedProjectCwd?.path {
+            // Project home, no session yet — still surface Claude approvals.
+            V2ClaudeMcpApprovalStrip(cwd: cwd)
         }
     }
 
@@ -919,6 +940,114 @@ private struct V2ReauthStrip: View {
             // reconnectSessions only respawns LIVE sessions; if this one had
             // terminated, start it fresh (resume id is preserved — no endError).
             if reconnected == 0 { appState.startActiveSession() }
+        }
+    }
+}
+
+/// Claude `.mcp.json` project-server approval, surfaced in the chat area and
+/// driven entirely by file-computed store state (`pendingApprovalsByProject`),
+/// so it appears with NO running session. Renders nothing when the project has
+/// no pending approvals; approving clears it (store recompute) and reconnects.
+private struct V2ClaudeMcpApprovalStrip: View {
+    @Environment(\.v2) private var v2
+    @EnvironmentObject private var appState: V2AppState
+    @EnvironmentObject private var store: Store
+    let cwd: String
+    @State private var busy = false
+
+    var body: some View {
+        let servers = store.pendingApprovals(cwd: cwd)
+        if servers.isEmpty {
+            EmptyView()
+        } else {
+            HStack(spacing: 12) {
+                Image(systemName: "checkmark.shield")
+                    .font(.system(size: 14))
+                    .foregroundColor(v2.del)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(servers.count == 1
+                         ? "MCP server “\(servers[0])” needs your approval"
+                         : "\(servers.count) MCP servers need your approval")
+                        .font(.system(size: 12.5, weight: .medium))
+                        .foregroundColor(v2.ink)
+                        .lineLimit(1)
+                    Text("From this repo's .mcp.json — Claude won't run \(servers.count == 1 ? "it" : "them") until you approve.")
+                        .font(.system(size: 10.5, design: .monospaced))
+                        .foregroundColor(v2.faint)
+                        .lineLimit(1)
+                }
+                Spacer(minLength: 8)
+                Button { approve(servers) } label: {
+                    Text(busy ? "approving…" : (servers.count == 1 ? "approve" : "approve all"))
+                        .font(.system(size: 11.5, design: .monospaced))
+                        .foregroundColor(v2.paper)
+                        .padding(.horizontal, 16).padding(.vertical, 8)
+                        .background(v2.ink)
+                }
+                .buttonStyle(.plain)
+                .disabled(busy)
+            }
+            .padding(.horizontal, 26).padding(.vertical, 12)
+            .background(v2.delBg)
+            .overlay(alignment: .top) { Rectangle().fill(v2.line).frame(height: 1) }
+        }
+    }
+
+    private func approve(_ servers: [String]) {
+        guard !busy else { return }
+        busy = true
+        Task {
+            for server in servers { try? MCPApproval.approve(cwd: cwd, server: server) }
+            await store.reloadMCPs()   // recomputes pendingApprovalsByProject → strip clears itself
+            _ = appState.reconnectSessions(inProject: cwd, afterAuthOf: "mcp",
+                                           note: "MCP approved — reconnecting…")
+            busy = false
+        }
+    }
+}
+
+/// Codex's parallel MCP snag is OAuth sign-in — it has no approval gate. Same
+/// chat-area slot, provider-appropriate action. Session-dependent, since Codex
+/// MCP status comes from the running app-server (not files). Renders nothing
+/// when no server needs sign-in.
+private struct V2CodexMcpSigninStrip: View {
+    @Environment(\.v2) private var v2
+    @ObservedObject var session: CodexSession
+
+    var body: some View {
+        let needing = session.mcpServers.filter(\.needsLogin).map(\.name).sorted()
+        if needing.isEmpty {
+            EmptyView()
+        } else {
+            HStack(spacing: 12) {
+                Image(systemName: "person.crop.circle.badge.exclamationmark")
+                    .font(.system(size: 14))
+                    .foregroundColor(v2.del)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(needing.count == 1
+                         ? "MCP server “\(needing[0])” needs sign-in"
+                         : "\(needing.count) MCP servers need sign-in")
+                        .font(.system(size: 12.5, weight: .medium))
+                        .foregroundColor(v2.ink)
+                        .lineLimit(1)
+                    Text("Sign in so Codex can use \(needing.count == 1 ? "it" : "them") — opens in your browser.")
+                        .font(.system(size: 10.5, design: .monospaced))
+                        .foregroundColor(v2.faint)
+                        .lineLimit(1)
+                }
+                Spacer(minLength: 8)
+                Button { for name in needing { session.loginMCP(name: name) } } label: {
+                    Text(needing.count == 1 ? "sign in" : "sign in all")
+                        .font(.system(size: 11.5, design: .monospaced))
+                        .foregroundColor(v2.paper)
+                        .padding(.horizontal, 16).padding(.vertical, 8)
+                        .background(v2.ink)
+                }
+                .buttonStyle(.plain)
+            }
+            .padding(.horizontal, 26).padding(.vertical, 12)
+            .background(v2.delBg)
+            .overlay(alignment: .top) { Rectangle().fill(v2.line).frame(height: 1) }
         }
     }
 }

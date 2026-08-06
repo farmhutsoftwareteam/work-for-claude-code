@@ -53,6 +53,13 @@ final class Store: ObservableObject {
     // MCP runtime statuses (keyed by MCPServer.statusKey)
     @Published var mcpStatuses: [String: MCPStatus] = [:]
 
+    /// Project cwd → the project's `.mcp.json` servers still pending Claude's
+    /// one-time approval (not yet in enabledMcpjsonServers). Computed purely
+    /// from files in loadExtensions() — mirrors mcpNeedsAuth — so the approve
+    /// affordance works with NO running session. Claude-only: Codex has no
+    /// per-project approval gate.
+    @Published var pendingApprovalsByProject: [String: Set<String>] = [:]
+
     /// Server names that currently need OAuth sign-in, sourced from claude's own
     /// `~/.claude/mcp-needs-auth-cache.json` — the authoritative list it keeps of
     /// servers whose connection last failed with `needs-auth`. A name's PRESENCE
@@ -1094,6 +1101,39 @@ final class Store: ObservableObject {
         projectMCPs = perProject.mcps
         projectSkills = perProject.skills
         loadMCPNeedsAuth()
+        await refreshPendingApprovals()
+    }
+
+    /// Recompute `.mcp.json` approval state for every known project from files
+    /// (no session). Rides the same app/file refresh path as loadMCPNeedsAuth,
+    /// so the approve affordance is driven entirely by up-to-date store state.
+    func refreshPendingApprovals() async {
+        let namesByProject = projectMCPs.mapValues { $0.map(\.name) }
+        let pending = await Task.detached(priority: .utility) {
+            var result: [String: Set<String>] = [:]
+            for (cwd, names) in namesByProject where !names.isEmpty {
+                let p = MCPApproval.pending(cwd: cwd, names: names)
+                if !p.isEmpty { result[cwd] = p }
+            }
+            return result
+        }.value
+        if pendingApprovalsByProject != pending { pendingApprovalsByProject = pending }
+    }
+
+    /// Pending `.mcp.json` approvals for a project, sorted — normalized against
+    /// path-form differences (trailing slash, symlink / `/private` resolution)
+    /// so a lookup by a tab's cwd or a selected-project URL path still matches
+    /// the key we stored (which comes from the project list). Exact-match fast
+    /// path first; the normalized scan runs only when the dict is non-empty.
+    func pendingApprovals(cwd: String) -> [String] {
+        if let set = pendingApprovalsByProject[cwd] { return set.sorted() }
+        guard !pendingApprovalsByProject.isEmpty else { return [] }
+        let target = URL(fileURLWithPath: cwd).standardizedFileURL.path
+        for (key, set) in pendingApprovalsByProject
+        where URL(fileURLWithPath: key).standardizedFileURL.path == target {
+            return set.sorted()
+        }
+        return []
     }
 
     /// Read claude's needs-auth cache into `mcpNeedsAuth`. Cheap (a few hundred
