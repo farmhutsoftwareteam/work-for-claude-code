@@ -6,6 +6,27 @@
         <description>Updates for Atelier</description>
         <language>en</language>
         <item>
+            <title>Version 2.11.24</title>
+            <pubDate>Thu, 06 Aug 2026 14:07:49 +0200</pubDate>
+            <sparkle:version>99</sparkle:version>
+            <sparkle:shortVersionString>2.11.24</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>15.0</sparkle:minimumSystemVersion>
+            <description><![CDATA[
+                <h3>Atelier 2.11.24 — Skills you can see, and clearer states</h3>
+                <ul>
+                    <li><b>Installed packs always show their skills.</b> The Skills list reflects what's actually installed (from Claude's own plugin state), including packs that are installed but turned off — shown with an <b>enable</b> action instead of vanishing.</li>
+                    <li><b>"disabled" → "on-demand".</b> A skill that only runs when you type its command is now labeled on-demand, not the misleading "disabled".</li>
+                    <li><b>Sign back in after any signout.</b> If a session ends because your Claude login expired — not only mid-turn — the Sign in prompt now appears.</li>
+                    <li><b>Dev-build note.</b> A Debug build run from Xcode shows a small, dismissible reminder that it updates by rebuild, not auto-update.</li>
+                </ul>
+            ]]></description>
+            <enclosure
+                url="https://work.munyamakosa.com/Atelier-2.11.24.dmg"
+                length="16088211"
+                type="application/octet-stream"
+                sparkle:edSignature="hoB30aBTZ45huwXyM/AeVTc3sKTu5bsukdA1sv61DSmUT+YErh+PCCXNu704s7tNM4p3OCrAbrD2GGqXr4LuDQ==" />
+        </item>
+        <item>
             <title>Version 2.11.23</title>
             <pubDate>Thu, 06 Aug 2026 12:57:03 +0200</pubDate>
             <sparkle:version>98</sparkle:version>
