@@ -6,6 +6,24 @@
         <description>Updates for Atelier</description>
         <language>en</language>
         <item>
+            <title>Version 2.11.23</title>
+            <pubDate>Thu, 06 Aug 2026 12:57:03 +0200</pubDate>
+            <sparkle:version>98</sparkle:version>
+            <sparkle:shortVersionString>2.11.23</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>15.0</sparkle:minimumSystemVersion>
+            <description><![CDATA[
+                <h3>Atelier 2.11.23 — Enable all skills in a pack</h3>
+                <ul>
+                    <li><b>"enable all" on a pack's section in the Skills list.</b> Some packs ship skills as on-demand — they only run when you type the command, not automatically (the "disabled" badge). One tap now turns auto-firing on for every on-demand skill in the pack, and the section header shows how many are on-demand.</li>
+                </ul>
+            ]]></description>
+            <enclosure
+                url="https://work.munyamakosa.com/Atelier-2.11.23.dmg"
+                length="16047500"
+                type="application/octet-stream"
+                sparkle:edSignature="rHIJo0vXR2wo9mucSv5bqkhQ/2SrwcTIvGjqVpEmip+e/Bcx7zRk05QbqENmo9/RVjqYpz1Ps4TX3eC3leACBQ==" />
+        </item>
+        <item>
             <title>Version 2.11.22</title>
             <pubDate>Thu, 06 Aug 2026 10:38:48 +0200</pubDate>
             <sparkle:version>97</sparkle:version>
