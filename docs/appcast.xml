@@ -6,6 +6,26 @@
         <description>Updates for Atelier</description>
         <language>en</language>
         <item>
+            <title>Version 2.11.20</title>
+            <pubDate>Thu, 06 Aug 2026 09:32:33 +0200</pubDate>
+            <sparkle:version>95</sparkle:version>
+            <sparkle:shortVersionString>2.11.20</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>15.0</sparkle:minimumSystemVersion>
+            <description><![CDATA[
+                <h3>Atelier 2.11.20 — Skill Packs that actually install</h3>
+                <ul>
+                    <li><b>Fixed: "add pack" silently did nothing.</b> Packs are now resolved by their repository, not a guessed marketplace name — so clicking add actually registers the marketplace, installs its plugins, and enables them.</li>
+                    <li><b>Real progress and results.</b> Each pack shows a live "adding…" / "installing…" spinner, a clear "enabled ✓" when done, and an inline error with a "try again" button if something fails — no more freeze-then-revert.</li>
+                    <li>A restart hint confirms when a pack is added so its skills load into your session.</li>
+                </ul>
+            ]]></description>
+            <enclosure
+                url="https://work.munyamakosa.com/Atelier-2.11.20.dmg"
+                length="16027339"
+                type="application/octet-stream"
+                sparkle:edSignature="kY0E9yn+n9zWOV86lu4zoULVqP0zZGqbses3sBcMnWzUSwoxkTzKGPYKtHvfa+BbhjHO2YQmXDo+081ElCXpDA==" />
+        </item>
+        <item>
             <title>Version 2.11.19</title>
             <pubDate>Thu, 06 Aug 2026 08:52:32 +0200</pubDate>
             <sparkle:version>94</sparkle:version>
