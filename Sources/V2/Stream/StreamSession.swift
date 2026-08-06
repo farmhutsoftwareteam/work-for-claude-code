@@ -180,6 +180,23 @@ final class StreamSession: ObservableObject, V2TranscriptSource {
     /// Subagents delegated via the Task/Agent tool (#38) — see
     /// V2SubagentRun.swift for the wire format this parses.
     @Published private(set) var subagentRuns: [V2SubagentRun] = []
+    /// Files the agent edited/created this session (#41) — accumulated on tool
+    /// completion (coarse, never per-token; PERFORMANCE.md rule 2). Survives a
+    /// --resume restart (start() doesn't touch it), reset on /clear.
+    @Published private(set) var sessionChangeset: [V2SessionChangeEntry] = []
+    /// Scoped publisher so the Changes panel subscribes to ONLY the changeset,
+    /// never the session's blanket objectWillChange — no per-token re-render
+    /// (PERFORMANCE.md rule 2; same discipline as subagentRunsPublisher).
+    var sessionChangesetPublisher: Published<[V2SessionChangeEntry]>.Publisher { $sessionChangeset }
+    /// tool_use_id → pending edit info, captured on .toolUse and committed to
+    /// sessionChangeset only when its .toolResult reports success (a failed edit
+    /// changed nothing).
+    private var pendingChangesetEdits: [String: (path: String, op: V2SessionChangeEntry.Op, edits: Int)] = [:]
+    /// tool_use_ids already committed to the changeset — so a re-delivered
+    /// toolUse+toolResult pair (retry / resume re-snapshot) never double-counts
+    /// a path's edits, and preloadHistory's rebuild is idempotent against a
+    /// changeset that survived the resume.
+    private var committedChangesetIds: Set<String> = []
     var subagentRunsPublisher: Published<[V2SubagentRun]>.Publisher { $subagentRuns }
     /// toolUseId → command, populated when a Bash tool_use is seen, so the
     /// spawn-ack (which only carries a task id + output path) can be matched
@@ -427,6 +444,7 @@ final class StreamSession: ObservableObject, V2TranscriptSource {
                         // conversation read as full of hung tools.
                         toolOutcomes[toolUseId] = (isError ?? false)
                         recordTaskResult(toolUseId: toolUseId, content: content)
+                        commitChangesetResult(toolUseId: toolUseId, isError: isError ?? false)
                         // Registry rebuild (#74): spawn acks and agent
                         // results in history repopulate the bg-task and
                         // subagent registries so a restored or OBSERVED
@@ -472,6 +490,7 @@ final class StreamSession: ObservableObject, V2TranscriptSource {
                             pendingBashCommands[id] = input.dig("command")?.asString ?? ""
                         }
                         recordTaskToolUse(id: id, name: name, input: input)
+                        recordChangesetToolUse(id: id, name: name, input: input)
                         if V2SubagentParser.isAgentSpawn(toolName: name),
                            !subagentRuns.contains(where: { $0.toolUseId == id }) {
                             subagentRuns.append(V2SubagentRun(
@@ -1414,6 +1433,64 @@ final class StreamSession: ObservableObject, V2TranscriptSource {
         pendingBashCommands.removeAll()
         monitorTasks.removeAll()
         pendingMonitorCommands.removeAll()
+        sessionChangeset.removeAll()
+        pendingChangesetEdits.removeAll()
+        committedChangesetIds.removeAll()
+    }
+
+    // MARK: - Session changeset (#41)
+
+    /// Register an Edit/Write/MultiEdit/NotebookEdit call as pending — committed
+    /// to the changeset only when its tool_result succeeds. Create-vs-edit for
+    /// Write is decided HERE (a cheap existence check at the tool boundary), not
+    /// at render time.
+    private func recordChangesetToolUse(id: String, name: String, input: JSONValue) {
+        let op: V2SessionChangeEntry.Op
+        let path: String?
+        var edits = 1
+        switch name {
+        case "Edit":
+            op = .edit; path = input.dig("file_path")?.asString
+        case "Write":
+            path = input.dig("file_path")?.asString
+            op = FileManager.default.fileExists(atPath: path ?? "") ? .edit : .create
+        case "MultiEdit":
+            op = .multiEdit
+            path = input.dig("file_path")?.asString
+            edits = input.dig("edits")?.asArray?.count ?? 1
+        case "NotebookEdit":
+            op = .notebook; path = input.dig("notebook_path")?.asString
+        default:
+            return
+        }
+        guard let path, !path.isEmpty else { return }
+        pendingChangesetEdits[id] = (path, op, edits)
+    }
+
+    /// Commit a pending edit on its successful tool_result: merge by path
+    /// (earliest first-touch, summed edit count, first op wins), flag out-of-tree
+    /// writes. Publishes once here — a tool boundary, not per token.
+    private func commitChangesetResult(toolUseId: String, isError: Bool) {
+        guard let pending = pendingChangesetEdits.removeValue(forKey: toolUseId) else { return }
+        guard !isError else { return }   // a failed edit changed nothing
+        // Idempotent per tool_use_id — a re-delivered pair (retry/resume) or a
+        // preload re-walk of a surviving changeset must not double the count.
+        guard committedChangesetIds.insert(toolUseId).inserted else { return }
+        let absolute = (pending.path as NSString).expandingTildeInPath
+        let std = URL(fileURLWithPath: absolute).standardizedFileURL.path
+        let outOfTree: Bool = {
+            guard let base = cwd else { return false }
+            let baseStd = URL(fileURLWithPath: base).standardizedFileURL.path
+            return !(std == baseStd || std.hasPrefix(baseStd + "/"))
+        }()
+        if let idx = sessionChangeset.firstIndex(where: { $0.path == std }) {
+            sessionChangeset[idx].edits += pending.edits
+        } else {
+            sessionChangeset.append(V2SessionChangeEntry(
+                path: std, op: pending.op, edits: pending.edits,
+                firstTouchedAt: Date(), outOfTree: outOfTree
+            ))
+        }
     }
 
     /// Where this session's on-disk artifacts live —
@@ -1628,6 +1705,7 @@ final class StreamSession: ObservableObject, V2TranscriptSource {
                 case .toolUse(let id, let name, let input):
                     toolStartTimes[id] = Date()
                     recordTaskToolUse(id: id, name: name, input: input)
+                    recordChangesetToolUse(id: id, name: name, input: input)
                     // Guard against a second .assistant snapshot for the same
                     // turn re-delivering an already-seen tool_use id (seen
                     // after resume/retry) — an unguarded append would leave
@@ -1700,6 +1778,7 @@ final class StreamSession: ObservableObject, V2TranscriptSource {
                     // show its ✓ / ✗ valence (agent vocabulary).
                     toolOutcomes[toolUseId] = (isError ?? false)
                     recordTaskResult(toolUseId: toolUseId, content: content)
+                    commitChangesetResult(toolUseId: toolUseId, isError: isError ?? false)
                     // A subagent spawn's tool_result is either the background
                     // launch ack (run keeps going, grab the agentId) or — for
                     // a synchronous agent — the final report itself. Either

@@ -110,6 +110,16 @@ struct V2RightDock: View {
                         V2McpPanel()
                     }
                 case .skills:  V2SkillsPanel()
+                case .changes:
+                    if let session = appState.activeSession {
+                        V2ChangesPanel(session: session)
+                    } else {
+                        Text("Changes tracks the active Claude session's edits — open or start a Claude session to see them.")
+                            .font(.system(size: 11, design: .monospaced))
+                            .foregroundStyle(.secondary)
+                            .padding(18)
+                            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+                    }
                 }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -137,6 +147,7 @@ struct V2RightDock: View {
         case .agents:  return "person.3"
         case .mcp:     return "powerplug"
         case .skills:  return "sparkles"
+        case .changes: return "plus.forwardslash.minus"
         }
     }
 
@@ -179,6 +190,13 @@ struct V2RightDock: View {
             (personal, project, and plugin-bundled). Create one by hand,
             describe one in plain language and let claude draft it, or
             browse installed marketplaces for more.
+            """
+        case .changes:
+            return """
+            Changes — every file the agent edited, wrote, or created this
+            session, rolled into one reviewable list with per-file diffs.
+            Out-of-project writes are flagged; resets when you clear the
+            conversation.
             """
         }
     }
