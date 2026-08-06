@@ -6,6 +6,26 @@
         <description>Updates for Atelier</description>
         <language>en</language>
         <item>
+            <title>Version 2.11.18</title>
+            <pubDate>Thu, 06 Aug 2026 08:13:20 +0200</pubDate>
+            <sparkle:version>93</sparkle:version>
+            <sparkle:shortVersionString>2.11.18</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>15.0</sparkle:minimumSystemVersion>
+            <description><![CDATA[
+                <h3>Atelier 2.11.18 — Skill Packs, findable</h3>
+                <ul>
+                    <li><b>A "packs" button in the Skills header.</b> One click opens the featured catalog — no more digging through a footer link or onboarding to find it.</li>
+                    <li><b>Installed pack skills show right away.</b> After you add a pack, its skills appear on the Skills page immediately, expanded under their <code>plugin · name</code> group instead of hidden behind a collapsed row.</li>
+                    <li>The empty Skills state and the "+ new" menu now point straight at skill packs, so there's an obvious way in whether you have skills yet or not.</li>
+                </ul>
+            ]]></description>
+            <enclosure
+                url="https://work.munyamakosa.com/Atelier-2.11.18.dmg"
+                length="15964997"
+                type="application/octet-stream"
+                sparkle:edSignature="2FU+4sz+05d2zSCrRDgTHxRav5Fo3GXTnFoyooyIqbPaXFaapUoCC0G3ns8/FtrGHjpdX1G3RbqMfimMC5tAAA==" />
+        </item>
+        <item>
             <title>Version 2.11.17</title>
             <pubDate>Wed, 05 Aug 2026 21:57:00 +0200</pubDate>
             <sparkle:version>92</sparkle:version>
