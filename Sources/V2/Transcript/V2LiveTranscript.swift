@@ -80,6 +80,15 @@ struct V2LiveTranscript<Session: V2TranscriptSource>: View {
     /// its start out from under an active scroll.
     @State private var firstVisibleIndex: Int
 
+    /// Which thinking blocks the user has expanded, keyed by absolute
+    /// transcript index. Lives HERE (the scroll container, never recycled)
+    /// rather than as @State inside the row — a LazyVStack recycle would reset
+    /// that per-row state to collapsed, so an expanded reasoning block silently
+    /// re-collapsed when scrolled out of view and back. The index is stable
+    /// across a block's streaming growth (its text mutates in place) and across
+    /// recycling, so the expansion survives both.
+    @State private var thinkingExpanded: Set<Int> = []
+
     init(session: Session, projectCwd: String? = nil) {
         self.session = session
         self.projectCwd = projectCwd
@@ -167,7 +176,12 @@ struct V2LiveTranscript<Session: V2TranscriptSource>: View {
                     ForEach(windowStart..<session.transcript.count, id: \.self) { i in
                         row(for: session.transcript[i], runs: runsById, sessionDir: sessionDir,
                             batchByLead: batchGroups.byLead, suppressedSpawnIds: batchGroups.suppressed,
-                            isStreaming: i == streamingIndex)
+                            isStreaming: i == streamingIndex,
+                            thinkingOpen: Binding(
+                                get: { thinkingExpanded.contains(i) },
+                                set: { thinkingExpanded = $0 ? thinkingExpanded.union([i])
+                                                                : thinkingExpanded.subtracting([i]) }
+                            ))
                     }
 
                     if session.isRetrying {
@@ -220,7 +234,11 @@ struct V2LiveTranscript<Session: V2TranscriptSource>: View {
             // jump even if the user had scrolled up. Only fires on .userText
             // appends: rows the agent appends mid-turn never steal the
             // scroll position.
-            .onChange(of: session.transcript.count) { _, _ in
+            .onChange(of: session.transcript.count) { _, newCount in
+                // /clear empties the transcript and restarts indices — drop the
+                // per-index thinking expansions so a fresh block can't inherit
+                // a stale "expanded" from a since-cleared one at the same index.
+                if newCount == 0 { thinkingExpanded.removeAll() }
                 if case .userText = session.transcript.last {
                     proxy.scrollTo(bottomAnchorID, anchor: .bottom)
                 }
@@ -373,7 +391,8 @@ struct V2LiveTranscript<Session: V2TranscriptSource>: View {
     private func row(for item: TranscriptItem, runs: [String: V2SubagentRun], sessionDir: URL?,
                      batchByLead: [String: [V2SubagentRun]] = [:],
                      suppressedSpawnIds: Set<String> = [],
-                     isStreaming: Bool = false) -> some View {
+                     isStreaming: Bool = false,
+                     thinkingOpen: Binding<Bool> = .constant(false)) -> some View {
         switch item {
         case .userText(let text):
             V2UserTurn(text: text)
@@ -386,7 +405,8 @@ struct V2LiveTranscript<Session: V2TranscriptSource>: View {
                              toolLiveStatus: session.toolLiveStatus,
                              taskItems: session.taskItems,
                              isStreaming: isStreaming,
-                             provider: session.provider)
+                             provider: session.provider,
+                             thinkingOpen: thinkingOpen)
         case .compactBoundary:
             V2CompactBoundary()
         case .systemNote(let kind, let text):
@@ -525,6 +545,10 @@ struct V2AssistantBlock: View {
     /// Visual cue only — every row renders through this identical component
     /// regardless of provider; only the leading mark's asset/accent differs.
     var provider: V2AgentProvider = .claude
+    /// Expansion state for a `.thinking` block, owned by V2LiveTranscript so it
+    /// survives LazyVStack recycling (default `.constant(false)` for the rare
+    /// caller that doesn't track it).
+    var thinkingOpen: Binding<Bool> = .constant(false)
     @State private var buttonHover = false
     @State private var copied = false
 
@@ -633,7 +657,7 @@ struct V2AssistantBlock: View {
         case .toolResult(_, let content, let isError):
             V2LiveToolResult(content: content, isError: isError ?? false)
         case .thinking(let text, _):
-            V2LiveThinkingBlock(text: text)
+            V2LiveThinkingBlock(text: text, open: thinkingOpen)
         case .image(let mediaType):
             // A pasted/attached image. The base64 payload is dropped at
             // decode (see ContentBlock.image) so this is a labeled chip,
@@ -670,7 +694,9 @@ struct V2AssistantBlock: View {
 struct V2LiveThinkingBlock: View {
     @Environment(\.v2) private var v2
     let text: String
-    @State private var open = false
+    /// Owned by V2LiveTranscript (keyed by transcript index) so expansion
+    /// survives LazyVStack recycling — see thinkingExpanded there.
+    @Binding var open: Bool
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {

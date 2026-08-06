@@ -62,14 +62,20 @@ struct V2RichText: NSViewRepresentable {
     }
 
     /// Self-sizing: lay out at the proposed width, report the used height.
+    /// A valid-width measure is cached (by text+width) and remembered on the
+    /// view as `lastGood`; when the proposed width is unknown, we return that
+    /// last good size rather than nil (which would fall to a stale-container
+    /// intrinsic measurement and collapse the row) — the fix for text
+    /// vanishing during a stream flush or a scroll recycle.
     func sizeThatFits(_ proposal: ProposedViewSize, nsView: V2ProseTextView, context: Context) -> CGSize? {
         guard let width = proposal.width, width.isFinite, width > 0,
               let container = nsView.textContainer, let lm = nsView.layoutManager
-        else { return nil }
+        else { return nsView.lastGood }
         container.containerSize = NSSize(width: width, height: .greatestFiniteMagnitude)
         lm.ensureLayout(for: container)
-        let used = lm.usedRect(for: container)
-        return CGSize(width: width, height: ceil(used.height))
+        let measured = CGSize(width: width, height: ceil(lm.usedRect(for: container).height))
+        nsView.lastGood = measured
+        return measured
     }
 
     // MARK: - AttributedString(markdown) → NSAttributedString (cached)
@@ -186,7 +192,26 @@ struct V2RichText: NSViewRepresentable {
 /// NSTextView that never claims more than the text's own height and lets
 /// clicks outside text fall through naturally.
 final class V2ProseTextView: NSTextView {
+    /// The most recent size measured at a VALID width. Returned from
+    /// intrinsicContentSize and from the representables' sizeThatFits when the
+    /// proposed width is unknown, so a re-layout — a streaming flush or a
+    /// LazyVStack recycle — never collapses the row to a transient
+    /// stale-container measurement. That collapse was the "text disappears
+    /// while streaming / on scroll" bug
+    /// (.agents/research/2026-08-06-bug-transcript-text-disappears.md).
+    ///
+    /// Deliberately a per-view field, NOT a shared text-keyed height cache:
+    /// the streaming tail's text changes every ~30fps flush, so a text-keyed
+    /// cache would accumulate one never-reused entry per flush — O(n²) key
+    /// memory on the exact hot path PERFORMANCE.md guards. Re-measuring a
+    /// recycled block once on scroll-back is cheap and always correct.
+    var lastGood: CGSize?
+
     override var intrinsicContentSize: NSSize {
+        // Prefer the last good height over a fresh measurement: on a recycled
+        // or mid-relayout view the container width can be stale/unset, which
+        // yields a wrong (often collapsed) height for one frame.
+        if let last = lastGood { return NSSize(width: NSView.noIntrinsicMetric, height: last.height) }
         guard let container = textContainer, let lm = layoutManager else { return super.intrinsicContentSize }
         lm.ensureLayout(for: container)
         return lm.usedRect(for: container).size
@@ -244,11 +269,12 @@ struct V2ProseRunView: NSViewRepresentable {
     func sizeThatFits(_ proposal: ProposedViewSize, nsView: V2ProseTextView, context: Context) -> CGSize? {
         guard let width = proposal.width, width.isFinite, width > 0,
               let container = nsView.textContainer, let lm = nsView.layoutManager
-        else { return nil }
+        else { return nsView.lastGood }
         container.containerSize = NSSize(width: width, height: .greatestFiniteMagnitude)
         lm.ensureLayout(for: container)
-        let used = lm.usedRect(for: container)
-        return CGSize(width: width, height: ceil(used.height))
+        let measured = CGSize(width: width, height: ceil(lm.usedRect(for: container).height))
+        nsView.lastGood = measured
+        return measured
     }
 
     // MARK: Assembly (cached by run key)
