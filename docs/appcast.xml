@@ -6,6 +6,25 @@
         <description>Updates for Atelier</description>
         <language>en</language>
         <item>
+            <title>Version 2.11.21</title>
+            <pubDate>Thu, 06 Aug 2026 09:58:58 +0200</pubDate>
+            <sparkle:version>96</sparkle:version>
+            <sparkle:shortVersionString>2.11.21</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>15.0</sparkle:minimumSystemVersion>
+            <description><![CDATA[
+                <h3>Atelier 2.11.21 — Skill packs load themselves</h3>
+                <ul>
+                    <li><b>Adding a pack now reloads your session automatically</b> so its skills come live right away — nothing to press. Your conversation is preserved (the session reconnects with <code>--resume</code>).</li>
+                    <li>If a turn is mid-stream, Atelier won't interrupt it — it notes the skills will load on your next session instead.</li>
+                </ul>
+            ]]></description>
+            <enclosure
+                url="https://work.munyamakosa.com/Atelier-2.11.21.dmg"
+                length="16031058"
+                type="application/octet-stream"
+                sparkle:edSignature="ER4FylW+JjPPr8EbYMxG1zv6dVs+meSlkG9Tt4TxbvmbsbU+Pk2Ce6upufIeh5rXw05I2WRTw/e7CnBG3Qa8Bg==" />
+        </item>
+        <item>
             <title>Version 2.11.20</title>
             <pubDate>Thu, 06 Aug 2026 09:32:33 +0200</pubDate>
             <sparkle:version>95</sparkle:version>
