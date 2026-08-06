@@ -1040,6 +1040,12 @@ struct V2McpPanel: View {
                 startingSince = stillStarting
                 if stalledServers != stalledNow { stalledServers = stalledNow }
                 session.refreshMCPStatus()
+                // Keep the approve button honest: re-check .mcp.json approval each
+                // tick so a project server that needs approval (or was approved
+                // elsewhere) reflects promptly, not only at panel-open — that
+                // one-shot snapshot is why a needs-approval server showed
+                // "why?/reconnect" instead of an approve button.
+                await refreshApproval()
                 try? await Task.sleep(nanoseconds: 5_000_000_000)
             }
         }
@@ -1284,11 +1290,13 @@ struct V2McpPanel: View {
     /// approve (approval state only changes on those, so no need to poll it).
     @MainActor
     private func refreshApproval() async {
-        guard let cwd = projectCwd else { pendingApproval = []; return }
+        guard let cwd = projectCwd else { if !pendingApproval.isEmpty { pendingApproval = [] }; return }
         let names = store.projectMCPs[cwd]?.map(\.name) ?? []
-        guard !names.isEmpty else { pendingApproval = []; return }
+        guard !names.isEmpty else { if !pendingApproval.isEmpty { pendingApproval = [] }; return }
         let pend = await Task.detached { MCPApproval.pending(cwd: cwd, names: names) }.value
-        pendingApproval = pend
+        // Runs every poll tick now — only reassign on change so an unchanged
+        // set doesn't invalidate the panel each time (PERFORMANCE.md).
+        if pendingApproval != pend { pendingApproval = pend }
     }
 
     // MARK: - Ask the agent (agent-driven repair / in-chat sign-in)

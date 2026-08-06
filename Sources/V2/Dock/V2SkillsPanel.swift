@@ -248,6 +248,20 @@ struct V2SkillsPanel: View {
         }
     }
 
+    /// A quiet underlined text action for a section header (enable / enable all).
+    private func headerAction(_ label: String, help: String, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Text(label)
+                .font(.system(size: 9.5, design: .monospaced))
+                .foregroundColor(v2.ink)
+                .underline()
+                .padding(.horizontal, 6).padding(.vertical, 3)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .help(help)
+    }
+
     private func pluginSection(pluginId: String, skills: [ClaudeSkill]) -> some View {
         // pluginId is "name@marketplace" (ClaudePlugin.id shape) — show just
         // the name, keep the full id for the expand-state key.
@@ -261,60 +275,46 @@ struct V2SkillsPanel: View {
         // only when you type the command. "enable all" flips them to auto-fire.
         let onDemand = skills.filter(\.disableModelInvocation)
         return VStack(spacing: 0) {
-            Button {
-                if expanded { collapsedPlugins.insert(pluginId) } else { collapsedPlugins.remove(pluginId) }
-            } label: {
-                HStack(spacing: 8) {
-                    Image(systemName: "chevron.down")
-                        .font(.system(size: 9, weight: .medium))
-                        .foregroundColor(v2.mute)
-                        .rotationEffect(.degrees(expanded ? 0 : -90))
-                    Text("plugin · \(displayName) · \(skills.count)")
-                        .font(.system(size: 9.5, design: .monospaced))
-                        .kerning(1.0)
-                        .foregroundColor(pluginEnabled ? v2.faint : v2.mute)
-                    if !pluginEnabled {
-                        Text("· disabled")
-                            .font(.system(size: 9.5, design: .monospaced))
-                            .foregroundColor(v2.del)
-                    } else if !onDemand.isEmpty {
-                        Text("· \(onDemand.count) on-demand")
-                            .font(.system(size: 9.5, design: .monospaced))
-                            .foregroundColor(v2.faint)
-                    }
-                    Spacer()
-                }
-                .padding(.horizontal, 18)
-                .padding(.vertical, 10)
-                .contentShape(Rectangle())
-            }
-            .buttonStyle(.plain)
-            .overlay(alignment: .top) { Rectangle().fill(v2.line).frame(height: 1) }
-            .overlay(alignment: .trailing) {
+            HStack(spacing: 8) {
+                Image(systemName: "chevron.down")
+                    .font(.system(size: 9, weight: .medium))
+                    .foregroundColor(v2.mute)
+                    .rotationEffect(.degrees(expanded ? 0 : -90))
+                Text("plugin · \(displayName) · \(skills.count)")
+                    .font(.system(size: 9.5, design: .monospaced))
+                    .kerning(1.0)
+                    .foregroundColor(pluginEnabled ? v2.faint : v2.mute)
                 if !pluginEnabled {
-                    Button { enablePlugin(pluginId) } label: {
-                        Text("enable")
-                            .font(.system(size: 9.5, design: .monospaced))
-                            .foregroundColor(v2.ink)
-                            .underline()
-                            .padding(.horizontal, 6).padding(.vertical, 3)
-                    }
-                    .buttonStyle(.plain)
-                    .help("Turn this pack on so its skills load into your sessions")
-                    .padding(.trailing, 16)
+                    Text("· disabled")
+                        .font(.system(size: 9.5, design: .monospaced))
+                        .foregroundColor(v2.del)
                 } else if !onDemand.isEmpty {
-                    Button { enableAll(onDemand) } label: {
-                        Text("enable all")
-                            .font(.system(size: 9.5, design: .monospaced))
-                            .foregroundColor(v2.ink)
-                            .underline()
-                            .padding(.horizontal, 6).padding(.vertical, 3)
+                    Text("· \(onDemand.count) on-demand")
+                        .font(.system(size: 9.5, design: .monospaced))
+                        .foregroundColor(v2.faint)
+                }
+                Spacer(minLength: 8)
+                // A real trailing element (not an overlay) so it always sits at
+                // the right edge, never floating over the label.
+                if !pluginEnabled {
+                    headerAction("enable", help: "Turn this pack on so its skills load into your sessions") {
+                        enablePlugin(pluginId)
                     }
-                    .buttonStyle(.plain)
-                    .help("Turn on auto-firing for every on-demand skill in this pack")
-                    .padding(.trailing, 16)
+                } else if !onDemand.isEmpty {
+                    headerAction("enable all", help: "Turn on auto-firing for every on-demand skill in this pack") {
+                        enableAll(onDemand)
+                    }
                 }
             }
+            .padding(.horizontal, 18)
+            .padding(.vertical, 10)
+            .contentShape(Rectangle())
+            // Tapping the row toggles expand; the trailing Button consumes its
+            // own taps, so it never triggers this gesture.
+            .onTapGesture {
+                if expanded { collapsedPlugins.insert(pluginId) } else { collapsedPlugins.remove(pluginId) }
+            }
+            .overlay(alignment: .top) { Rectangle().fill(v2.line).frame(height: 1) }
 
             if expanded {
                 ForEach(skills) { skill in
