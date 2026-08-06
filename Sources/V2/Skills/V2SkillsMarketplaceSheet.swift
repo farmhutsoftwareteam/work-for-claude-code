@@ -542,6 +542,10 @@ struct V2SkillsMarketplaceSheet: View {
     @discardableResult
     private func addPack(_ pack: SkillPack) async -> Bool {
         phase[pack.id] = .adding
+        // Machine-readable failure phase for the redacted diagnostics timeline
+        // (Report a Problem → export). No error text, names, or paths — just
+        // WHERE the add stopped, so "works here, broken there" is diagnosable.
+        var failCode = "marketplace-add-failed"
         do {
             // 1. Resolve the marketplace name from the repo — registering it if
             //    it isn't already present.
@@ -552,6 +556,7 @@ struct V2SkillsMarketplaceSheet: View {
                 markets = await MarketplaceInstaller.listMarketplaces()
                 marketName = markets.first { $0.repo == pack.repo }?.name
             }
+            failCode = "resolve-name-failed"
             guard let marketName else {
                 throw SkillPackError.message("Couldn't register this pack's marketplace — check your connection.")
             }
@@ -560,6 +565,7 @@ struct V2SkillsMarketplaceSheet: View {
             let offered = await Task.detached { MarketplaceLoader.loadAll() }.value
                 .first { $0.name == marketName }?.plugins ?? []
             let targets = pack.pluginNames.map { names in offered.filter { names.contains($0.name) } } ?? offered
+            failCode = "no-plugins-resolved"
             guard !targets.isEmpty else {
                 throw SkillPackError.message("No installable skills found in this pack.")
             }
@@ -567,6 +573,7 @@ struct V2SkillsMarketplaceSheet: View {
             // 3. Install (auto-enables) any not already installed, then ensure
             //    each is enabled.
             phase[pack.id] = .installing
+            failCode = "plugin-install-failed"
             let installedIds = Set(store.plugins.map(\.id))
             for plugin in targets {
                 let pid = "\(plugin.name)@\(marketName)"
@@ -580,9 +587,13 @@ struct V2SkillsMarketplaceSheet: View {
             await reloadRegistered()
             phase[pack.id] = .idle
             onInstalled()
+            Diagnostics.record(subsystem: .plugins, operation: .packAdd, outcome: .succeeded,
+                               code: "pack-added", measurements: ["plugins": targets.count])
             return true
         } catch {
             phase[pack.id] = .failed(error.localizedDescription)
+            Diagnostics.record(severity: .warning, subsystem: .plugins, operation: .packAdd,
+                               outcome: .failed, code: failCode)
             return false
         }
     }

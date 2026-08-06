@@ -12,13 +12,14 @@ import MetricKit
 struct DiagnosticsEvent: Codable, Sendable, Identifiable, Equatable {
     enum Severity: String, Codable, Sendable { case debug, info, notice, warning, error, fault }
     enum Subsystem: String, Codable, Sendable {
-        case app, workspace, claude, codex, acp, process, mcp, storage, network, update, hang, diagnostics
+        case app, workspace, claude, codex, acp, process, mcp, plugins, storage, network, update, hang, diagnostics
     }
     enum Operation: String, Codable, Sendable {
         case launch, quit, streamStart, streamHandshake, streamEnd, streamDecode, streamStderr
         case codexServerStart, codexRequest, codexServerEnd, codexStderr
         case subprocessRun, subprocessStderr, pricingFetch, hangDetected, hangSample
         case metricCrash, metricHang, export, cleanup, fileWatch, preferences
+        case packAdd, pluginInstall, pluginEnable
     }
     enum Outcome: String, Codable, Sendable { case started, succeeded, failed, cancelled, timedOut, observed }
     enum Provider: String, Codable, Sendable { case claude, codex, acp }

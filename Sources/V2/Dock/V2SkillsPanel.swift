@@ -611,6 +611,8 @@ struct V2SkillsPanel: View {
                 reload()
             } catch {
                 actionError = error.localizedDescription
+                Diagnostics.record(severity: .warning, subsystem: .plugins, operation: .pluginEnable,
+                                   outcome: .failed, code: "enable-failed")
             }
         }
     }
