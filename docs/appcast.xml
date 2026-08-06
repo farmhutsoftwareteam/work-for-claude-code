@@ -6,6 +6,26 @@
         <description>Updates for Atelier</description>
         <language>en</language>
         <item>
+            <title>Version 2.11.19</title>
+            <pubDate>Thu, 06 Aug 2026 08:52:32 +0200</pubDate>
+            <sparkle:version>94</sparkle:version>
+            <sparkle:shortVersionString>2.11.19</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>15.0</sparkle:minimumSystemVersion>
+            <description><![CDATA[
+                <h3>Atelier 2.11.19 — Sign back in without losing your place</h3>
+                <ul>
+                    <li><b>A "Sign in" button when a session signs out.</b> If Claude's login or token expires while you're working, the composer is replaced by a clear "Your Claude session signed out" strip with a Sign in button — no more cryptic red error with no way forward.</li>
+                    <li><b>Your conversation is preserved.</b> After you sign back in (in your browser — Atelier never sees your password), the session reconnects with <code>--resume</code>, so you pick up exactly where you left off.</li>
+                    <li>Also fixes the sign-in sheet not always closing itself after a successful login.</li>
+                </ul>
+            ]]></description>
+            <enclosure
+                url="https://work.munyamakosa.com/Atelier-2.11.19.dmg"
+                length="15990104"
+                type="application/octet-stream"
+                sparkle:edSignature="ONl3D4YhSTbzeWhITLd33rZ4ebnwzI2UnWJEtWQmZPpcxtkgQ6zs1OW4xt+KwoUDPVap5cryy7rlBnXm3kfzAg==" />
+        </item>
+        <item>
             <title>Version 2.11.18</title>
             <pubDate>Thu, 06 Aug 2026 08:13:20 +0200</pubDate>
             <sparkle:version>93</sparkle:version>
