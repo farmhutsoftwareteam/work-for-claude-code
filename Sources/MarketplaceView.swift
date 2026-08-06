@@ -105,6 +105,15 @@ struct RegisteredMarketplace: Decodable, Hashable {
     let installLocation: String?
 }
 
+/// One entry from `claude plugin list --json` — the authoritative installed +
+/// enabled state (`id` is "name@marketplace").
+struct InstalledPluginInfo: Decodable, Hashable {
+    let id: String
+    let enabled: Bool
+    let version: String?
+    let scope: String?
+}
+
 enum MarketplaceInstaller {
     enum Action: String {
         case install, uninstall, update
@@ -140,6 +149,27 @@ enum MarketplaceInstaller {
               let list = try? JSONDecoder().decode([RegisteredMarketplace].self, from: data)
         else { return [] }
         return list
+    }
+
+    /// `claude plugin list --json` decoded — the AUTHORITATIVE installed +
+    /// enabled state. Distinct from settings.json `enabledPlugins`: a plugin
+    /// installed via `claude plugin install` is enabled in the CLI's own config,
+    /// which settings.json doesn't necessarily mirror — so reading settings.json
+    /// alone made installed packs look absent/disabled. [] on failure (CLI
+    /// missing) so the caller can fall back to the file scan.
+    static func listPlugins() async -> [InstalledPluginInfo] {
+        guard let out = try? await runClaude(["plugin", "list", "--json"]),
+              let data = out.data(using: .utf8),
+              let list = try? JSONDecoder().decode([InstalledPluginInfo].self, from: data)
+        else { return [] }
+        return list
+    }
+
+    /// `claude plugin enable|disable <plugin>` — the authoritative toggle for a
+    /// whole plugin (writing settings.json `enabledPlugins` alone doesn't flip
+    /// the CLI's own enabled state).
+    static func setEnabled(_ enabled: Bool, plugin id: String) async throws -> String {
+        try await runClaude(["plugin", enabled ? "enable" : "disable", id])
     }
 
     /// Shared runner: resolve the `claude` binary, run it with the enriched

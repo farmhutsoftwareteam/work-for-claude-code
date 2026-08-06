@@ -29,6 +29,8 @@ struct V2RootView: View {
     @State private var showClaudeInstall = false
     @State private var showCodexInstall = false
     @State private var showClaudeSignIn = false
+    @AppStorage("v2.devHintDismissed") private var devHintDismissed = false
+    private var isDevBuild: Bool { Bundle.main.bundleIdentifier?.hasSuffix(".dev") == true }
 
     private var theme: V2ThemeChoice {
         V2ThemeChoice(rawValue: themeRaw) ?? .system
@@ -42,6 +44,7 @@ struct V2RootView: View {
         ZStack {
             VStack(spacing: 0) {
                 V2TitleBar(themeRaw: $themeRaw)
+                if isDevBuild && !devHintDismissed { devBuildStrip }
 
                 HStack(spacing: 0) {
                     V2LeftRail()
@@ -760,6 +763,41 @@ struct V2RootView: View {
         .overlay(alignment: .top) {
             Rectangle().fill(palette.line).frame(height: 1)
         }
+        .task {
+            // The composer→CTA transition (a session just ended, or none has
+            // started) is exactly when a mid-session token death would surface —
+            // refresh Claude auth so the "Not signed in" notice above appears if
+            // the session died because sign-in expired.
+            if let binary = appState.claudeBinary {
+                await appState.claudeAuth.checkStatus(binary: binary)
+            }
+        }
+    }
+
+    /// Shown only when running the `.dev` bundle (a Debug build from Xcode) —
+    /// which is NOT Sparkle-managed, so it won't auto-update. Dismissible; a
+    /// one-time clarification so "why won't it update" doesn't recur.
+    private var devBuildStrip: some View {
+        HStack(spacing: 8) {
+            Image(systemName: "hammer")
+                .font(.system(size: 10))
+                .foregroundColor(palette.mute)
+            Text("Dev build — updates by rebuild, not auto-update.")
+                .font(.system(size: 10.5, design: .monospaced))
+                .foregroundColor(palette.mute)
+                .lineLimit(1)
+            Spacer(minLength: 8)
+            Button { devHintDismissed = true } label: {
+                Text("got it")
+                    .font(.system(size: 10.5, design: .monospaced))
+                    .foregroundColor(palette.faint)
+                    .underline()
+            }
+            .buttonStyle(.plain)
+        }
+        .padding(.horizontal, 16).padding(.vertical, 6)
+        .background(palette.paper3)
+        .overlay(alignment: .bottom) { Rectangle().fill(palette.line).frame(height: 1) }
     }
 
     private func codexStartCTA(tab: TerminalTab, session: CodexSession) -> some View {

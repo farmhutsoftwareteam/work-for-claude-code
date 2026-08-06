@@ -29,6 +29,11 @@ final class Store: ObservableObject {
 
     // Extensions data (global)
     @Published var plugins: [ClaudePlugin] = []
+    /// Plugin ids actually installed per `claude plugin list --json` (the CLI's
+    /// own truth), reconciled in loadExtensions. The Skills UI + marketplace use
+    /// this to distinguish installed plugins from ones merely registered in a
+    /// marketplace, and to reflect the real enabled state.
+    @Published var installedPluginIds: Set<String> = []
     @Published var standaloneSkills: [ClaudeSkill] = []
     @Published var standaloneMCPs: [MCPServer] = []
     @Published var hooks: [ClaudeHook] = []
@@ -1056,7 +1061,24 @@ final class Store: ObservableObject {
             Self.parseExtensions(claudeDir: dir)
         }.value
 
-        plugins = result.plugins
+        // Reconcile installed + enabled against the CLI's own truth. settings.json
+        // `enabledPlugins` alone misses plugins installed via `claude plugin
+        // install` (enabled in the CLI's config, not settings.json) — which made
+        // freshly-installed packs look absent/disabled. Falls back to the file
+        // scan when the CLI is unavailable (returns []).
+        let installed = await MarketplaceInstaller.listPlugins()
+        if installed.isEmpty {
+            installedPluginIds = Set(result.plugins.filter(\.isEnabled).map(\.id))
+            plugins = result.plugins
+        } else {
+            let enabledById = Dictionary(installed.map { ($0.id, $0.enabled) }, uniquingKeysWith: { first, _ in first })
+            installedPluginIds = Set(installed.map(\.id))
+            plugins = result.plugins.map { plugin in
+                var p = plugin
+                if let enabled = enabledById[plugin.id] { p.isEnabled = enabled }
+                return p
+            }
+        }
         standaloneSkills = result.skills
         standaloneMCPs = result.mcps
         hooks = result.hooks

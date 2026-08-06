@@ -495,7 +495,8 @@ struct V2SkillsMarketplaceSheet: View {
     private func packPlugins(_ pack: SkillPack) -> [ClaudePlugin] {
         guard let name = marketplaceNameByRepo[pack.repo] else { return [] }
         return store.plugins.filter { plugin in
-            plugin.marketplace == name
+            store.installedPluginIds.contains(plugin.id)
+                && plugin.marketplace == name
                 && (pack.pluginNames.map { $0.contains(plugin.name) } ?? true)
         }
     }

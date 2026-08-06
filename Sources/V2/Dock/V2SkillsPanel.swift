@@ -66,7 +66,7 @@ struct V2SkillsPanel: View {
             header
             ScrollView {
                 VStack(alignment: .leading, spacing: 0) {
-                    if personalSkills.isEmpty && (projectSkills?.isEmpty ?? true) && store.pluginSkills.isEmpty {
+                    if personalSkills.isEmpty && (projectSkills?.isEmpty ?? true) && installedPluginSkillKeys.isEmpty {
                         emptyState
                     } else {
                         if !duplicateArchives.isEmpty { duplicateBanner }
@@ -77,7 +77,7 @@ struct V2SkillsPanel: View {
                                 skills: projectSkills, badge: "project", topRule: true
                             )
                         }
-                        ForEach(enabledPluginSkillKeys, id: \.self) { pluginId in
+                        ForEach(installedPluginSkillKeys, id: \.self) { pluginId in
                             pluginSection(pluginId: pluginId, skills: store.pluginSkills[pluginId] ?? [])
                         }
                     }
@@ -253,9 +253,12 @@ struct V2SkillsPanel: View {
         // the name, keep the full id for the expand-state key.
         let displayName = pluginId.split(separator: "@").first.map(String.init) ?? pluginId
         let expanded = !collapsedPlugins.contains(pluginId)
-        // Skills this pack ships as "on-demand" (disable-model-invocation: true)
-        // — they show a "disabled" badge and only run when you type the command.
-        // "enable all" flips every one on (auto-fire) in a single tap.
+        // Whole-plugin enabled state (the CLI's truth, reconciled in Store). A
+        // disabled plugin's skills still LIST here now (so nothing vanishes),
+        // with an "enable" action to turn the pack on.
+        let pluginEnabled = store.plugins.first { $0.id == pluginId }?.isEnabled ?? true
+        // Skills the pack ships as "on-demand" (disable-model-invocation) — run
+        // only when you type the command. "enable all" flips them to auto-fire.
         let onDemand = skills.filter(\.disableModelInvocation)
         return VStack(spacing: 0) {
             Button {
@@ -269,8 +272,12 @@ struct V2SkillsPanel: View {
                     Text("plugin · \(displayName) · \(skills.count)")
                         .font(.system(size: 9.5, design: .monospaced))
                         .kerning(1.0)
-                        .foregroundColor(v2.faint)
-                    if !onDemand.isEmpty {
+                        .foregroundColor(pluginEnabled ? v2.faint : v2.mute)
+                    if !pluginEnabled {
+                        Text("· disabled")
+                            .font(.system(size: 9.5, design: .monospaced))
+                            .foregroundColor(v2.del)
+                    } else if !onDemand.isEmpty {
                         Text("· \(onDemand.count) on-demand")
                             .font(.system(size: 9.5, design: .monospaced))
                             .foregroundColor(v2.faint)
@@ -284,7 +291,18 @@ struct V2SkillsPanel: View {
             .buttonStyle(.plain)
             .overlay(alignment: .top) { Rectangle().fill(v2.line).frame(height: 1) }
             .overlay(alignment: .trailing) {
-                if !onDemand.isEmpty {
+                if !pluginEnabled {
+                    Button { enablePlugin(pluginId) } label: {
+                        Text("enable")
+                            .font(.system(size: 9.5, design: .monospaced))
+                            .foregroundColor(v2.ink)
+                            .underline()
+                            .padding(.horizontal, 6).padding(.vertical, 3)
+                    }
+                    .buttonStyle(.plain)
+                    .help("Turn this pack on so its skills load into your sessions")
+                    .padding(.trailing, 16)
+                } else if !onDemand.isEmpty {
                     Button { enableAll(onDemand) } label: {
                         Text("enable all")
                             .font(.system(size: 9.5, design: .monospaced))
@@ -326,11 +344,12 @@ struct V2SkillsPanel: View {
                             .kerning(-0.13)
                             .foregroundColor(disabled ? v2.faint : v2.ink)
                         if disabled {
-                            Text("disabled")
+                            Text("on-demand")
                                 .font(.system(size: 9, design: .monospaced))
                                 .foregroundColor(v2.faint)
                                 .padding(.horizontal, 5).padding(.vertical, 1)
                                 .overlay(Rectangle().stroke(v2.line2, lineWidth: 1))
+                                .help("Runs only when you type its command — not automatically")
                         }
                         if let newContent = updatesAvailable[skill.id] {
                             Button { showingUpdateDiff = UpdateDiffTarget(skill: skill, newContent: newContent) } label: {
@@ -420,10 +439,10 @@ struct V2SkillsPanel: View {
     // MARK: - Footer
 
     private var footer: some View {
-        let enabledKeys = enabledPluginSkillKeys
+        let installedKeys = installedPluginSkillKeys
         let total = personalSkills.count + (projectSkills?.count ?? 0)
-            + enabledKeys.reduce(0) { $0 + (store.pluginSkills[$1]?.count ?? 0) }
-        let sources = 1 + (projectSkills?.isEmpty == false ? 1 : 0) + enabledKeys.count
+            + installedKeys.reduce(0) { $0 + (store.pluginSkills[$1]?.count ?? 0) }
+        let sources = 1 + (projectSkills?.isEmpty == false ? 1 : 0) + installedKeys.count
         return HStack(spacing: 10) {
             Text("\(total) skills across \(max(sources, 1)) source\(sources == 1 ? "" : "s")")
                 .font(.system(size: 10.5, design: .monospaced))
@@ -445,14 +464,13 @@ struct V2SkillsPanel: View {
 
     // MARK: - Data
 
-    /// store.pluginSkills includes EVERY registered plugin's skills — even
-    /// ones the user never enabled/installed (parsePlugins scans every
-    /// marketplace-registered plugin directory unconditionally). The dock
-    /// only lists what's actually active; browsing the rest for install is
-    /// the Marketplace sheet's job.
-    private var enabledPluginSkillKeys: [String] {
-        let enabled = Set(store.plugins.filter(\.isEnabled).map(\.id))
-        return store.pluginSkills.keys.filter { enabled.contains($0) }.sorted()
+    /// Every INSTALLED plugin that ships skills — enabled OR disabled — so an
+    /// installed-but-disabled pack still lists its skills (with an "enable"
+    /// action) instead of vanishing. `installedPluginIds` is the CLI's own
+    /// truth; store.pluginSkills also holds merely-registered plugins (from
+    /// every marketplace) that we deliberately don't surface in the dock.
+    private var installedPluginSkillKeys: [String] {
+        store.pluginSkills.keys.filter { store.installedPluginIds.contains($0) }.sorted()
     }
 
     /// The redundant .skill archives dedupedByPackaging drops from the list —
@@ -582,6 +600,19 @@ struct V2SkillsPanel: View {
         }
         if let lastError { actionError = lastError.localizedDescription }
         reload()
+    }
+
+    /// Enable a whole plugin (pack) via the CLI so its skills load into
+    /// sessions, then reload to reflect the CLI's own updated state.
+    private func enablePlugin(_ pluginId: String) {
+        Task {
+            do {
+                _ = try await MarketplaceInstaller.setEnabled(true, plugin: pluginId)
+                reload()
+            } catch {
+                actionError = error.localizedDescription
+            }
+        }
     }
 
     private func clone(_ skill: ClaudeSkill, pluginId: String?) {
