@@ -6,6 +6,25 @@
         <description>Updates for Atelier</description>
         <language>en</language>
         <item>
+            <title>Version 2.11.26</title>
+            <pubDate>Thu, 06 Aug 2026 15:12:30 +0200</pubDate>
+            <sparkle:version>101</sparkle:version>
+            <sparkle:shortVersionString>2.11.26</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>15.0</sparkle:minimumSystemVersion>
+            <description><![CDATA[
+                <h3>Atelier 2.11.26 — Approve MCP right in the chat, no session needed</h3>
+                <ul>
+                    <li><b>The MCP approval fix now lives in the chat — and works with no session running.</b> When a project's <code>.mcp.json</code> server needs Claude's one-time approval, a prominent <b>Approve</b> strip appears right above the composer, detected from files. One click approves and reconnects.</li>
+                    <li><b>Standardised for Codex.</b> Codex has no approval gate, so its parallel — an MCP server that needs OAuth <b>sign-in</b> — now shows the same in-chat strip with a <b>Sign in</b> button.</li>
+                </ul>
+            ]]></description>
+            <enclosure
+                url="https://work.munyamakosa.com/Atelier-2.11.26.dmg"
+                length="16142227"
+                type="application/octet-stream"
+                sparkle:edSignature="9sJGUpBj90JUzLVGtpDNyCUk3zajLsjF31befMi8rgqhvATGtUI1FVRrkvaKPCfMh5iOcggsmTrcsYPM61XQBw==" />
+        </item>
+        <item>
             <title>Version 2.11.25</title>
             <pubDate>Thu, 06 Aug 2026 14:33:04 +0200</pubDate>
             <sparkle:version>100</sparkle:version>
