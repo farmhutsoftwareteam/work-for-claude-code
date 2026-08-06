@@ -6,6 +6,25 @@
         <description>Updates for Atelier</description>
         <language>en</language>
         <item>
+            <title>Version 2.11.25</title>
+            <pubDate>Thu, 06 Aug 2026 14:33:04 +0200</pubDate>
+            <sparkle:version>100</sparkle:version>
+            <sparkle:shortVersionString>2.11.25</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>15.0</sparkle:minimumSystemVersion>
+            <description><![CDATA[
+                <h3>Atelier 2.11.25 — Approve buttons that show up, tidier skill headers</h3>
+                <ul>
+                    <li><b>MCP "needs approval" now reliably offers an approve button.</b> A project <code>.mcp.json</code> server waiting on Claude's one-time approval shows the <b>approve</b> action instead of just "why?/reconnect" — the panel re-checks approval state as it polls, not only when it first opened.</li>
+                    <li><b>Skills header buttons aligned.</b> The <b>enable</b> / <b>enable all</b> action on a pack's section now sits at the right edge instead of floating over the label.</li>
+                </ul>
+            ]]></description>
+            <enclosure
+                url="https://work.munyamakosa.com/Atelier-2.11.25.dmg"
+                length="16083426"
+                type="application/octet-stream"
+                sparkle:edSignature="hsoLHeJtyNRM2QgC0qkMKCJilOc5hSdE4Uu4INDsfH6kGkap21pLuzpy95U1ejroclNnFgXeqGrNfVoSds+FBQ==" />
+        </item>
+        <item>
             <title>Version 2.11.24</title>
             <pubDate>Thu, 06 Aug 2026 14:07:49 +0200</pubDate>
             <sparkle:version>99</sparkle:version>
