@@ -253,6 +253,10 @@ struct V2SkillsPanel: View {
         // the name, keep the full id for the expand-state key.
         let displayName = pluginId.split(separator: "@").first.map(String.init) ?? pluginId
         let expanded = !collapsedPlugins.contains(pluginId)
+        // Skills this pack ships as "on-demand" (disable-model-invocation: true)
+        // — they show a "disabled" badge and only run when you type the command.
+        // "enable all" flips every one on (auto-fire) in a single tap.
+        let onDemand = skills.filter(\.disableModelInvocation)
         return VStack(spacing: 0) {
             Button {
                 if expanded { collapsedPlugins.insert(pluginId) } else { collapsedPlugins.remove(pluginId) }
@@ -266,6 +270,11 @@ struct V2SkillsPanel: View {
                         .font(.system(size: 9.5, design: .monospaced))
                         .kerning(1.0)
                         .foregroundColor(v2.faint)
+                    if !onDemand.isEmpty {
+                        Text("· \(onDemand.count) on-demand")
+                            .font(.system(size: 9.5, design: .monospaced))
+                            .foregroundColor(v2.faint)
+                    }
                     Spacer()
                 }
                 .padding(.horizontal, 18)
@@ -274,6 +283,20 @@ struct V2SkillsPanel: View {
             }
             .buttonStyle(.plain)
             .overlay(alignment: .top) { Rectangle().fill(v2.line).frame(height: 1) }
+            .overlay(alignment: .trailing) {
+                if !onDemand.isEmpty {
+                    Button { enableAll(onDemand) } label: {
+                        Text("enable all")
+                            .font(.system(size: 9.5, design: .monospaced))
+                            .foregroundColor(v2.ink)
+                            .underline()
+                            .padding(.horizontal, 6).padding(.vertical, 3)
+                    }
+                    .buttonStyle(.plain)
+                    .help("Turn on auto-firing for every on-demand skill in this pack")
+                    .padding(.trailing, 16)
+                }
+            }
 
             if expanded {
                 ForEach(skills) { skill in
@@ -546,6 +569,19 @@ struct V2SkillsPanel: View {
         } catch {
             actionError = error.localizedDescription
         }
+    }
+
+    /// Flip every on-demand (disable-model-invocation) skill in a pack to
+    /// auto-fire, in one pass. Same per-skill mechanism as the bolt toggle,
+    /// batched — surfaces the first failure instead of silently skipping.
+    private func enableAll(_ skills: [ClaudeSkill]) {
+        var lastError: Error?
+        for skill in skills {
+            do { try SkillOperations.setDisableModelInvocation(false, for: skill) }
+            catch { lastError = error }
+        }
+        if let lastError { actionError = lastError.localizedDescription }
+        reload()
     }
 
     private func clone(_ skill: ClaudeSkill, pluginId: String?) {
