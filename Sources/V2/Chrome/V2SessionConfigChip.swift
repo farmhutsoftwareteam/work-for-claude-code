@@ -448,17 +448,26 @@ private struct V2SessionConfigPanel: View {
         if let live = appState.activeSession?.availableModels, !live.isEmpty { return live }
         return appState.modelCatalog
     }
+    /// Newest generation first (V2DiscoveredModel.sortedByGeneration) — the
+    /// SAME ordering whether this came from the binary's live catalog or the
+    /// history-scan fallback below, so which rows get a LATEST/PREVIOUS/
+    /// LEGACY header never depends on which source populated the list.
     private var models: [V2DiscoveredModel] {
         if !available.isEmpty {
-            return available.map { m in
+            return V2DiscoveredModel.sortedByGeneration(available.map { m in
                 V2DiscoveredModel(
                     id: m.value,
                     displayName: m.displayName,
                     tag: Self.shortResolved(m.resolvedModel),
                     description: m.description,
-                    usageCount: 0
+                    usageCount: 0,
+                    // m.value is a bare alias ("sonnet", "opus[1m]") — no
+                    // version number to parse. m.resolvedModel is the full
+                    // concrete id ("claude-opus-4-8"); generation grouping
+                    // needs THAT, not the alias `id` stays for setModel().
+                    resolvedId: m.resolvedModel
                 )
-            }
+            })
         }
         var seen = Set(appState.discoveredModels.map(\.id))
         var list = appState.discoveredModels
@@ -475,7 +484,7 @@ private struct V2SessionConfigPanel: View {
             )
             seen.insert(activeBare)
         }
-        return list
+        return V2DiscoveredModel.sortedByGeneration(list)
     }
     private static func shortResolved(_ id: String) -> String {
         var s = String(id.split(separator: "[").first ?? Substring(id))
@@ -505,16 +514,30 @@ private struct V2SessionConfigPanel: View {
             // pill tabs above this panel — not repeated here.
             sectionHeader("MODEL")
                 .overlay(alignment: .top) { Rectangle().fill(v2.line).frame(height: 1) }
-            if models.isEmpty {
+            // Snapshotted ONCE per body pass — `models` re-sorts its source
+            // on every access (PERFORMANCE.md: no re-derived work in body),
+            // and this block was reading it five separate times.
+            let modelsList = models
+            if modelsList.isEmpty {
                 Text("No model catalog yet — start one session to populate it.")
                     .font(.system(size: 11.5, design: .monospaced))
                     .foregroundColor(v2.faint)
                     .padding(.horizontal, 13)
                     .padding(.vertical, 14)
             } else {
-                ForEach(models) { option in
+                let maxMajor = modelsList.compactMap { V2DiscoveredModel.majorVersion($0.resolvedId) }.max() ?? 0
+                let labels = modelsList.map { V2DiscoveredModel.generationLabel(for: $0.resolvedId, maxMajor: maxMajor) }
+                // Only worth labeling when the catalog actually spans more
+                // than one generation — a fresh/homogeneous catalog would
+                // just show "LATEST" on every row for no reason.
+                let showGenerations = Set(labels).count > 1
+                ForEach(modelsList.indices, id: \.self) { i in
+                    let option = modelsList[i]
+                    if showGenerations, i == 0 || labels[i] != labels[i - 1] {
+                        generationHeader(labels[i])
+                    }
                     modelRow(option)
-                    if option.id != models.last?.id { Divider().background(v2.line) }
+                    if option.id != modelsList.last?.id { Divider().background(v2.line) }
                 }
             }
 
@@ -554,6 +577,20 @@ private struct V2SessionConfigPanel: View {
             .padding(.horizontal, 13)
             .padding(.top, 10)
             .padding(.bottom, 6)
+    }
+
+    /// A sub-label between generations of models (LATEST / PREVIOUS /
+    /// LEGACY) — deliberately smaller and without sectionHeader's top
+    /// border/weight, so it reads as a grouping WITHIN "MODEL" rather than
+    /// a sibling section.
+    private func generationHeader(_ generation: V2ModelGeneration) -> some View {
+        Text(generation.rawValue)
+            .font(.system(size: 8.5, weight: .medium, design: .monospaced))
+            .kerning(1.0)
+            .foregroundColor(v2.faint)
+            .padding(.horizontal, 13)
+            .padding(.top, 8)
+            .padding(.bottom, 3)
     }
 
     private func modelRow(_ option: V2DiscoveredModel) -> some View {
