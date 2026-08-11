@@ -17,8 +17,21 @@ final class V2FilePeekController: ObservableObject {
     static let shared = V2FilePeekController()
     @Published var file: V2PeekFile?
 
+    /// V2PeekFile.load does synchronous disk I/O and, for images,
+    /// NSImage(contentsOf:) — an uncapped-by-pixel-dimensions decode (bug-hunt
+    /// M26 bounded it by file size, not the actual decode cost driver) that
+    /// can run multiple seconds for a large screenshot/mockup on the main
+    /// thread. Same fix shape as V2AttachmentStore.addImageData: the plain
+    /// Task{} here inherits this class's @MainActor isolation, so nothing
+    /// crosses the actor boundary except the nonisolated static load() call
+    /// inside Task.detached.
     static func present(_ url: URL) {
-        shared.file = V2PeekFile.load(url)
+        Task {
+            let loaded = await Task.detached(priority: .userInitiated) {
+                V2PeekFile.load(url)
+            }.value
+            shared.file = loaded
+        }
     }
     func close() { file = nil }
 }

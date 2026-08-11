@@ -1274,13 +1274,22 @@ struct V2McpPanel: View {
     private func approveServer(_ name: String) {
         guard let cwd = projectCwd else { return }
         reconnecting.insert(name)
-        do {
-            try MCPApproval.approve(cwd: cwd, server: name)
-            _ = appState.reconnectSessions(inProject: cwd, afterAuthOf: name, note: "\(name): approved — reconnected.")
-            authNote = "\(name): approved — reconnecting to connect it…"
-            Task { await refreshApproval(); await store.reloadMCPs() }
-        } catch {
-            authNote = "\(name): couldn't approve — \(error.localizedDescription)"
+        Task {
+            do {
+                // The read path (refreshApproval, just below) already runs
+                // off-main — this write path didn't, so approving a server
+                // read+parsed+rewrote the WHOLE ~/.claude.json synchronously
+                // on the main thread from this button tap. approve() itself
+                // is now async, hopping onto ClaudeConfigWriter's actor —
+                // no separate Task.detached needed here.
+                try await MCPApproval.approve(cwd: cwd, server: name)
+                _ = appState.reconnectSessions(inProject: cwd, afterAuthOf: name, note: "\(name): approved — reconnected.")
+                authNote = "\(name): approved — reconnecting to connect it…"
+                await refreshApproval()
+                await store.reloadMCPs()
+            } catch {
+                authNote = "\(name): couldn't approve — \(error.localizedDescription)"
+            }
         }
         DispatchQueue.main.asyncAfter(deadline: .now() + 3) { reconnecting.remove(name) }
     }

@@ -111,18 +111,38 @@ struct V2ComposerAttachButton: View {
     let enabled: Bool
     let action: () -> Void
 
+    /// True while `action` (NSOpenPanel construction + runModal) is
+    /// in-flight. NSOpenPanel's first construction per launch bridges
+    /// synchronously to AppKit's out-of-process panel service — confirmed via
+    /// real hang traces to block the main thread 2.4-6+s (2026-08-11). That
+    /// bridging cost can't be moved off the main thread (AppKit requires
+    /// panel construction there) or fully eliminated, so this at least: (a)
+    /// stops a second tap from firing a second panel mid-freeze, and (b)
+    /// defers the blocking call by one runloop tick so SwiftUI has a chance
+    /// to paint the dimmed/disabled state BEFORE the freeze starts, instead
+    /// of the click just appearing to do nothing.
+    @State private var isPresenting = false
+
     var body: some View {
-        Button(action: action) {
+        Button {
+            guard !isPresenting else { return }
+            isPresenting = true
+            DispatchQueue.main.async {
+                action()
+                isPresenting = false
+            }
+        } label: {
             Image(systemName: "paperclip")
                 .font(.system(size: 13, weight: .medium))
                 .foregroundColor(v2.mute)
+                .opacity(isPresenting ? 0.4 : 1)
                 .padding(.horizontal, 8)
                 .padding(.vertical, 6)
                 .overlay(Rectangle().stroke(v2.line2, lineWidth: 1))
         }
         .buttonStyle(.plain)
         .help("Attach an image or file (or drag one in / paste with ⌘V)")
-        .disabled(!enabled)
+        .disabled(!enabled || isPresenting)
     }
 }
 

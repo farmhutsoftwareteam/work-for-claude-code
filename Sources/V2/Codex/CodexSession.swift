@@ -57,6 +57,12 @@ final class CodexSession: ObservableObject, V2TranscriptSource {
     @Published private(set) var pendingPermission: PendingCodexApproval?
     @Published private(set) var pendingUserInput: PendingCodexUserInput?
     @Published private(set) var mcpServers: [CodexMCPServer] = []
+    /// Scoped publisher so the MCP panel subscribes to ONLY mcpServers,
+    /// never this session's blanket objectWillChange — same discipline as
+    /// subagentRunsPublisher below (PERFORMANCE.md rule 2). V2CodexMcpPanel
+    /// used to @ObservedObject the whole session, re-rendering up to 30x/sec
+    /// during an active turn for a panel that only ever reads this one field.
+    var mcpServersPublisher: Published<[CodexMCPServer]>.Publisher { $mcpServers }
     @Published private(set) var endError: String?
     @Published private(set) var loginInProgress = false
     @Published private(set) var totalTokens = 0

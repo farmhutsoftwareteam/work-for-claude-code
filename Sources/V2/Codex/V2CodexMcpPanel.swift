@@ -2,7 +2,12 @@ import SwiftUI
 
 struct V2CodexMcpPanel: View {
     @Environment(\.v2) private var v2
-    @ObservedObject var session: CodexSession
+    // Not @ObservedObject — this panel only ever reads mcpServers, so it
+    // tracks just that scoped publisher instead of the session's blanket
+    // objectWillChange, which fires up to 30x/sec during an active turn
+    // (PERFORMANCE.md §2).
+    let session: CodexSession
+    @State private var mcpServers: [CodexMCPServer] = []
     @State private var showAdd = false
     @State private var name = ""
     @State private var transport = "stdio"
@@ -18,7 +23,7 @@ struct V2CodexMcpPanel: View {
             HStack {
                 VStack(alignment: .leading, spacing: 2) {
                     Text("CODEX MCP").font(.system(size: 10, design: .monospaced)).kerning(1).foregroundColor(v2.faint)
-                    Text("\(session.mcpServers.count) configured").font(.system(size: 12)).foregroundColor(v2.ink)
+                    Text("\(mcpServers.count) configured").font(.system(size: 12)).foregroundColor(v2.ink)
                 }
                 Spacer()
                 Button { Task { await session.refreshMCPStatus() } } label: { Image(systemName: "arrow.clockwise") }
@@ -38,18 +43,22 @@ struct V2CodexMcpPanel: View {
 
             ScrollView {
                 LazyVStack(spacing: 0) {
-                    if session.mcpServers.isEmpty {
+                    if mcpServers.isEmpty {
                         Text("No Codex MCP servers are configured. Add one here, or edit ~/.codex/config.toml.")
                             .font(.system(size: 11, design: .monospaced)).foregroundColor(v2.faint)
                             .padding(16).frame(maxWidth: .infinity, alignment: .leading)
                     }
-                    ForEach(session.mcpServers) { server in
+                    ForEach(mcpServers) { server in
                         serverRow(server)
                     }
                 }
             }
         }
         .background(v2.paper2)
+        .task(id: session.instanceId) {
+            mcpServers = session.mcpServers
+            for await s in session.mcpServersPublisher.values { mcpServers = s }
+        }
     }
 
     private var editor: some View {

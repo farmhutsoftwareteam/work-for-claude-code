@@ -997,7 +997,7 @@ private struct V2ClaudeMcpApprovalStrip: View {
         guard !busy else { return }
         busy = true
         Task {
-            for server in servers { try? MCPApproval.approve(cwd: cwd, server: server) }
+            for server in servers { try? await MCPApproval.approve(cwd: cwd, server: server) }
             await store.reloadMCPs()   // recomputes pendingApprovalsByProject → strip clears itself
             _ = appState.reconnectSessions(inProject: cwd, afterAuthOf: "mcp",
                                            note: "MCP approved — reconnecting…")

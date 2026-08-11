@@ -209,10 +209,17 @@ struct V2MarkdownText: View {
     /// and Apple's inline parser only links the latter. Detect bare URLs /
     /// emails and attach .link so they're clickable. Runs once per unique
     /// string (inside the parse cache), so it costs nothing while streaming.
+    /// Hoisted — constructing an NSDataDetector (an NSRegularExpression
+    /// subclass) per call was cheap only because this whole function is
+    /// gated by the parse cache; the actively-streaming paragraph is a cache
+    /// miss every flush (see the isStreaming doc above), so any reply with a
+    /// bare URL paid this construction repeatedly while that paragraph grew.
+    private static let bareURLDetector = try? NSDataDetector(types: NSTextCheckingResult.CheckingType.link.rawValue)
+
     private static func linkifyBareURLs(_ attr: inout AttributedString) {
         let plain = String(attr.characters)
         guard plain.contains("://") || plain.contains("www.") || plain.contains("@") else { return }
-        guard let detector = try? NSDataDetector(types: NSTextCheckingResult.CheckingType.link.rawValue) else { return }
+        guard let detector = bareURLDetector else { return }
         let ns = plain as NSString
         for match in detector.matches(in: plain, range: NSRange(location: 0, length: ns.length)) {
             guard let url = match.url,

@@ -185,22 +185,23 @@ final class Store: ObservableObject {
 
     /// Append the project path to `~/.claude.json` `projects` map with
     /// sensible defaults so Claude treats it as a known cwd next launch.
+    /// Fire-and-forget: this is best-effort persistence for the NEXT launch,
+    /// not something registerProject's caller needs to await. Routed through
+    /// ClaudeConfigWriter (not a bare Task.detached doing its own read-modify-
+    /// write) so this can't race MCPApproval.approve — which writes the SAME
+    /// file — and silently lose one or the other's update (2026-08-11).
     private func persistProjectRegistration(path: String) {
-        let url = FileManager.default.homeDirectoryForCurrentUser
-            .appendingPathComponent(".claude.json")
-        guard let data = try? Data(contentsOf: url),
-              var root = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
-            return
-        }
-        var projectsMap = (root["projects"] as? [String: Any]) ?? [:]
-        if projectsMap[path] == nil {
-            projectsMap[path] = [
-                "allowedTools": [],
-                "hasTrustDialogAccepted": true
-            ] as [String: Any]
-            root["projects"] = projectsMap
-            if let out = try? JSONSerialization.data(withJSONObject: root, options: [.prettyPrinted]) {
-                try? out.write(to: url, options: .atomic)
+        Task {
+            try? await ClaudeConfigWriter.shared.mutate { existing in
+                guard var root = existing else { return nil }
+                var projectsMap = (root["projects"] as? [String: Any]) ?? [:]
+                guard projectsMap[path] == nil else { return nil }
+                projectsMap[path] = [
+                    "allowedTools": [],
+                    "hasTrustDialogAccepted": true
+                ] as [String: Any]
+                root["projects"] = projectsMap
+                return root
             }
         }
     }

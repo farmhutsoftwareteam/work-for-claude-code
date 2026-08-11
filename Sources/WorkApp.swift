@@ -73,6 +73,7 @@ struct WorkApp: App {
                     AppDelegate.sharedTerminals = terminals
                     checkTerminalPermission()
                     checkPathFix()
+                    prewarmFilePanel()
                 }
                 .onChange(of: onboardingComplete) { _, completed in
                     if completed {
@@ -196,6 +197,20 @@ struct WorkApp: App {
         .defaultSize(width: 1010, height: 670)
         .defaultLaunchBehavior(.suppressed)
         .restorationBehavior(.disabled)
+    }
+
+    /// NSOpenPanel's first construction per launch bridges synchronously to
+    /// AppKit's out-of-process panel service — confirmed via real hang traces
+    /// (2026-08-11) to block the main thread 2.4-6+s on the composer's
+    /// attach-file button, the single worst main-thread freeze found in a
+    /// 425-incident hang-report sweep. Must run on the main thread (AppKit
+    /// requirement) and construction alone (no .runModal()) is enough to pay
+    /// the bridging cost, so eat it here — a few seconds after launch,
+    /// nobody is waiting on it — instead of on the user's first click.
+    private func prewarmFilePanel() {
+        DispatchQueue.main.asyncAfter(deadline: .now() + 3) {
+            _ = NSOpenPanel()
+        }
     }
 
     private func checkTerminalPermission() {

@@ -48,7 +48,7 @@ struct V2SubagentRunsStrip<Session: V2TranscriptSource>: View {
             Group {
                 if !visible.isEmpty {
                     VStack(alignment: .leading, spacing: 6) {
-                        ForEach(rows.indices, id: \.self) { rowView(rows[$0]) }
+                        ForEach(rows) { rowView($0) }
                     }
                     .padding(.horizontal, 26)
                     .padding(.vertical, 10)
@@ -68,9 +68,21 @@ struct V2SubagentRunsStrip<Session: V2TranscriptSource>: View {
 
     // MARK: - Rows
 
-    private enum Row {
+    // Identifiable by the underlying run's own stable id, not position — as
+    // running agents finish, `visibleRuns`' sort re-orders rows (running
+    // first, then by startedAt), and index-based identity let SwiftUI reuse
+    // a stateful V2DelegationCard (@State peeking, an open peek sheet) for
+    // what is now a DIFFERENT agent, momentarily showing the wrong one's data.
+    private enum Row: Identifiable {
         case run(V2SubagentRun)
         case summary(running: Int, done: Int, failed: Int)
+
+        var id: String {
+            switch self {
+            case .run(let run): return run.id
+            case .summary: return "summary"
+            }
+        }
     }
 
     private var visibleRuns: [V2SubagentRun] {

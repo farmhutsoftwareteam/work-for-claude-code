@@ -45,7 +45,7 @@ struct V2SessionTabs: View {
         } else {
             HStack(spacing: 0) {
                 ScrollView(.horizontal, showsIndicators: false) {
-                    HStack(alignment: .center, spacing: 0) {
+                    LazyHStack(alignment: .center, spacing: 0) {
                         ForEach(allTabs) { tab in
                             V2TabChip(
                                 tab: tab,

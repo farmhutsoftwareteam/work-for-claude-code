@@ -523,26 +523,32 @@ struct V2SkillsPanel: View {
     /// silence with real confirmation.
     private func cleanUpDuplicates() {
         let targets = duplicateArchives
-        // Count REAL successes, not attempts — this used to report
-        // targets.count regardless of whether each delete actually
-        // succeeded, so a permission/disk failure on one item still
-        // claimed full success (bug-hunt #12/M33).
-        var succeeded = 0
-        var lastFailure: Error?
-        for archive in targets {
-            do {
-                _ = try SkillOperations.deleteSkill(archive)
-                succeeded += 1
-            } catch {
-                lastFailure = error
-            }
-        }
-        justCleanedUp = succeeded
-        if let lastFailure, succeeded < targets.count {
-            actionError = lastFailure.localizedDescription
-        }
-        reload()
         Task {
+            // Count REAL successes, not attempts — this used to report
+            // targets.count regardless of whether each delete actually
+            // succeeded, so a permission/disk failure on one item still
+            // claimed full success (bug-hunt #12/M33).
+            // Off-main: a Trash syscall per archive, synchronous on the
+            // caller's thread — was blocking the main thread for however
+            // many duplicates existed.
+            let (succeeded, lastFailure) = await Task.detached(priority: .userInitiated) { () -> (Int, Error?) in
+                var succeeded = 0
+                var lastFailure: Error?
+                for archive in targets {
+                    do {
+                        _ = try SkillOperations.deleteSkill(archive)
+                        succeeded += 1
+                    } catch {
+                        lastFailure = error
+                    }
+                }
+                return (succeeded, lastFailure)
+            }.value
+            justCleanedUp = succeeded
+            if let lastFailure, succeeded < targets.count {
+                actionError = lastFailure.localizedDescription
+            }
+            reload()
             try? await Task.sleep(nanoseconds: 2_000_000_000)
             justCleanedUp = nil
         }
@@ -581,11 +587,15 @@ struct V2SkillsPanel: View {
     }
 
     private func toggleDisabled(_ skill: ClaudeSkill) {
-        do {
-            try SkillOperations.setDisableModelInvocation(!skill.disableModelInvocation, for: skill)
-            reload()
-        } catch {
-            actionError = error.localizedDescription
+        Task {
+            do {
+                try await Task.detached(priority: .userInitiated) {
+                    try SkillOperations.setDisableModelInvocation(!skill.disableModelInvocation, for: skill)
+                }.value
+                reload()
+            } catch {
+                actionError = error.localizedDescription
+            }
         }
     }
 
@@ -593,13 +603,18 @@ struct V2SkillsPanel: View {
     /// auto-fire, in one pass. Same per-skill mechanism as the bolt toggle,
     /// batched — surfaces the first failure instead of silently skipping.
     private func enableAll(_ skills: [ClaudeSkill]) {
-        var lastError: Error?
-        for skill in skills {
-            do { try SkillOperations.setDisableModelInvocation(false, for: skill) }
-            catch { lastError = error }
+        Task {
+            let lastError: Error? = await Task.detached(priority: .userInitiated) { () -> Error? in
+                var lastError: Error?
+                for skill in skills {
+                    do { try SkillOperations.setDisableModelInvocation(false, for: skill) }
+                    catch { lastError = error }
+                }
+                return lastError
+            }.value
+            if let lastError { actionError = lastError.localizedDescription }
+            reload()
         }
-        if let lastError { actionError = lastError.localizedDescription }
-        reload()
     }
 
     /// Enable a whole plugin (pack) via the CLI so its skills load into
@@ -618,11 +633,19 @@ struct V2SkillsPanel: View {
     }
 
     private func clone(_ skill: ClaudeSkill, pluginId: String?) {
-        do {
-            _ = try SkillOperations.cloneToPersonal(skill, pluginId: pluginId)
-            reload()
-        } catch {
-            actionError = error.localizedDescription
+        Task {
+            do {
+                // A zip-packaged skill spawns /usr/bin/unzip and waits on it;
+                // a directory-packaged one does a synchronous recursive
+                // FileManager.copyItem — either was blocking the main thread
+                // for the clone's full duration on a single button tap.
+                _ = try await Task.detached(priority: .userInitiated) {
+                    try SkillOperations.cloneToPersonal(skill, pluginId: pluginId)
+                }.value
+                reload()
+            } catch {
+                actionError = error.localizedDescription
+            }
         }
     }
 
@@ -634,9 +657,17 @@ struct V2SkillsPanel: View {
         guard let provenance = SkillOperations.cloneProvenance(for: skill) else { return }
         guard let currentUpstream = store.pluginSkills[provenance.pluginId]?.first(where: { $0.name == provenance.skillName })
         else { return }   // plugin no longer registered/enabled, or skill renamed upstream — nothing to compare
-        guard let mine = try? String(contentsOf: skill.path.appendingPathComponent("SKILL.md"), encoding: .utf8),
-              let theirs = try? String(contentsOf: currentUpstream.path.appendingPathComponent("SKILL.md"), encoding: .utf8)
-        else { return }
+        let minePath = skill.path.appendingPathComponent("SKILL.md")
+        let theirsPath = currentUpstream.path.appendingPathComponent("SKILL.md")
+        // Fires via .task(id:) on every row the moment the panel appears
+        // (unbatched — see the list-virtualization fix elsewhere), so the
+        // file reads must not land on the main actor.
+        guard let (mine, theirs) = await Task.detached(priority: .utility) { () -> (String, String)? in
+            guard let mine = try? String(contentsOf: minePath, encoding: .utf8),
+                  let theirs = try? String(contentsOf: theirsPath, encoding: .utf8)
+            else { return nil }
+            return (mine, theirs)
+        }.value else { return }
         if mine != theirs {
             updatesAvailable[skill.id] = theirs
         } else {
@@ -650,24 +681,38 @@ struct V2SkillsPanel: View {
     /// the window closes on its own. Reloading immediately would make undo
     /// meaningless: the row it applies to would already be gone.
     private func delete(_ skill: ClaudeSkill) {
-        do {
-            let result = try SkillOperations.deleteSkill(skill)
-            pendingDeletes[skill.id] = (skill, result.originalPath, result.trashedAt)
-            Task {
+        Task {
+            do {
+                let result = try await Task.detached(priority: .userInitiated) {
+                    try SkillOperations.deleteSkill(skill)
+                }.value
+                pendingDeletes[skill.id] = (skill, result.originalPath, result.trashedAt)
                 try? await Task.sleep(nanoseconds: 5_000_000_000)
                 guard pendingDeletes[skill.id] != nil else { return }   // already undone
                 pendingDeletes[skill.id] = nil
                 reload()
+            } catch {
+                actionError = error.localizedDescription
             }
-        } catch {
-            actionError = error.localizedDescription
         }
     }
 
     private func undoDelete(_ skill: ClaudeSkill) {
         guard let pending = pendingDeletes[skill.id] else { return }
-        try? SkillOperations.restoreFromTrash(originalPath: pending.originalPath, trashedAt: pending.trashedAt)
         pendingDeletes[skill.id] = nil
+        Task {
+            do {
+                try await Task.detached(priority: .userInitiated) {
+                    try SkillOperations.restoreFromTrash(originalPath: pending.originalPath, trashedAt: pending.trashedAt)
+                }.value
+            } catch {
+                // Matches delete()/clone()/toggleDisabled()'s error surfacing
+                // — this used to be `try?`, silently swallowing a restore
+                // failure (the skill stays trashed with no on-screen sign
+                // anything went wrong).
+                actionError = error.localizedDescription
+            }
+        }
     }
 }
 

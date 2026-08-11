@@ -23,8 +23,14 @@ struct V2AgentsPanel: View {
     @EnvironmentObject private var appState: V2AppState
     @State private var sub: SubTab = .running
 
-    // Live roster, streamed from the active session.
+    // Live roster, streamed from the active session. `roster`/`batches` are
+    // derived exactly once per update (in setRuns, where `runs` changes) —
+    // they used to be computed vars re-sorting/re-grouping `runs` from
+    // scratch on every access, including once per row inside their own
+    // ForEach's body evaluation (PERFORMANCE.md §4).
     @State private var runs: [V2SubagentRun] = []
+    @State private var roster: [V2SubagentRun] = []
+    @State private var batches: [BatchGroup] = []
 
     // Definitions state (unchanged from the old panel).
     @State private var filter: ScopeFilter = .all
@@ -106,14 +112,46 @@ struct V2AgentsPanel: View {
 
     private func subscribeRuns() async {
         if let s = appState.activeSession {
-            runs = s.subagentRuns
-            for await r in s.subagentRunsPublisher.values { runs = r }
+            setRuns(s.subagentRuns)
+            for await r in s.subagentRunsPublisher.values { setRuns(r) }
         } else if let c = appState.activeCodexSession {
-            runs = c.subagentRuns
-            for await r in c.subagentRunsPublisher.values { runs = r }
+            setRuns(c.subagentRuns)
+            for await r in c.subagentRunsPublisher.values { setRuns(r) }
         } else {
-            runs = []
+            setRuns([])
         }
+    }
+
+    private func setRuns(_ r: [V2SubagentRun]) {
+        runs = r
+        roster = r.sorted { a, b in
+            let ra = a.state == .running, rb = b.state == .running
+            if ra != rb { return ra }
+            return a.startedAt > b.startedAt
+        }
+        batches = Self.groupIntoBatches(r)
+    }
+
+    /// Group runs by batchId; runs without one are their own singleton.
+    /// Ordered newest-first by the batch's latest spawn. Each group's `id` is
+    /// the batchId (or the singleton run's own id) — stable across reorders,
+    /// unlike the array-offset id the ForEach used to key on.
+    private static func groupIntoBatches(_ runs: [V2SubagentRun]) -> [BatchGroup] {
+        var byBatch: [String: [V2SubagentRun]] = [:]
+        var singles: [(id: String, run: V2SubagentRun)] = []
+        for r in runs {
+            if let b = r.batchId { byBatch[b, default: []].append(r) }
+            else { singles.append((r.id, r)) }
+        }
+        let grouped = byBatch.map { BatchGroup(id: $0.key, runs: $0.value.sorted { $0.startedAt < $1.startedAt }) }
+        let single = singles.map { BatchGroup(id: $0.id, runs: [$0.run]) }
+        return (grouped + single)
+            .sorted { ($0.runs.map(\.startedAt).max() ?? .distantPast) > ($1.runs.map(\.startedAt).max() ?? .distantPast) }
+    }
+
+    struct BatchGroup: Identifiable {
+        let id: String
+        let runs: [V2SubagentRun]
     }
 
     private func stopAll() {
@@ -203,21 +241,13 @@ struct V2AgentsPanel: View {
 
     // MARK: - Running roster
 
-    private var roster: [V2SubagentRun] {
-        runs.sorted { a, b in
-            let ra = a.state == .running, rb = b.state == .running
-            if ra != rb { return ra }
-            return a.startedAt > b.startedAt
-        }
-    }
-
     @ViewBuilder
     private var runningView: some View {
         if roster.isEmpty {
             rosterEmpty
         } else {
             ScrollView {
-                VStack(alignment: .leading, spacing: 8) {
+                LazyVStack(alignment: .leading, spacing: 8) {
                     ForEach(roster) { run in
                         V2DelegationCard(
                             run: run, toolUseId: run.toolUseId,
@@ -248,32 +278,17 @@ struct V2AgentsPanel: View {
 
     // MARK: - Session (batches, newest first)
 
-    /// Group runs by batchId; runs without one are their own singleton.
-    /// Ordered newest-first by the batch's latest spawn.
-    private var batches: [[V2SubagentRun]] {
-        var byBatch: [String: [V2SubagentRun]] = [:]
-        var singles: [[V2SubagentRun]] = []
-        for r in runs {
-            if let b = r.batchId { byBatch[b, default: []].append(r) }
-            else { singles.append([r]) }
-        }
-        let all = Array(byBatch.values) + singles
-        return all
-            .map { $0.sorted { $0.startedAt < $1.startedAt } }
-            .sorted { ($0.map { $0.startedAt }.max() ?? .distantPast) > ($1.map { $0.startedAt }.max() ?? .distantPast) }
-    }
-
     @ViewBuilder
     private var sessionView: some View {
         if runs.isEmpty {
             rosterEmpty
         } else {
             ScrollView {
-                VStack(alignment: .leading, spacing: 10) {
-                    ForEach(Array(batches.enumerated()), id: \.offset) { _, members in
-                        if members.count >= 2 {
-                            V2AgentBatchRow(runs: members, sessionDir: sessionDir)
-                        } else if let run = members.first {
+                LazyVStack(alignment: .leading, spacing: 10) {
+                    ForEach(batches) { group in
+                        if group.runs.count >= 2 {
+                            V2AgentBatchRow(runs: group.runs, sessionDir: sessionDir)
+                        } else if let run = group.runs.first {
                             V2DelegationCard(
                                 run: run, toolUseId: run.toolUseId,
                                 fallbackDescription: run.description,
@@ -448,11 +463,15 @@ struct V2AgentsPanel: View {
                 scope = .project(cwd: URL(fileURLWithPath: cwd))
             } else { return }
         }
-        do {
-            try AgentConfigWriter.delete(slug: agent.slug, from: scope)
-            reload()
-        } catch {
-            deleteError = error.localizedDescription
+        Task {
+            do {
+                try await Task.detached(priority: .userInitiated) {
+                    try AgentConfigWriter.delete(slug: agent.slug, from: scope)
+                }.value
+                reload()
+            } catch {
+                deleteError = error.localizedDescription
+            }
         }
     }
 
@@ -466,7 +485,15 @@ struct V2AgentsPanel: View {
 
     private func reload() {
         let cwd = appState.activeTab.map { URL(fileURLWithPath: $0.projectCwd) }
-        agents = V2AgentLoader.load(projectCwd: cwd)
+        // V2AgentLoader.load is a synchronous directory scan + YAML parse of
+        // every .md file in both scopes — fine for "a handful of agents"
+        // (its own doc comment), but fires on every tab switch while this
+        // panel is open, so it must not run on the main actor.
+        Task {
+            agents = await Task.detached(priority: .userInitiated) {
+                V2AgentLoader.load(projectCwd: cwd)
+            }.value
+        }
     }
 
     private func swiftColor(for token: String) -> Color {
